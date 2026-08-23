@@ -9,6 +9,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
+import java.net.URLDecoder
 
 class MainActivity : Activity() {
 
@@ -28,11 +29,72 @@ class MainActivity : Activity() {
 
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
+        webView.settings.databaseEnabled = true
+
         webView.settings.userAgentString =
             "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 
         webView.webViewClient = object : WebViewClient() {
+
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+
+                val url = request?.url?.toString() ?: return false
+
+                if (url.startsWith("intent://")) {
+
+                    val marker = "S.browser_fallback_url="
+
+                    val markerIndex = url.indexOf(marker)
+
+                    if (markerIndex >= 0) {
+
+                        val fallbackStart =
+                            markerIndex + marker.length
+
+                        val fallbackEnd =
+                            url.indexOf(";end", fallbackStart)
+
+                        if (fallbackEnd > fallbackStart) {
+
+                            val encodedFallback =
+                                url.substring(
+                                    fallbackStart,
+                                    fallbackEnd
+                                )
+
+                            try {
+
+                                val fallbackUrl =
+                                    URLDecoder.decode(
+                                        encodedFallback,
+                                        "UTF-8"
+                                    )
+
+                                view?.loadUrl(fallbackUrl)
+
+                            } catch (e: Exception) {
+
+                                update(
+                                    """
+                                    ERRORE DECODIFICA
+
+                                    ${e.message}
+                                    """.trimIndent()
+                                )
+                            }
+                        }
+
+                    }
+
+                    return true
+                }
+
+                return false
+            }
 
             override fun onPageStarted(
                 view: WebView?,
@@ -48,6 +110,29 @@ class MainActivity : Activity() {
                     Google Maps sta caricando...
 
                     URL:
+
+                    $url
+                    """.trimIndent()
+                )
+            }
+
+            override fun onPageFinished(
+                view: WebView?,
+                url: String?
+            ) {
+                super.onPageFinished(view, url)
+
+                update(
+                    """
+                    TravelPins TEST
+
+                    Google Maps caricata.
+
+                    Sto cercando le richieste
+                    della lista...
+
+                    URL:
+
                     $url
                     """.trimIndent()
                 )
@@ -75,13 +160,16 @@ class MainActivity : Activity() {
 
                         ========================
 
-                        Questo è il punto che
-                        stavamo cercando.
+                        Abbiamo trovato
+                        la richiesta della lista.
                         """.trimIndent()
                     )
                 }
 
-                return super.shouldInterceptRequest(view, request)
+                return super.shouldInterceptRequest(
+                    view,
+                    request
+                )
             }
         }
 
@@ -92,7 +180,9 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+
         setIntent(intent)
+
         processIntent(intent)
     }
 
@@ -102,17 +192,28 @@ class MainActivity : Activity() {
             return
         }
 
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+        val text =
+            intent.getStringExtra(Intent.EXTRA_TEXT)
 
         if (text.isNullOrBlank()) {
-            update("Nessun testo ricevuto.")
+
+            update(
+                "Nessun testo ricevuto."
+            )
+
             return
         }
 
-        val match = Regex("""https?://\S+""").find(text)
+        val match =
+            Regex("""https?://\S+""")
+                .find(text)
 
         if (match == null) {
-            update("Nessun link trovato.")
+
+            update(
+                "Nessun link trovato."
+            )
+
             return
         }
 
