@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
@@ -34,7 +35,9 @@ class MainActivity : Activity() {
     private val handler =
         Handler(Looper.getMainLooper())
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
         super.onCreate(savedInstanceState)
 
         createInterface()
@@ -46,13 +49,20 @@ class MainActivity : Activity() {
 
         val root =
             LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(12, 12, 12, 12)
+                orientation =
+                    LinearLayout.VERTICAL
+                setPadding(
+                    12,
+                    12,
+                    12,
+                    12
+                )
             }
 
         val toolbar =
             LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
+                orientation =
+                    LinearLayout.HORIZONTAL
             }
 
         val copyButton =
@@ -102,7 +112,8 @@ class MainActivity : Activity() {
 
                 text = "ACCETTA GOOGLE"
 
-                visibility = Button.GONE
+                visibility =
+                    Button.GONE
 
                 setOnClickListener {
                     acceptGoogleConsent()
@@ -140,6 +151,7 @@ class MainActivity : Activity() {
             TextView(this).apply {
 
                 textSize = 13f
+
                 setTextIsSelectable(true)
 
                 setPadding(
@@ -175,7 +187,8 @@ class MainActivity : Activity() {
 
     private fun createWebView() {
 
-        webView = WebView(this)
+        webView =
+            WebView(this)
 
         webView.settings.apply {
 
@@ -183,12 +196,15 @@ class MainActivity : Activity() {
             domStorageEnabled = true
             databaseEnabled = true
 
-            loadsImagesAutomatically = true
+            loadsImagesAutomatically =
+                true
 
             javaScriptCanOpenWindowsAutomatically =
                 true
 
-            setSupportMultipleWindows(false)
+            setSupportMultipleWindows(
+                false
+            )
 
             userAgentString =
                 "Mozilla/5.0 (Linux; Android 10) " +
@@ -215,6 +231,43 @@ class MainActivity : Activity() {
         webView.webViewClient =
             object : WebViewClient() {
 
+                override fun shouldOverrideUrlLoading(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): Boolean {
+
+                    val url =
+                        request.url.toString()
+
+                    inspectNavigation(url)
+
+                    /*
+                     * QUESTO È IL PASSAGGIO NUOVO.
+                     *
+                     * Google prova ad aprire
+                     * l'app Maps tramite intent://.
+                     *
+                     * Noi estraiamo invece
+                     * S.browser_fallback_url
+                     * e la carichiamo nella WebView.
+                     */
+
+                    if (
+                        url.startsWith(
+                            "intent://"
+                        )
+                    ) {
+
+                        handleGoogleIntent(
+                            url
+                        )
+
+                        return true
+                    }
+
+                    return false
+                }
+
                 override fun shouldInterceptRequest(
                     view: WebView,
                     request: WebResourceRequest
@@ -223,18 +276,6 @@ class MainActivity : Activity() {
                     inspectRequest(request)
 
                     return null
-                }
-
-                override fun shouldOverrideUrlLoading(
-                    view: WebView,
-                    request: WebResourceRequest
-                ): Boolean {
-
-                    inspectNavigation(
-                        request.url.toString()
-                    )
-
-                    return false
                 }
 
                 override fun onPageFinished(
@@ -275,6 +316,7 @@ class MainActivity : Activity() {
                             ==============================
                             """.trimIndent()
                         )
+
                     } else {
 
                         consentButton.visibility =
@@ -304,6 +346,141 @@ class MainActivity : Activity() {
             }
     }
 
+    private fun handleGoogleIntent(
+        intentUrl: String
+    ) {
+
+        addLog(
+            """
+            ==============================
+            GOOGLE INTENT INTERCETTATO
+
+            Google voleva aprire:
+            APP GOOGLE MAPS
+
+            ==============================
+            CERCO FALLBACK WEB...
+
+            """.trimIndent()
+        )
+
+        try {
+
+            val uri =
+                Uri.parse(intentUrl)
+
+            val fallback =
+                uri.getQueryParameter(
+                    "S.browser_fallback_url"
+                )
+
+            if (
+                fallback != null &&
+                fallback.isNotBlank()
+            ) {
+
+                addLog(
+                    """
+                    [FALLBACK URL TROVATO]
+
+                    $fallback
+
+                    ==============================
+                    CARICO FALLBACK NELLA WEBVIEW...
+                    ==============================
+                    """.trimIndent()
+                )
+
+                webView.loadUrl(
+                    fallback
+                )
+
+                return
+            }
+
+            /*
+             * Alcune versioni possono codificare
+             * il parametro in modo differente.
+             *
+             * Proviamo quindi anche una
+             * ricerca manuale.
+             */
+
+            val marker =
+                "S.browser_fallback_url="
+
+            val index =
+                intentUrl.indexOf(
+                    marker
+                )
+
+            if (index >= 0) {
+
+                var fallbackText =
+                    intentUrl.substring(
+                        index + marker.length
+                    )
+
+                val end =
+                    fallbackText.indexOf(
+                        "#Intent"
+                    )
+
+                if (end >= 0) {
+
+                    fallbackText =
+                        fallbackText.substring(
+                            0,
+                            end
+                        )
+                }
+
+                fallbackText =
+                    Uri.decode(
+                        fallbackText
+                    )
+
+                addLog(
+                    """
+                    [FALLBACK MANUALE]
+
+                    $fallbackText
+
+                    ==============================
+                    CARICO FALLBACK...
+                    ==============================
+                    """.trimIndent()
+                )
+
+                webView.loadUrl(
+                    fallbackText
+                )
+
+                return
+            }
+
+            addLog(
+                """
+                ❌ FALLBACK URL NON TROVATO
+
+                ==============================
+                """.trimIndent()
+            )
+
+        } catch (e: Exception) {
+
+            addLog(
+                """
+                ❌ ERRORE PARSING INTENT
+
+                ${e.message}
+
+                ==============================
+                """.trimIndent()
+            )
+        }
+    }
+
     private fun acceptGoogleConsent() {
 
         addLog(
@@ -322,99 +499,6 @@ class MainActivity : Activity() {
 
                     var result = [];
 
-                    /*
-                     * METODO 1:
-                     * pulsante ufficiale Google
-                     */
-
-                    var button =
-                        document.getElementById(
-                            'introAgreeButton'
-                        );
-
-                    if (button) {
-
-                        result.push(
-                            'INTRO_BUTTON_FOUND'
-                        );
-
-                        try {
-                            button.click();
-                            result.push(
-                                'INTRO_CLICK_OK'
-                            );
-                        } catch(e) {
-                            result.push(
-                                'INTRO_CLICK_ERROR:' +
-                                e.message
-                            );
-                        }
-
-                        /*
-                         * Prova anche il contenitore
-                         */
-
-                        try {
-
-                            if (button.parentElement) {
-
-                                button.parentElement.click();
-
-                                result.push(
-                                    'PARENT_CLICK_OK'
-                                );
-                            }
-
-                        } catch(e) {
-
-                            result.push(
-                                'PARENT_CLICK_ERROR:' +
-                                e.message
-                            );
-                        }
-
-                        /*
-                         * Trova il form associato
-                         */
-
-                        var form =
-                            button.closest('form');
-
-                        if (form) {
-
-                            result.push(
-                                'FORM_FOUND'
-                            );
-
-                            try {
-
-                                form.submit();
-
-                                result.push(
-                                    'FORM_SUBMIT_OK'
-                                );
-
-                            } catch(e) {
-
-                                result.push(
-                                    'FORM_SUBMIT_ERROR:' +
-                                    e.message
-                                );
-                            }
-                        }
-
-                    } else {
-
-                        result.push(
-                            'INTRO_BUTTON_NOT_FOUND'
-                        );
-                    }
-
-                    /*
-                     * METODO 2:
-                     * ricerca per testo
-                     */
-
                     var elements =
                         document.querySelectorAll(
                             'button, div[role="button"], input'
@@ -426,7 +510,8 @@ class MainActivity : Activity() {
                         i++
                     ) {
 
-                        var e = elements[i];
+                        var e =
+                            elements[i];
 
                         var text =
                             (
@@ -441,14 +526,18 @@ class MainActivity : Activity() {
                             .toLowerCase();
 
                         if (
-                            text === 'accetta tutto' ||
-                            text === 'accetta' ||
-                            text === 'accept all' ||
-                            text === 'accept'
+                            text ===
+                                'accetta tutto' ||
+                            text ===
+                                'accetta' ||
+                            text ===
+                                'accept all' ||
+                            text ===
+                                'accept'
                         ) {
 
                             result.push(
-                                'TEXT_BUTTON_FOUND:' +
+                                'BUTTON_FOUND:' +
                                 text
                             );
 
@@ -457,13 +546,13 @@ class MainActivity : Activity() {
                                 e.click();
 
                                 result.push(
-                                    'TEXT_CLICK_OK'
+                                    'CLICK_OK'
                                 );
 
                             } catch(err) {
 
                                 result.push(
-                                    'TEXT_CLICK_ERROR:' +
+                                    'CLICK_ERROR:' +
                                     err.message
                                 );
                             }
@@ -476,7 +565,7 @@ class MainActivity : Activity() {
 
                 } catch(e) {
 
-                    return 'GLOBAL_ERROR:' +
+                    return 'ERROR:' +
                            e.message;
                 }
 
@@ -496,64 +585,7 @@ class MainActivity : Activity() {
                 ==============================
                 """.trimIndent()
             )
-
-            handler.postDelayed(
-                {
-                    checkAfterConsent()
-                },
-                2000
-            )
         }
-    }
-
-    private fun checkAfterConsent() {
-
-        val url =
-            webView.url ?: ""
-
-        addLog(
-            """
-            [CONTROLLO DOPO CONSENSO]
-
-            URL ATTUALE:
-            $url
-
-            """.trimIndent()
-        )
-
-        if (
-            !url.contains(
-                "consent.google.com"
-            )
-        ) {
-
-            consentButton.visibility =
-                Button.GONE
-
-            addLog(
-                """
-                ==============================
-                GOOGLE HA LASCIATO LA PAGINA
-                DI CONSENSO.
-
-                ORA ANALIZZIAMO MAPS.
-
-                ==============================
-                """.trimIndent()
-            )
-
-            return
-        }
-
-        addLog(
-            """
-            [CONSENSO]
-            Google è ancora sulla pagina
-            di consenso.
-
-            ==============================
-            """.trimIndent()
-        )
     }
 
     private fun injectNetworkHook() {
@@ -652,18 +684,42 @@ class MainActivity : Activity() {
             url.lowercase()
 
         val interesting =
-            lower.contains("google.com/maps") ||
-            lower.contains("maps.google") ||
-            lower.contains("/maps/preview") ||
-            lower.contains("entitylist") ||
-            lower.contains("placelist") ||
-            lower.contains("place") ||
-            lower.contains("saved") ||
-            lower.contains("list") ||
-            lower.contains("batchexecute") ||
-            lower.contains("rpc") ||
-            lower.contains("pb=") ||
-            lower.contains("data=")
+            lower.contains(
+                "google.com/maps"
+            ) ||
+            lower.contains(
+                "maps.google"
+            ) ||
+            lower.contains(
+                "/maps/preview"
+            ) ||
+            lower.contains(
+                "entitylist"
+            ) ||
+            lower.contains(
+                "placelist"
+            ) ||
+            lower.contains(
+                "place"
+            ) ||
+            lower.contains(
+                "saved"
+            ) ||
+            lower.contains(
+                "list"
+            ) ||
+            lower.contains(
+                "batchexecute"
+            ) ||
+            lower.contains(
+                "rpc"
+            ) ||
+            lower.contains(
+                "pb="
+            ) ||
+            lower.contains(
+                "data="
+            )
 
         if (!interesting) {
             return
@@ -716,7 +772,9 @@ class MainActivity : Activity() {
                 Intent.EXTRA_TEXT
             )
 
-        if (sharedText.isNullOrBlank()) {
+        if (
+            sharedText.isNullOrBlank()
+        ) {
 
             addLog(
                 "Nessun testo ricevuto."
@@ -726,8 +784,11 @@ class MainActivity : Activity() {
         }
 
         val match =
-            Regex("""https?://\S+""")
-                .find(sharedText)
+            Regex(
+                """https?://\S+"""
+            ).find(
+                sharedText
+            )
 
         if (match == null) {
 
@@ -753,7 +814,9 @@ class MainActivity : Activity() {
             """.trimIndent()
         )
 
-        webView.loadUrl(url)
+        webView.loadUrl(
+            url
+        )
     }
 
     private fun addLog(
@@ -791,7 +854,9 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
-        if (webView.canGoBack()) {
+        if (
+            webView.canGoBack()
+        ) {
             webView.goBack()
         } else {
             super.onBackPressed()
