@@ -1251,7 +1251,7 @@ class MainActivity : Activity() {
                 hint =
                     "Nome categoria"
 
-                singleLine = true
+                setSingleLine(true)
             }
 
         val icons =
