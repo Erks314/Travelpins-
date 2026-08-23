@@ -16,7 +16,7 @@ import android.widget.Toast
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
-import java.net.URLEncoder
+import java.net.URI
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
@@ -159,13 +159,17 @@ class MainActivity : Activity() {
 
             Link ricevuto!
 
-            Cerco il List ID...
+            Scarico la pagina Google Maps...
             """.trimIndent()
         )
 
         thread {
 
             try {
+
+                // ==================================================
+                // 1. SCARICA LA PAGINA
+                // ==================================================
 
                 val connection =
                     URL(sharedUrl)
@@ -180,114 +184,89 @@ class MainActivity : Activity() {
                     connection.url.toString()
 
                 val html =
-                    try {
-                        connection.inputStream
-                            .bufferedReader()
-                            .use { it.readText() }
-                    } catch (e: Exception) {
-                        ""
-                    }
+                    connection.inputStream
+                        .bufferedReader()
+                        .use { it.readText() }
 
                 connection.disconnect()
 
-                val decodedUrl =
-                    try {
-                        URLDecoder.decode(
-                            finalUrl,
-                            "UTF-8"
-                        )
-                    } catch (e: Exception) {
-                        finalUrl
-                    }
+                // ==================================================
+                // 2. CERCA DIRETTAMENTE ENTITYLIST/GETLIST
+                // ==================================================
 
-                val listId =
-                    findListId(finalUrl)
-                        ?: findListId(decodedUrl)
-                        ?: findListId(sharedUrl)
-                        ?: findListId(
-                            try {
-                                URLDecoder.decode(
-                                    sharedUrl,
-                                    "UTF-8"
-                                )
-                            } catch (e: Exception) {
-                                sharedUrl
-                            }
-                        )
-                        ?: findListId(html)
+                val getListUrl =
+                    extractGetListUrl(html)
 
-                if (listId == null) {
+                if (getListUrl == null) {
 
                     show(
                         """
-                        ❌ LIST ID NON TROVATO
+                        ❌ GETLIST NON TROVATO
 
-                        URL FINALE:
+                        HTML SCARICATO:
+                        ${html.length} caratteri
+
+                        URL:
 
                         $finalUrl
 
                         ========================
 
-                        URL DECODIFICATO:
+                        Ho cercato:
 
-                        $decodedUrl
+                        entitylist/getlist
+
+                        ma non è comparso nel formato
+                        href previsto.
 
                         ========================
 
-                        DIMENSIONE HTML:
+                        PRIME 3000 CARATTERI:
 
-                        ${html.length}
+                        ${html.take(3000)}
                         """.trimIndent()
                     )
 
                     return@thread
                 }
 
+                // ==================================================
+                // 3. MOSTRA L'URL TROVATO
+                // ==================================================
+
                 show(
                     """
-                    ✅ LIST ID TROVATO
+                    ✅ GETLIST TROVATO!
 
-                    $listId
+                    URL:
+
+                    $getListUrl
 
                     ========================
 
-                    Invio richiesta
-                    Google getlist...
+                    Invio la richiesta...
                     """.trimIndent()
                 )
 
-                val pb =
-                    buildPb(listId)
-
-                val encodedPb =
-                    URLEncoder.encode(
-                        pb,
-                        "UTF-8"
-                    )
-
-                val apiUrl =
-                    "https://www.google.com/maps/preview/" +
-                    "entitylist/getlist" +
-                    "?authuser=0" +
-                    "&hl=it" +
-                    "&gl=it" +
-                    "&pb=$encodedPb"
+                // ==================================================
+                // 4. CHIAMA L'URL ESATTO DI GOOGLE
+                // ==================================================
 
                 val apiConnection =
-                    URL(apiUrl)
+                    URL(getListUrl)
                         .openConnection() as HttpURLConnection
 
                 apiConnection.requestMethod = "GET"
+
                 apiConnection.connectTimeout = 20000
                 apiConnection.readTimeout = 20000
 
                 apiConnection.setRequestProperty(
                     "User-Agent",
-                    "Mozilla/5.0 (Linux; Android 10) " +
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
                     "AppleWebKit/537.36 " +
                     "(KHTML, like Gecko) " +
-                    "Chrome/131.0.0.0 " +
-                    "Mobile Safari/537.36"
+                    "Chrome/131.0.0.0 Safari/537.36"
                 )
 
                 apiConnection.setRequestProperty(
@@ -295,20 +274,18 @@ class MainActivity : Activity() {
                     "*/*"
                 )
 
-                apiConnection.setRequestProperty(
-                    "Referer",
-                    "https://www.google.com/maps/"
-                )
-
                 val responseCode =
                     apiConnection.responseCode
 
                 val response =
                     try {
+
                         apiConnection.inputStream
                             .bufferedReader()
                             .use { it.readText() }
+
                     } catch (e: Exception) {
+
                         apiConnection.errorStream
                             ?.bufferedReader()
                             ?.use { it.readText() }
@@ -317,10 +294,12 @@ class MainActivity : Activity() {
 
                 apiConnection.disconnect()
 
+                // ==================================================
+                // 5. MOSTRA RISPOSTA
+                // ==================================================
+
                 val cleanResponse =
-                    response
-                        .removePrefix(")]}'")
-                        .trim()
+                    stripXssi(response)
 
                 show(
                     """
@@ -329,15 +308,18 @@ class MainActivity : Activity() {
                     HTTP:
                     $responseCode
 
-                    LIST ID:
-                    $listId
-
                     DIMENSIONE:
                     ${cleanResponse.length}
 
                     ========================
 
-                    RISPOSTA COMPLETA:
+                    GETLIST URL:
+
+                    $getListUrl
+
+                    ========================
+
+                    RISPOSTA:
 
                     $cleanResponse
                     """.trimIndent()
@@ -358,57 +340,89 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun findListId(text: String): String? {
+    // ==========================================================
+    // CERCA HREF CONTENENTE ENTITYLIST/GETLIST
+    // ==========================================================
 
-        if (text.isBlank()) {
+    private fun extractGetListUrl(
+        html: String
+    ): String? {
+
+        val pattern =
+            Regex(
+                """href="([^"]*entitylist/getlist[^"]*)"""",
+                RegexOption.IGNORE_CASE
+            )
+
+        val match =
+            pattern.find(html)
+
+        if (match == null) {
             return null
         }
 
-        val patterns =
-            listOf(
-                Regex(
-                    """!11m2!2s([A-Za-z0-9_-]{15,})"""
-                ),
-                Regex(
-                    """!2s([A-Za-z0-9_-]{15,})"""
-                ),
-                Regex(
-                    """(?:%21|!)11m2(?:%21|!)2s([A-Za-z0-9_-]{15,})""",
-                    RegexOption.IGNORE_CASE
+        var url =
+            match.groupValues[1]
+
+        // HTML entities
+        url =
+            url
+                .replace("&amp;", "&")
+                .replace("&#39;", "'")
+                .replace("&quot;", "\"")
+
+        // Decodifica eventuale URL encoding
+        url =
+            try {
+                URLDecoder.decode(
+                    url,
+                    "UTF-8"
                 )
-            )
-
-        for (pattern in patterns) {
-
-            val match =
-                pattern.find(text)
-
-            if (match != null) {
-                return match.groupValues[1]
+            } catch (e: Exception) {
+                url
             }
+
+        // Se Google ci dà un percorso relativo
+        if (url.startsWith("/")) {
+            url =
+                "https://www.google.com$url"
         }
 
-        return null
+        return url
     }
 
-    private fun buildPb(
-        listId: String
+    // ==========================================================
+    // RIMUOVE IL PREFISSO XSSI DI GOOGLE
+    // ==========================================================
+
+    private fun stripXssi(
+        response: String
     ): String {
 
-        return "!1m4" +
-                "!1s$listId" +
-                "!2e1" +
-                "!3m1!1e1" +
-                "!2e2" +
-                "!3e3" +
-                "!4i500" +
-                "!8i3" +
-                "!16b1"
+        var result = response
+
+        while (
+            result.isNotEmpty() &&
+            (
+                result[0] == ')' ||
+                result[0] == ']' ||
+                result[0] == '}' ||
+                result[0] == '\'' ||
+                result[0] == '\n' ||
+                result[0] == '\\'
+            )
+        ) {
+            result =
+                result.substring(1)
+        }
+
+        return result
     }
 
     private fun show(
         message: String
     ) {
+
         runOnUiThread {
             output.text = message
         }
