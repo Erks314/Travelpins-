@@ -5,11 +5,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.net.Uri
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -29,11 +30,60 @@ class MainActivity : Activity() {
     private lateinit var output: TextView
     private lateinit var consentButton: Button
 
-    private val log =
-        ConcurrentLinkedQueue<String>()
+    private val log = ConcurrentLinkedQueue<String>()
 
-    private val handler =
-        Handler(Looper.getMainLooper())
+    private val handler = Handler(Looper.getMainLooper())
+
+    // ============================================================
+    // JAVASCRIPT -> KOTLIN
+    // ============================================================
+
+    inner class TravelPinsBridge {
+
+        @JavascriptInterface
+        fun log(message: String?) {
+
+            if (message.isNullOrBlank()) {
+                return
+            }
+
+            addLog(
+                """
+                [JAVASCRIPT]
+
+                $message
+
+                """.trimIndent()
+            )
+        }
+
+        @JavascriptInterface
+        fun network(
+            type: String?,
+            method: String?,
+            url: String?,
+            data: String?
+        ) {
+
+            addLog(
+                """
+                ==============================
+                NETWORK $type
+
+                METHOD:
+                ${method ?: ""}
+
+                URL:
+                ${url ?: ""}
+
+                DATA:
+                ${data ?: ""}
+
+                ==============================
+                """.trimIndent()
+            )
+        }
+    }
 
     override fun onCreate(
         savedInstanceState: Bundle?
@@ -42,8 +92,13 @@ class MainActivity : Activity() {
 
         createInterface()
         createWebView()
+
         handleIntent(intent)
     }
+
+    // ============================================================
+    // INTERFACCIA
+    // ============================================================
 
     private fun createInterface() {
 
@@ -51,6 +106,7 @@ class MainActivity : Activity() {
             LinearLayout(this).apply {
                 orientation =
                     LinearLayout.VERTICAL
+
                 setPadding(
                     12,
                     12,
@@ -102,8 +158,11 @@ class MainActivity : Activity() {
                     log.clear()
 
                     output.text =
-                        "TRAVELPINS NETWORK MONITOR\n\n" +
-                        "Monitor pulito."
+                        """
+                        TRAVELPINS NETWORK MONITOR
+
+                        Monitor pulito.
+                        """.trimIndent()
                 }
             }
 
@@ -116,6 +175,7 @@ class MainActivity : Activity() {
                     Button.GONE
 
                 setOnClickListener {
+
                     acceptGoogleConsent()
                 }
             }
@@ -162,12 +222,16 @@ class MainActivity : Activity() {
                 )
 
                 text =
-                    "TRAVELPINS NETWORK MONITOR\n\n" +
-                    "In attesa del link..."
+                    """
+                    TRAVELPINS NETWORK MONITOR
+
+                    In attesa del link...
+                    """.trimIndent()
             }
 
         val scroll =
             ScrollView(this).apply {
+
                 addView(output)
             }
 
@@ -185,6 +249,10 @@ class MainActivity : Activity() {
         setContentView(root)
     }
 
+    // ============================================================
+    // WEBVIEW
+    // ============================================================
+
     private fun createWebView() {
 
         webView =
@@ -193,18 +261,17 @@ class MainActivity : Activity() {
         webView.settings.apply {
 
             javaScriptEnabled = true
+
             domStorageEnabled = true
+
             databaseEnabled = true
 
-            loadsImagesAutomatically =
-                true
+            loadsImagesAutomatically = true
 
             javaScriptCanOpenWindowsAutomatically =
                 true
 
-            setSupportMultipleWindows(
-                false
-            )
+            setSupportMultipleWindows(false)
 
             userAgentString =
                 "Mozilla/5.0 (Linux; Android 10) " +
@@ -225,11 +292,21 @@ class MainActivity : Activity() {
                 true
             )
 
+        // Ponte JavaScript -> Kotlin
+        webView.addJavascriptInterface(
+            TravelPinsBridge(),
+            "TravelPins"
+        )
+
         webView.webChromeClient =
             WebChromeClient()
 
         webView.webViewClient =
             object : WebViewClient() {
+
+                // ------------------------------------------------
+                // NAVIGAZIONE
+                // ------------------------------------------------
 
                 override fun shouldOverrideUrlLoading(
                     view: WebView,
@@ -241,32 +318,23 @@ class MainActivity : Activity() {
 
                     inspectNavigation(url)
 
-                    /*
-                     * QUESTO È IL PASSAGGIO NUOVO.
-                     *
-                     * Google prova ad aprire
-                     * l'app Maps tramite intent://.
-                     *
-                     * Noi estraiamo invece
-                     * S.browser_fallback_url
-                     * e la carichiamo nella WebView.
-                     */
-
                     if (
                         url.startsWith(
                             "intent://"
                         )
                     ) {
 
-                        handleGoogleIntent(
-                            url
-                        )
+                        handleGoogleIntent(url)
 
                         return true
                     }
 
                     return false
                 }
+
+                // ------------------------------------------------
+                // RICHIESTE WEBVIEW
+                // ------------------------------------------------
 
                 override fun shouldInterceptRequest(
                     view: WebView,
@@ -277,6 +345,10 @@ class MainActivity : Activity() {
 
                     return null
                 }
+
+                // ------------------------------------------------
+                // PAGINA CARICATA
+                // ------------------------------------------------
 
                 override fun onPageFinished(
                     view: WebView,
@@ -293,6 +365,13 @@ class MainActivity : Activity() {
                         ==============================
                         """.trimIndent()
                     )
+
+                    /*
+                     * IMPORTANTE:
+                     *
+                     * installiamo il network hook
+                     * dopo il caricamento della pagina.
+                     */
 
                     injectNetworkHook()
 
@@ -324,6 +403,10 @@ class MainActivity : Activity() {
                     }
                 }
 
+                // ------------------------------------------------
+                // RENDERER CRASH
+                // ------------------------------------------------
+
                 override fun onRenderProcessGone(
                     view: WebView,
                     detail: RenderProcessGoneDetail
@@ -345,6 +428,10 @@ class MainActivity : Activity() {
                 }
             }
     }
+
+    // ============================================================
+    // GOOGLE INTENT
+    // ============================================================
 
     private fun handleGoogleIntent(
         intentUrl: String
@@ -369,14 +456,13 @@ class MainActivity : Activity() {
             val uri =
                 Uri.parse(intentUrl)
 
-            val fallback =
+            var fallback =
                 uri.getQueryParameter(
                     "S.browser_fallback_url"
                 )
 
             if (
-                fallback != null &&
-                fallback.isNotBlank()
+                !fallback.isNullOrBlank()
             ) {
 
                 addLog(
@@ -399,20 +485,14 @@ class MainActivity : Activity() {
             }
 
             /*
-             * Alcune versioni possono codificare
-             * il parametro in modo differente.
-             *
-             * Proviamo quindi anche una
-             * ricerca manuale.
+             * Fallback manuale.
              */
 
             val marker =
                 "S.browser_fallback_url="
 
             val index =
-                intentUrl.indexOf(
-                    marker
-                )
+                intentUrl.indexOf(marker)
 
             if (index >= 0) {
 
@@ -477,9 +557,13 @@ class MainActivity : Activity() {
 
                 ==============================
                 """.trimIndent()
-            )
+                )
         }
     }
+
+    // ============================================================
+    // CONSENSO GOOGLE
+    // ============================================================
 
     private fun acceptGoogleConsent() {
 
@@ -493,6 +577,7 @@ class MainActivity : Activity() {
         )
 
         val javascript = """
+
             (function() {
 
                 try {
@@ -526,14 +611,10 @@ class MainActivity : Activity() {
                             .toLowerCase();
 
                         if (
-                            text ===
-                                'accetta tutto' ||
-                            text ===
-                                'accetta' ||
-                            text ===
-                                'accept all' ||
-                            text ===
-                                'accept'
+                            text === 'accetta tutto' ||
+                            text === 'accetta' ||
+                            text === 'accept all' ||
+                            text === 'accept'
                         ) {
 
                             result.push(
@@ -570,6 +651,7 @@ class MainActivity : Activity() {
                 }
 
             })();
+
         """.trimIndent()
 
         webView.evaluateJavascript(
@@ -588,52 +670,135 @@ class MainActivity : Activity() {
         }
     }
 
+    // ============================================================
+    // NETWORK HOOK
+    // ============================================================
+
     private fun injectNetworkHook() {
 
         val javascript = """
+
             (function() {
 
                 if (
                     window.__travelpins_hooked
                 ) {
+
                     return 'ALREADY_INSTALLED';
                 }
 
                 window.__travelpins_hooked =
                     true;
 
+                /*
+                 * ==================================================
+                 * FETCH
+                 * ==================================================
+                 */
+
                 var originalFetch =
                     window.fetch;
 
                 window.fetch =
-                    function() {
+                    async function() {
+
+                        var input =
+                            arguments[0];
+
+                        var options =
+                            arguments[1] || {};
+
+                        var url =
+                            typeof input === 'string'
+                            ? input
+                            : input.url;
+
+                        var method =
+                            options.method ||
+                            (
+                                typeof input !== 'string'
+                                ? input.method
+                                : 'GET'
+                            ) ||
+                            'GET';
+
+                        var body =
+                            options.body || '';
 
                         try {
 
-                            var input =
-                                arguments[0];
-
-                            var url =
-                                typeof input ===
-                                'string'
-                                ? input
-                                : input.url;
-
-                            console.log(
-                                'TP_FETCH:' +
-                                url
+                            TravelPins.network(
+                                'FETCH_REQUEST',
+                                method,
+                                url,
+                                body
                             );
 
                         } catch(e) {}
 
-                        return originalFetch.apply(
-                            this,
-                            arguments
-                        );
+                        try {
+
+                            var response =
+                                await originalFetch.apply(
+                                    this,
+                                    arguments
+                                );
+
+                            try {
+
+                                var clone =
+                                    response.clone();
+
+                                var text =
+                                    await clone.text();
+
+                                TravelPins.network(
+                                    'FETCH_RESPONSE',
+                                    method,
+                                    url,
+                                    text
+                                );
+
+                            } catch(e) {
+
+                                TravelPins.network(
+                                    'FETCH_RESPONSE_ERROR',
+                                    method,
+                                    url,
+                                    e.message
+                                );
+                            }
+
+                            return response;
+
+                        } catch(error) {
+
+                            try {
+
+                                TravelPins.network(
+                                    'FETCH_ERROR',
+                                    method,
+                                    url,
+                                    error.message
+                                );
+
+                            } catch(e) {}
+
+                            throw error;
+                        }
                     };
+
+                /*
+                 * ==================================================
+                 * XMLHttpRequest
+                 * ==================================================
+                 */
 
                 var originalOpen =
                     XMLHttpRequest.prototype.open;
+
+                var originalSend =
+                    XMLHttpRequest.prototype.send;
 
                 XMLHttpRequest.prototype.open =
                     function(
@@ -641,13 +806,19 @@ class MainActivity : Activity() {
                         url
                     ) {
 
+                        this.__tp_method =
+                            method;
+
+                        this.__tp_url =
+                            url;
+
                         try {
 
-                            console.log(
-                                'TP_XHR:' +
-                                method +
-                                ':' +
-                                url
+                            TravelPins.network(
+                                'XHR_OPEN',
+                                method,
+                                url,
+                                ''
                             );
 
                         } catch(e) {}
@@ -658,9 +829,82 @@ class MainActivity : Activity() {
                         );
                     };
 
+                XMLHttpRequest.prototype.send =
+                    function(
+                        body
+                    ) {
+
+                        var xhr =
+                            this;
+
+                        try {
+
+                            TravelPins.network(
+                                'XHR_REQUEST',
+                                xhr.__tp_method ||
+                                'GET',
+                                xhr.__tp_url ||
+                                '',
+                                body || ''
+                            );
+
+                        } catch(e) {}
+
+                        xhr.addEventListener(
+                            'load',
+                            function() {
+
+                                try {
+
+                                    TravelPins.network(
+                                        'XHR_RESPONSE',
+                                        xhr.__tp_method ||
+                                        'GET',
+                                        xhr.__tp_url ||
+                                        '',
+                                        xhr.responseText ||
+                                        ''
+                                    );
+
+                                } catch(e) {
+
+                                    TravelPins.network(
+                                        'XHR_RESPONSE_ERROR',
+                                        xhr.__tp_method ||
+                                        'GET',
+                                        xhr.__tp_url ||
+                                        '',
+                                        e.message
+                                    );
+                                }
+
+                            }
+                        );
+
+                        return originalSend.apply(
+                            this,
+                            arguments
+                        );
+                    };
+
+                /*
+                 * ==================================================
+                 * INSTALLATO
+                 * ==================================================
+                 */
+
+                try {
+
+                    TravelPins.log(
+                        'NETWORK HOOK INSTALLATO'
+                    );
+
+                } catch(e) {}
+
                 return 'HOOK_INSTALLED';
 
             })();
+
         """.trimIndent()
 
         webView.evaluateJavascript(
@@ -673,6 +917,10 @@ class MainActivity : Activity() {
         }
     }
 
+    // ============================================================
+    // WEBVIEW REQUEST MONITOR
+    // ============================================================
+
     private fun inspectRequest(
         request: WebResourceRequest
     ) {
@@ -684,42 +932,18 @@ class MainActivity : Activity() {
             url.lowercase()
 
         val interesting =
-            lower.contains(
-                "google.com/maps"
-            ) ||
-            lower.contains(
-                "maps.google"
-            ) ||
-            lower.contains(
-                "/maps/preview"
-            ) ||
-            lower.contains(
-                "entitylist"
-            ) ||
-            lower.contains(
-                "placelist"
-            ) ||
-            lower.contains(
-                "place"
-            ) ||
-            lower.contains(
-                "saved"
-            ) ||
-            lower.contains(
-                "list"
-            ) ||
-            lower.contains(
-                "batchexecute"
-            ) ||
-            lower.contains(
-                "rpc"
-            ) ||
-            lower.contains(
-                "pb="
-            ) ||
-            lower.contains(
-                "data="
-            )
+            lower.contains("google.com/maps") ||
+            lower.contains("maps.google") ||
+            lower.contains("/maps/preview") ||
+            lower.contains("entitylist") ||
+            lower.contains("placelist") ||
+            lower.contains("place") ||
+            lower.contains("saved") ||
+            lower.contains("list") ||
+            lower.contains("batchexecute") ||
+            lower.contains("rpc") ||
+            lower.contains("pb=") ||
+            lower.contains("data=")
 
         if (!interesting) {
             return
@@ -742,6 +966,10 @@ class MainActivity : Activity() {
         )
     }
 
+    // ============================================================
+    // NAVIGATION MONITOR
+    // ============================================================
+
     private fun inspectNavigation(
         url: String
     ) {
@@ -755,6 +983,10 @@ class MainActivity : Activity() {
             """.trimIndent()
         )
     }
+
+    // ============================================================
+    // SHARE INTENT
+    // ============================================================
 
     private fun handleIntent(
         intent: Intent?
@@ -819,6 +1051,10 @@ class MainActivity : Activity() {
         )
     }
 
+    // ============================================================
+    // LOG
+    // ============================================================
+
     private fun addLog(
         text: String
     ) {
@@ -840,6 +1076,10 @@ class MainActivity : Activity() {
         }
     }
 
+    // ============================================================
+    // NEW INTENT
+    // ============================================================
+
     override fun onNewIntent(
         intent: Intent
     ) {
@@ -851,21 +1091,41 @@ class MainActivity : Activity() {
         handleIntent(intent)
     }
 
+    // ============================================================
+    // BACK
+    // ============================================================
+
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
         if (
             webView.canGoBack()
         ) {
+
             webView.goBack()
+
         } else {
+
             super.onBackPressed()
         }
     }
 
+    // ============================================================
+    // DESTROY
+    // ============================================================
+
     override fun onDestroy() {
 
+        handler.removeCallbacksAndMessages(
+            null
+        )
+
         webView.stopLoading()
+
+        webView.removeJavascriptInterface(
+            "TravelPins"
+        )
+
         webView.destroy()
 
         super.onDestroy()
