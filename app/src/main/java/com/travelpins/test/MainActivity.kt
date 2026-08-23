@@ -2,187 +2,33 @@ package com.travelpins.test
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Bitmap
 import android.os.Bundle
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.TextView
-import java.net.URLDecoder
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
 
     private lateinit var output: TextView
-    private lateinit var webView: WebView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         output = TextView(this).apply {
             textSize = 15f
-            setPadding(25, 40, 25, 25)
+            setPadding(30, 50, 30, 30)
             text = "TravelPins TEST\n\nIn attesa del link..."
         }
 
-        webView = WebView(this)
-
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
-        webView.settings.databaseEnabled = true
-
-        webView.settings.userAgentString =
-            "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
-
-        webView.webViewClient = object : WebViewClient() {
-
-            override fun shouldOverrideUrlLoading(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): Boolean {
-
-                val url = request?.url?.toString() ?: return false
-
-                if (url.startsWith("intent://")) {
-
-                    val marker = "S.browser_fallback_url="
-
-                    val markerIndex = url.indexOf(marker)
-
-                    if (markerIndex >= 0) {
-
-                        val fallbackStart =
-                            markerIndex + marker.length
-
-                        val fallbackEnd =
-                            url.indexOf(";end", fallbackStart)
-
-                        if (fallbackEnd > fallbackStart) {
-
-                            val encodedFallback =
-                                url.substring(
-                                    fallbackStart,
-                                    fallbackEnd
-                                )
-
-                            try {
-
-                                val fallbackUrl =
-                                    URLDecoder.decode(
-                                        encodedFallback,
-                                        "UTF-8"
-                                    )
-
-                                view?.loadUrl(fallbackUrl)
-
-                            } catch (e: Exception) {
-
-                                update(
-                                    """
-                                    ERRORE DECODIFICA
-
-                                    ${e.message}
-                                    """.trimIndent()
-                                )
-                            }
-                        }
-
-                    }
-
-                    return true
-                }
-
-                return false
-            }
-
-            override fun onPageStarted(
-                view: WebView?,
-                url: String?,
-                favicon: Bitmap?
-            ) {
-                super.onPageStarted(view, url, favicon)
-
-                update(
-                    """
-                    TravelPins TEST
-
-                    Google Maps sta caricando...
-
-                    URL:
-
-                    $url
-                    """.trimIndent()
-                )
-            }
-
-            override fun onPageFinished(
-                view: WebView?,
-                url: String?
-            ) {
-                super.onPageFinished(view, url)
-
-                update(
-                    """
-                    TravelPins TEST
-
-                    Google Maps caricata.
-
-                    Sto cercando le richieste
-                    della lista...
-
-                    URL:
-
-                    $url
-                    """.trimIndent()
-                )
-            }
-
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): WebResourceResponse? {
-
-                val url = request?.url?.toString() ?: ""
-
-                if (
-                    url.contains("entitylist/getlist") ||
-                    url.contains("entitylist")
-                ) {
-
-                    update(
-                        """
-                        🎯 RICHIESTA GOOGLE TROVATA!
-
-                        URL:
-
-                        $url
-
-                        ========================
-
-                        Abbiamo trovato
-                        la richiesta della lista.
-                        """.trimIndent()
-                    )
-                }
-
-                return super.shouldInterceptRequest(
-                    view,
-                    request
-                )
-            }
-        }
-
-        setContentView(webView)
+        setContentView(output)
 
         processIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-
         setIntent(intent)
-
         processIntent(intent)
     }
 
@@ -192,60 +38,304 @@ class MainActivity : Activity() {
             return
         }
 
-        val text =
+        val sharedText =
             intent.getStringExtra(Intent.EXTRA_TEXT)
 
-        if (text.isNullOrBlank()) {
-
-            update(
-                "Nessun testo ricevuto."
-            )
-
+        if (sharedText.isNullOrBlank()) {
+            show("Nessun testo ricevuto.")
             return
         }
 
         val match =
             Regex("""https?://\S+""")
-                .find(text)
+                .find(sharedText)
 
         if (match == null) {
-
-            update(
-                "Nessun link trovato."
-            )
-
+            show("Nessun link trovato.")
             return
         }
 
-        val url = match.value
+        val sharedUrl = match.value
 
-        update(
+        show(
             """
             TravelPins TEST
 
             Link ricevuto!
 
-            Apro Google Maps...
+            Analizzo Google Maps...
 
-            $url
+            $sharedUrl
             """.trimIndent()
         )
 
-        webView.loadUrl(url)
+        thread {
+
+            try {
+
+                val connection =
+                    URL(sharedUrl)
+                        .openConnection() as HttpURLConnection
+
+                connection.requestMethod = "GET"
+                connection.instanceFollowRedirects = true
+                connection.connectTimeout = 20000
+                connection.readTimeout = 20000
+
+                connection.setRequestProperty(
+                    "Accept-Language",
+                    "it-IT,it;q=0.9,en;q=0.8"
+                )
+
+                val responseCode =
+                    connection.responseCode
+
+                val finalUrl =
+                    connection.url.toString()
+
+                val html =
+                    connection.inputStream
+                        .bufferedReader()
+                        .use { it.readText() }
+
+                connection.disconnect()
+
+                // -----------------------------------------------------
+                // CERCHIAMO LE STRUTTURE INTERESSANTI
+                // -----------------------------------------------------
+
+                val appStateIndex =
+                    html.indexOf(
+                        "APP_INITIALIZATION_STATE",
+                        ignoreCase = true
+                    )
+
+                val entityListIndex =
+                    html.indexOf(
+                        "entitylist",
+                        ignoreCase = true
+                    )
+
+                val getListIndex =
+                    html.indexOf(
+                        "getlist",
+                        ignoreCase = true
+                    )
+
+                val listId =
+                    extractListId(finalUrl)
+
+                // -----------------------------------------------------
+                // CERCHIAMO COORDINATE NELLA PAGINA
+                // -----------------------------------------------------
+
+                val coordinateMatches =
+                    Regex(
+                        """-?\d{1,3}\.\d{4,}[^0-9]{1,20}-?\d{1,3}\.\d{4,}"""
+                    )
+                        .findAll(html)
+                        .take(20)
+                        .map { it.value }
+                        .toList()
+
+                // -----------------------------------------------------
+                // CREIAMO UNA DIAGNOSTICA MOLTO PIÙ UTILE
+                // -----------------------------------------------------
+
+                val result =
+                    StringBuilder()
+
+                result.append(
+                    "TravelPins TEST\n\n"
+                )
+
+                result.append(
+                    "HTTP: $responseCode\n\n"
+                )
+
+                result.append(
+                    "URL FINALE:\n$finalUrl\n\n"
+                )
+
+                result.append(
+                    "LIST ID:\n${listId ?: "NON TROVATO"}\n\n"
+                )
+
+                result.append(
+                    "APP_INITIALIZATION_STATE:\n"
+                )
+
+                result.append(
+                    if (appStateIndex >= 0)
+                        "✅ TROVATO"
+                    else
+                        "❌ NON TROVATO"
+                )
+
+                result.append("\n\n")
+
+                result.append(
+                    "ENTITYLIST:\n"
+                )
+
+                result.append(
+                    if (entityListIndex >= 0)
+                        "✅ TROVATO"
+                    else
+                        "❌ NON TROVATO"
+                )
+
+                result.append("\n\n")
+
+                result.append(
+                    "GETLIST:\n"
+                )
+
+                result.append(
+                    if (getListIndex >= 0)
+                        "✅ TROVATO"
+                    else
+                        "❌ NON TROVATO"
+                )
+
+                result.append("\n\n")
+
+                result.append(
+                    "COORDINATE INDIVIDUATE:\n"
+                )
+
+                if (coordinateMatches.isEmpty()) {
+
+                    result.append(
+                        "Nessuna coppia trovata."
+                    )
+
+                } else {
+
+                    coordinateMatches.forEach {
+                        result.append(
+                            "$it\n"
+                        )
+                    }
+                }
+
+                // -----------------------------------------------------
+                // SE TROVIAMO APP_INITIALIZATION_STATE,
+                // MOSTRIAMO UNA FINESTRA ATTORNO AL PUNTO
+                // -----------------------------------------------------
+
+                if (appStateIndex >= 0) {
+
+                    val start =
+                        maxOf(
+                            0,
+                            appStateIndex - 1000
+                        )
+
+                    val end =
+                        minOf(
+                            html.length,
+                            appStateIndex + 8000
+                        )
+
+                    result.append(
+                        "\n\n========================\n"
+                    )
+
+                    result.append(
+                        "ESTRATTO APP_INITIALIZATION_STATE:\n"
+                    )
+
+                    result.append(
+                        "========================\n\n"
+                    )
+
+                    result.append(
+                        html.substring(
+                            start,
+                            end
+                        )
+                    )
+                }
+
+                // -----------------------------------------------------
+                // SE NON TROVIAMO QUELLO,
+                // MOSTRIAMO UN ESTRATTO DELL'HTML
+                // -----------------------------------------------------
+
+                if (
+                    appStateIndex < 0 &&
+                    entityListIndex < 0 &&
+                    getListIndex < 0
+                ) {
+
+                    result.append(
+                        "\n\n========================\n"
+                    )
+
+                    result.append(
+                        "ESTRATTO HTML:\n"
+                    )
+
+                    result.append(
+                        "========================\n\n"
+                    )
+
+                    result.append(
+                        html.take(10000)
+                    )
+                }
+
+                show(result.toString())
+
+            } catch (e: Exception) {
+
+                show(
+                    """
+                    ❌ ERRORE
+
+                    ${e.javaClass.name}
+
+                    ${e.message}
+                    """.trimIndent()
+                )
+            }
+        }
     }
 
-    private fun update(message: String) {
+    private fun extractListId(
+        url: String
+    ): String? {
+
+        val patterns =
+            listOf(
+
+                Regex(
+                    """!2s([A-Za-z0-9_-]{10,})"""
+                ),
+
+                Regex(
+                    """!1s([A-Za-z0-9_-]{10,})"""
+                )
+            )
+
+        for (pattern in patterns) {
+
+            val match =
+                pattern.find(url)
+
+            if (match != null) {
+                return match.groupValues[1]
+            }
+        }
+
+        return null
+    }
+
+    private fun show(message: String) {
 
         runOnUiThread {
             output.text = message
         }
-    }
-
-    override fun onDestroy() {
-
-        webView.stopLoading()
-        webView.destroy()
-
-        super.onDestroy()
     }
 }
