@@ -6,14 +6,6 @@ import androidx.lifecycle.LifecycleCoroutineScope
 import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.launch
 
-/**
- * Bridge JS -> Kotlin, registrato con webView.addJavascriptInterface(bridge, "TravelPins").
- *
- * log(String) e network(String, String, String, String) esistevano già
- * nell'app funzionante (usate per il monitor/diagnostica testuale).
- * onPlacesExtracted(String) è l'unica aggiunta: riceve il JSON dei luoghi
- * da GoogleMapsScraperScript.GETLIST_SCRIPT e li salva nel database.
- */
 class TravelPinsJsBridge(
     private val repository: TravelPinsRepository,
     private val scope: LifecycleCoroutineScope,
@@ -39,10 +31,17 @@ class TravelPinsJsBridge(
     fun onPlacesExtracted(rawJson: String) {
         scope.launch {
             try {
-                val sourceListId = getCurrentSourceListId() ?: "unknown"
+                val sourceListId = getCurrentSourceListId()
                 val sourceListName = getCurrentSourceListName()
-                val places = PlaceJsonParser.parse(rawJson, sourceListId, sourceListName)
+
+                val places = PlaceJsonParser.parse(
+                    rawJson,
+                    sourceListId,
+                    sourceListName
+                )
+
                 val saved = repository.saveImportedPlaces(places)
+
                 onImportFinished(saved)
             } catch (t: Throwable) {
                 onImportError(t)
@@ -52,6 +51,5 @@ class TravelPinsJsBridge(
 
     companion object {
         const val NAME = "TravelPins"
-        const val BRIDGE_NAME = "TravelPinsBridge"
     }
 }
