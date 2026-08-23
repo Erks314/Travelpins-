@@ -4,7 +4,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import kotlinx.coroutines.*
 
 class MainActivity : AppCompatActivity() {
 
@@ -21,37 +20,46 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(output)
 
-        handleIntent(intent)
+        processIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleIntent(intent)
+        setIntent(intent)
+        processIntent(intent)
     }
 
-    private fun handleIntent(intent: Intent?) {
+    private fun processIntent(intent: Intent?) {
 
-        if (intent?.action != Intent.ACTION_SEND) return
+        if (intent == null) return
 
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        if (intent.action != Intent.ACTION_SEND) return
 
-        val url = Regex("""https?://\S+""")
-            .find(text)
-            ?.value
-            ?: return
+        val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+
+        if (sharedText.isNullOrBlank()) {
+            output.text = """
+                TravelPins TEST
+
+                L'app è stata aperta,
+                ma Google Maps non ha fornito
+                alcun testo.
+            """.trimIndent()
+            return
+        }
 
         output.text = """
             TravelPins TEST
 
-            Link ricevuto:
+            ✓ Link ricevuto!
 
-            $url
+            $sharedText
 
-            ✓ Google Maps ha passato correttamente
-            il link alla nostra app.
+            --------------------
 
-            PROSSIMO PASSO:
-            estrarre i luoghi della lista.
+            Questo significa che
+            Google Maps → TravelPins
+            funziona correttamente.
         """.trimIndent()
     }
 }
