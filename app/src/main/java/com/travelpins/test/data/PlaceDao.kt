@@ -11,13 +11,13 @@ import kotlinx.coroutines.flow.Flow
 interface PlaceDao {
 
     @Query("SELECT * FROM places ORDER BY name ASC")
-    fun getAll(): Flow<List<Place>>
+    fun observeAll(): Flow<List<Place>>
+
+    @Insert
+    suspend fun insertAll(places: List<Place>): List<Long>
 
     @Insert
     suspend fun insert(place: Place): Long
-
-    @Insert
-    suspend fun insertAll(places: List<Place>)
 
     @Update
     suspend fun update(place: Place)
@@ -27,4 +27,7 @@ interface PlaceDao {
 
     @Query("DELETE FROM places")
     suspend fun deleteAll()
+
+    @Query("SELECT * FROM places WHERE sourceListId = :sourceListId ORDER BY name ASC")
+    suspend fun getBySourceListId(sourceListId: String): List<Place>
 }
