@@ -87,7 +87,6 @@ class MainActivity : Activity() {
 
         output = TextView(this).apply {
             textSize = 15f
-            textIsSelectable = true
             setTextIsSelectable(true)
             setTextColor(Color.BLACK)
             setPadding(20, 20, 20, 40)
@@ -168,10 +167,6 @@ class MainActivity : Activity() {
 
             try {
 
-                // ============================================
-                // 1. RISOLUZIONE DEL LINK GOOGLE
-                // ============================================
-
                 val connection =
                     URL(sharedUrl)
                         .openConnection() as HttpURLConnection
@@ -195,10 +190,6 @@ class MainActivity : Activity() {
 
                 connection.disconnect()
 
-                // ============================================
-                // 2. DECODIFICA URL
-                // ============================================
-
                 val decodedUrl =
                     try {
                         URLDecoder.decode(
@@ -208,10 +199,6 @@ class MainActivity : Activity() {
                     } catch (e: Exception) {
                         finalUrl
                     }
-
-                // ============================================
-                // 3. CERCA LIST ID
-                // ============================================
 
                 val listId =
                     findListId(finalUrl)
@@ -256,10 +243,6 @@ class MainActivity : Activity() {
                     return@thread
                 }
 
-                // ============================================
-                // 4. LIST ID TROVATO
-                // ============================================
-
                 show(
                     """
                     ✅ LIST ID TROVATO
@@ -272,10 +255,6 @@ class MainActivity : Activity() {
                     Google getlist...
                     """.trimIndent()
                 )
-
-                // ============================================
-                // 5. COSTRUZIONE PB
-                // ============================================
 
                 val pb =
                     buildPb(listId)
@@ -294,16 +273,11 @@ class MainActivity : Activity() {
                     "&gl=it" +
                     "&pb=$encodedPb"
 
-                // ============================================
-                // 6. RICHIESTA GOOGLE
-                // ============================================
-
                 val apiConnection =
                     URL(apiUrl)
                         .openConnection() as HttpURLConnection
 
                 apiConnection.requestMethod = "GET"
-
                 apiConnection.connectTimeout = 20000
                 apiConnection.readTimeout = 20000
 
@@ -331,13 +305,10 @@ class MainActivity : Activity() {
 
                 val response =
                     try {
-
                         apiConnection.inputStream
                             .bufferedReader()
                             .use { it.readText() }
-
                     } catch (e: Exception) {
-
                         apiConnection.errorStream
                             ?.bufferedReader()
                             ?.use { it.readText() }
@@ -345,10 +316,6 @@ class MainActivity : Activity() {
                     }
 
                 apiConnection.disconnect()
-
-                // ============================================
-                // 7. RISPOSTA
-                // ============================================
 
                 val cleanResponse =
                     response
@@ -391,10 +358,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // ================================================
-    // CERCA LIST ID IN DIVERSI FORMATI
-    // ================================================
-
     private fun findListId(text: String): String? {
 
         if (text.isBlank()) {
@@ -403,15 +366,12 @@ class MainActivity : Activity() {
 
         val patterns =
             listOf(
-
                 Regex(
                     """!11m2!2s([A-Za-z0-9_-]{15,})"""
                 ),
-
                 Regex(
                     """!2s([A-Za-z0-9_-]{15,})"""
                 ),
-
                 Regex(
                     """(?:%21|!)11m2(?:%21|!)2s([A-Za-z0-9_-]{15,})""",
                     RegexOption.IGNORE_CASE
@@ -431,10 +391,6 @@ class MainActivity : Activity() {
         return null
     }
 
-    // ================================================
-    // COSTRUZIONE RICHIESTA GOOGLE
-    // ================================================
-
     private fun buildPb(
         listId: String
     ): String {
@@ -450,14 +406,9 @@ class MainActivity : Activity() {
                 "!16b1"
     }
 
-    // ================================================
-    // AGGIORNA SCHERMATA
-    // ================================================
-
     private fun show(
         message: String
     ) {
-
         runOnUiThread {
             output.text = message
         }
