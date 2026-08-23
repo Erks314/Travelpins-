@@ -3,11 +3,10 @@ package com.travelpins.test
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
-import android.webkit.CookieManager
-import android.webkit.WebView
 import android.widget.TextView
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
 import java.net.URLEncoder
 import kotlin.concurrent.thread
 
@@ -66,7 +65,7 @@ class MainActivity : Activity() {
 
             Link ricevuto!
 
-            Recupero il List ID...
+            Cerco il List ID...
             """.trimIndent()
         )
 
@@ -74,34 +73,66 @@ class MainActivity : Activity() {
 
             try {
 
-                // -------------------------------------------------
-                // 1. RISOLVIAMO IL LINK BREVE
-                // -------------------------------------------------
+                // --------------------------------------------------
+                // 1. RISOLVIAMO IL LINK
+                // --------------------------------------------------
 
-                val redirectConnection =
+                val connection =
                     URL(sharedUrl)
                         .openConnection() as HttpURLConnection
 
-                redirectConnection.requestMethod = "GET"
-                redirectConnection.instanceFollowRedirects = true
-                redirectConnection.connectTimeout = 20000
-                redirectConnection.readTimeout = 20000
+                connection.requestMethod = "GET"
+                connection.instanceFollowRedirects = true
+                connection.connectTimeout = 20000
+                connection.readTimeout = 20000
 
                 val finalUrl =
-                    redirectConnection.url.toString()
+                    connection.url.toString()
 
-                redirectConnection.inputStream
-                    .bufferedReader()
-                    .use { it.readText() }
+                val html =
+                    try {
+                        connection.inputStream
+                            .bufferedReader()
+                            .use { it.readText() }
+                    } catch (e: Exception) {
+                        ""
+                    }
 
-                redirectConnection.disconnect()
+                connection.disconnect()
 
-                // -------------------------------------------------
-                // 2. ESTRAIAMO IL LIST ID
-                // -------------------------------------------------
+                // --------------------------------------------------
+                // 2. PROVIAMO A DECODIFICARE L'URL
+                // --------------------------------------------------
+
+                val decodedUrl =
+                    try {
+                        URLDecoder.decode(
+                            finalUrl,
+                            "UTF-8"
+                        )
+                    } catch (e: Exception) {
+                        finalUrl
+                    }
+
+                // --------------------------------------------------
+                // 3. CERCHIAMO IL LIST ID IN TUTTE LE VARIANTI
+                // --------------------------------------------------
 
                 val listId =
-                    extractListId(finalUrl)
+                    findListId(finalUrl)
+                        ?: findListId(decodedUrl)
+                        ?: findListId(sharedUrl)
+                        ?: findListId(
+                            try {
+                                URLDecoder.decode(
+                                    sharedUrl,
+                                    "UTF-8"
+                                )
+                            } catch (e: Exception) {
+                                sharedUrl
+                            }
+                        )
+                        ?: findListId(html)
 
                 if (listId == null) {
 
@@ -109,33 +140,53 @@ class MainActivity : Activity() {
                         """
                         ❌ LIST ID NON TROVATO
 
-                        URL:
+                        URL FINALE:
 
                         $finalUrl
+
+                        ========================
+
+                        URL DECODIFICATO:
+
+                        $decodedUrl
+
+                        ========================
+
+                        Il link è arrivato correttamente,
+                        ma Google ha cambiato il formato
+                        dell'URL.
+
+                        DIMENSIONE HTML:
+                        ${html.length}
                         """.trimIndent()
                     )
 
                     return@thread
                 }
 
+                // --------------------------------------------------
+                // 4. LIST ID TROVATO
+                // --------------------------------------------------
+
                 show(
                     """
-                    TravelPins TEST
-
-                    ✅ LIST ID TROVATO
+                    ✅ LIST ID TROVATO!
 
                     $listId
 
-                    Costruisco la richiesta
-                    Google getlist...
+                    ========================
+
+                    Ora provo direttamente
+                    la richiesta Google getlist...
                     """.trimIndent()
                 )
 
-                // -------------------------------------------------
-                // 3. COSTRUIAMO IL PB
-                // -------------------------------------------------
+                // --------------------------------------------------
+                // 5. COSTRUIAMO LA RICHIESTA
+                // --------------------------------------------------
 
-                val pb = buildPb(listId)
+                val pb =
+                    buildPb(listId)
 
                 val encodedPb =
                     URLEncoder.encode(
@@ -151,29 +202,15 @@ class MainActivity : Activity() {
                             "&gl=it" +
                             "&pb=$encodedPb"
 
-                // -------------------------------------------------
-                // 4. PROVIAMO LA RICHIESTA
-                // -------------------------------------------------
-
-                show(
-                    """
-                    TravelPins TEST
-
-                    List ID:
-                    $listId
-
-                    Invio richiesta Google...
-
-                    Attendo risposta...
-                    """.trimIndent()
-                )
+                // --------------------------------------------------
+                // 6. INVIO RICHIESTA
+                // --------------------------------------------------
 
                 val apiConnection =
                     URL(apiUrl)
                         .openConnection() as HttpURLConnection
 
                 apiConnection.requestMethod = "GET"
-
                 apiConnection.connectTimeout = 20000
                 apiConnection.readTimeout = 20000
 
@@ -201,13 +238,10 @@ class MainActivity : Activity() {
 
                 val response =
                     try {
-
                         apiConnection.inputStream
                             .bufferedReader()
                             .use { it.readText() }
-
                     } catch (e: Exception) {
-
                         apiConnection.errorStream
                             ?.bufferedReader()
                             ?.use { it.readText() }
@@ -216,20 +250,14 @@ class MainActivity : Activity() {
 
                 apiConnection.disconnect()
 
-                // -------------------------------------------------
-                // 5. ANALIZZIAMO LA RISPOSTA
-                // -------------------------------------------------
+                // --------------------------------------------------
+                // 7. MOSTRIAMO IL RISULTATO
+                // --------------------------------------------------
 
                 val cleanResponse =
                     response
                         .removePrefix(")]}'")
                         .trim()
-
-                val placeCount =
-                    countLikelyPlaces(cleanResponse)
-
-                val preview =
-                    cleanResponse.take(12000)
 
                 show(
                     """
@@ -241,17 +269,12 @@ class MainActivity : Activity() {
                     LIST ID:
                     $listId
 
-                    DIMENSIONE RISPOSTA:
-                    ${cleanResponse.length} caratteri
-
-                    POSSIBILI LUOGHI:
-                    $placeCount
+                    DIMENSIONE:
+                    ${cleanResponse.length}
 
                     ========================
 
-                    RISPOSTA:
-
-                    $preview
+                    $cleanResponse
                     """.trimIndent()
                 )
 
@@ -270,33 +293,93 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun extractListId(
-        url: String
+    private fun findListId(
+        text: String
     ): String? {
 
-        val patterns =
-            listOf(
+        if (text.isBlank()) {
+            return null
+        }
 
-                Regex(
-                    """!2s([A-Za-z0-9_-]{15,})"""
-                ),
+        // --------------------------------------------------
+        // FORMATO CHE ABBIAMO VISTO NEL TUO LINK:
+        //
+        // !11m2!2sEoi6FS...
+        // --------------------------------------------------
 
-                Regex(
-                    """!1s([A-Za-z0-9_-]{15,})"""
-                ),
-
-                Regex(
-                    """2s([A-Za-z0-9_-]{15,})"""
-                )
+        val pattern1 =
+            Regex(
+                """!11m2!2s([A-Za-z0-9_-]{15,})"""
             )
 
-        for (pattern in patterns) {
+        val match1 =
+            pattern1.find(text)
 
-            val match =
-                pattern.find(url)
+        if (match1 != null) {
+            return match1.groupValues[1]
+        }
 
-            if (match != null) {
-                return match.groupValues[1]
+        // --------------------------------------------------
+        // FORMATO GENERICO !2sID
+        // --------------------------------------------------
+
+        val pattern2 =
+            Regex(
+                """!2s([A-Za-z0-9_-]{15,})"""
+            )
+
+        val match2 =
+            pattern2.find(text)
+
+        if (match2 != null) {
+            return match2.groupValues[1]
+        }
+
+        // --------------------------------------------------
+        // FORMATO URL ENCODED
+        // %21 = !
+        // %32 = 2
+        // %73 = s
+        // --------------------------------------------------
+
+        val pattern3 =
+            Regex(
+                """(?:%21|!)11m2(?:%21|!)2s([A-Za-z0-9_-]{15,})""",
+                RegexOption.IGNORE_CASE
+            )
+
+        val match3 =
+            pattern3.find(text)
+
+        if (match3 != null) {
+            return match3.groupValues[1]
+        }
+
+        // --------------------------------------------------
+        // ULTIMO TENTATIVO:
+        // cerchiamo una stringa che assomigli
+        // al List ID che abbiamo già visto
+        // --------------------------------------------------
+
+        val pattern4 =
+            Regex(
+                """[A-Za-z0-9_-]{20,60}"""
+            )
+
+        val candidates =
+            pattern4
+                .findAll(text)
+                .map { it.value }
+                .toList()
+
+        for (candidate in candidates) {
+
+            if (
+                candidate.length >= 20 &&
+                candidate.any { it.isLetter() } &&
+                candidate.any { it.isDigit() }
+            ) {
+                return candidate
             }
         }
 
@@ -316,36 +399,6 @@ class MainActivity : Activity() {
                 "!4i500" +
                 "!8i3" +
                 "!16b1"
-    }
-
-    private fun countLikelyPlaces(
-        response: String
-    ): Int {
-
-        var count = 0
-
-        val occurrences =
-            listOf(
-                "\"GPS\"",
-                "\"google_place_id\"",
-                "maps.google.com",
-                "maps/preview"
-            )
-
-        for (term in occurrences) {
-
-            count +=
-                response
-                    .windowed(
-                        term.length,
-                        1
-                    )
-                    .count {
-                        it == term
-                    }
-        }
-
-        return count
     }
 
     private fun show(
