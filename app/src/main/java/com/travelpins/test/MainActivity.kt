@@ -41,6 +41,7 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun log(message: String?) {
+
             if (message.isNullOrBlank()) return
 
             addLog(
@@ -60,6 +61,7 @@ class MainActivity : Activity() {
             url: String?,
             data: String?
         ) {
+
             addLog(
                 """
                 ==============================
@@ -81,6 +83,7 @@ class MainActivity : Activity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+
         super.onCreate(savedInstanceState)
 
         createInterface()
@@ -105,9 +108,11 @@ class MainActivity : Activity() {
         }
 
         val copyButton = Button(this).apply {
+
             text = "COPIA TUTTO"
 
             setOnClickListener {
+
                 val clipboard =
                     getSystemService(
                         Context.CLIPBOARD_SERVICE
@@ -129,9 +134,11 @@ class MainActivity : Activity() {
         }
 
         val clearButton = Button(this).apply {
+
             text = "PULISCI"
 
             setOnClickListener {
+
                 log.clear()
 
                 output.text =
@@ -144,6 +151,7 @@ class MainActivity : Activity() {
         }
 
         consentButton = Button(this).apply {
+
             text = "ACCETTA GOOGLE"
             visibility = Button.GONE
 
@@ -180,7 +188,9 @@ class MainActivity : Activity() {
         )
 
         output = TextView(this).apply {
+
             textSize = 13f
+
             setTextIsSelectable(true)
 
             setPadding(
@@ -279,7 +289,9 @@ class MainActivity : Activity() {
                     inspectNavigation(url)
 
                     if (url.startsWith("intent://")) {
+
                         handleGoogleIntent(url)
+
                         return true
                     }
 
@@ -345,9 +357,7 @@ class MainActivity : Activity() {
                     }
 
                     // ------------------------------------------------
-                    // NUOVO TEST:
-                    // quando arriviamo alla lista Google Maps,
-                    // leggiamo il contenuto visibile della pagina.
+                    // LISTA GOOGLE MAPS
                     // ------------------------------------------------
 
                     if (
@@ -355,6 +365,7 @@ class MainActivity : Activity() {
                             "/local/userlists/list/"
                         )
                     ) {
+
                         inspectGoogleListPage()
                     }
                 }
@@ -396,114 +407,439 @@ class MainActivity : Activity() {
             ==============================
             LISTA GOOGLE MAPS RILEVATA
 
-            Attendo il caricamento del contenuto...
+            Avvio monitoraggio contenuto...
 
             ==============================
             """.trimIndent()
         )
 
+        // --------------------------------------------------------
+        // Prima lettura dopo 2 secondi
+        // --------------------------------------------------------
+
         handler.postDelayed({
 
-            val javascript = """
-                (function() {
+            readGoogleListPage(
+                "CONTROLLO 2 SECONDI"
+            )
 
-                    try {
+        }, 2000)
+
+        // --------------------------------------------------------
+        // Seconda lettura dopo 5 secondi
+        // --------------------------------------------------------
+
+        handler.postDelayed({
+
+            readGoogleListPage(
+                "CONTROLLO 5 SECONDI"
+            )
+
+        }, 5000)
+
+        // --------------------------------------------------------
+        // Terza lettura dopo 8 secondi
+        // --------------------------------------------------------
+
+        handler.postDelayed({
+
+            readGoogleListPage(
+                "CONTROLLO 8 SECONDI"
+            )
+
+        }, 8000)
+
+        // --------------------------------------------------------
+        // Quarta lettura dopo 12 secondi
+        // --------------------------------------------------------
+
+        handler.postDelayed({
+
+            readGoogleListPage(
+                "CONTROLLO 12 SECONDI"
+            )
+
+        }, 12000)
+
+        // --------------------------------------------------------
+        // Installiamo anche un MutationObserver.
+        //
+        // Google Maps costruisce la pagina dinamicamente.
+        // Questo ci permette di sapere quando il contenuto cambia.
+        // --------------------------------------------------------
+
+        installListMutationObserver()
+    }
+
+    // ============================================================
+    // LETTURA PAGINA
+    // ============================================================
+
+    private fun readGoogleListPage(
+        label: String
+    ) {
+
+        val javascript = """
+
+            (function() {
+
+                try {
+
+                    var bodyText =
+                        document.body
+                            ? document.body.innerText
+                            : '';
+
+                    var title =
+                        document.title || '';
+
+                    var links = [];
+
+                    var elements =
+                        document.querySelectorAll('a');
+
+                    for (
+                        var i = 0;
+                        i < elements.length;
+                        i++
+                    ) {
+
+                        var element =
+                            elements[i];
+
+                        var href =
+                            element.href || '';
 
                         var text =
-                            document.body
-                                ? document.body.innerText
-                                : '';
+                            element.innerText || '';
 
-                        var title =
-                            document.title || '';
+                        text =
+                            text.trim();
 
-                        var links = [];
-
-                        var elements =
-                            document.querySelectorAll('a');
-
-                        for (
-                            var i = 0;
-                            i < elements.length;
-                            i++
+                        if (
+                            href &&
+                            (
+                                href.indexOf(
+                                    'google.com/maps'
+                                ) >= 0
+                                ||
+                                href.indexOf(
+                                    '/maps/'
+                                ) >= 0
+                            )
                         ) {
 
-                            var href =
-                                elements[i].href || '';
-
-                            var linkText =
-                                elements[i].innerText || '';
-
-                            linkText =
-                                linkText.trim();
-
-                            if (
-                                href &&
-                                (
-                                    href.indexOf('google.com/maps') >= 0 ||
-                                    href.indexOf('/maps/') >= 0
-                                )
-                            ) {
-
-                                links.push(
-                                    linkText +
-                                    ' -> ' +
-                                    href
-                                );
-                            }
+                            links.push(
+                                text +
+                                ' -> ' +
+                                href
+                            );
                         }
-
-                        if (text.length > 30000) {
-                            text =
-                                text.substring(
-                                    0,
-                                    30000
-                                );
-                        }
-
-                        var result =
-                            'TITLE:\\n' +
-                            title +
-                            '\\n\\n' +
-                            'PAGE TEXT:\\n' +
-                            text +
-                            '\\n\\n' +
-                            'MAP LINKS:\\n' +
-                            links.join('\\n');
-
-                        return result;
-
-                    } catch(e) {
-
-                        return 'ERROR:' +
-                               e.message;
                     }
 
-                })();
-            """.trimIndent()
+                    // ------------------------------------------------
+                    // Cerchiamo anche elementi che sembrano
+                    // contenere nomi di luoghi.
+                    // ------------------------------------------------
 
-            webView.evaluateJavascript(
-                javascript
-            ) { result ->
+                    var buttons = [];
 
-                val decoded =
-                    decodeJavascriptResult(
-                        result
-                    )
+                    var clickable =
+                        document.querySelectorAll(
+                            '[role="button"]'
+                        );
 
-                addLog(
-                    """
-                    ==============================
-                    CONTENUTO LISTA GOOGLE MAPS
+                    for (
+                        var j = 0;
+                        j < clickable.length;
+                        j++
+                    ) {
 
-                    $decoded
+                        var button =
+                            clickable[j];
 
-                    ==============================
-                    """.trimIndent()
-                )
-            }
+                        var buttonText =
+                            button.innerText || '';
 
-        }, 4000)
+                        buttonText =
+                            buttonText.trim();
+
+                        if (
+                            buttonText.length > 0
+                        ) {
+
+                            buttons.push(
+                                buttonText
+                            );
+                        }
+                    }
+
+                    // ------------------------------------------------
+                    // Limitiamo la quantità di testo.
+                    // ------------------------------------------------
+
+                    if (
+                        bodyText.length > 40000
+                    ) {
+
+                        bodyText =
+                            bodyText.substring(
+                                0,
+                                40000
+                            );
+                    }
+
+                    if (
+                        links.length > 500
+                    ) {
+
+                        links =
+                            links.slice(
+                                0,
+                                500
+                            );
+                    }
+
+                    if (
+                        buttons.length > 500
+                    ) {
+
+                        buttons =
+                            buttons.slice(
+                                0,
+                                500
+                            );
+                    }
+
+                    var result =
+                        'TITLE:\\n' +
+                        title +
+                        '\\n\\n' +
+
+                        'BODY TEXT:\\n' +
+                        bodyText +
+                        '\\n\\n' +
+
+                        'MAP LINKS:\\n' +
+                        links.join('\\n') +
+                        '\\n\\n' +
+
+                        'BUTTONS / CLICKABLE:\\n' +
+                        buttons.join('\\n');
+
+                    return result;
+
+                } catch(e) {
+
+                    return 'ERROR:' +
+                           e.message;
+                }
+
+            })();
+
+        """.trimIndent()
+
+        webView.evaluateJavascript(
+            javascript
+        ) { result ->
+
+            val decoded =
+                decodeJavascriptResult(result)
+
+            addLog(
+                """
+                ==============================
+                $label
+
+                $decoded
+
+                ==============================
+                """.trimIndent()
+            )
+        }
+    }
+
+    // ============================================================
+    // MUTATION OBSERVER
+    // ============================================================
+
+    private fun installListMutationObserver() {
+
+        val javascript = """
+
+            (function() {
+
+                try {
+
+                    if (
+                        window.__travelpins_list_observer
+                    ) {
+
+                        return 'OBSERVER_ALREADY_INSTALLED';
+                    }
+
+                    window.__travelpins_list_observer =
+                        true;
+
+                    var lastText = '';
+
+                    function checkPage() {
+
+                        try {
+
+                            var text =
+                                document.body
+                                    ? document.body.innerText
+                                    : '';
+
+                            if (
+                                !text ||
+                                text === lastText
+                            ) {
+
+                                return;
+                            }
+
+                            lastText = text;
+
+                            TravelPins.log(
+                                'LIST_PAGE_CHANGED: ' +
+                                text.length +
+                                ' caratteri'
+                            );
+
+                            // Quando Google ha finalmente
+                            // inserito abbastanza contenuto,
+                            // chiediamo a Kotlin di leggerlo.
+
+                            if (
+                                text.length > 100
+                            ) {
+
+                                setTimeout(
+                                    function() {
+
+                                        var links =
+                                            document.querySelectorAll(
+                                                'a'
+                                            );
+
+                                        var found = [];
+
+                                        for (
+                                            var i = 0;
+                                            i < links.length;
+                                            i++
+                                        ) {
+
+                                            var href =
+                                                links[i].href ||
+                                                '';
+
+                                            var linkText =
+                                                links[i].innerText ||
+                                                '';
+
+                                            linkText =
+                                                linkText.trim();
+
+                                            if (
+                                                href &&
+                                                linkText
+                                            ) {
+
+                                                if (
+                                                    href.indexOf(
+                                                        'google.com/maps'
+                                                    ) >= 0
+                                                    ||
+                                                    href.indexOf(
+                                                        '/maps/'
+                                                    ) >= 0
+                                                ) {
+
+                                                    found.push(
+                                                        linkText +
+                                                        ' -> ' +
+                                                        href
+                                                    );
+                                                }
+                                            }
+                                        }
+
+                                        TravelPins.log(
+                                            'MAP_LINKS_FOUND:\\n' +
+                                            found.join(
+                                                '\\n'
+                                            )
+                                        );
+
+                                    },
+                                    500
+                                );
+                            }
+
+                        } catch(e) {
+
+                            TravelPins.log(
+                                'OBSERVER_ERROR:' +
+                                e.message
+                            );
+                        }
+                    }
+
+                    var observer =
+                        new MutationObserver(
+                            function() {
+
+                                checkPage();
+
+                            }
+                        );
+
+                    observer.observe(
+                        document.documentElement,
+                        {
+                            childList: true,
+                            subtree: true,
+                            characterData: true
+                        }
+                    );
+
+                    setInterval(
+                        checkPage,
+                        2000
+                    );
+
+                    checkPage();
+
+                    return 'OBSERVER_INSTALLED';
+
+                } catch(e) {
+
+                    return 'OBSERVER_ERROR:' +
+                           e.message;
+                }
+
+            })();
+
+        """.trimIndent()
+
+        webView.evaluateJavascript(
+            javascript
+        ) { result ->
+
+            addLog(
+                """
+                ==============================
+                LIST MUTATION OBSERVER
+
+                $result
+
+                ==============================
+                """.trimIndent()
+            )
+        }
     }
 
     // ============================================================
@@ -524,6 +860,7 @@ class MainActivity : Activity() {
             result.startsWith("\"") &&
             result.endsWith("\"")
         ) {
+
             result =
                 result.substring(
                     1,
@@ -714,6 +1051,7 @@ class MainActivity : Activity() {
         )
 
         val javascript = """
+
             (function() {
 
                 try {
@@ -787,6 +1125,7 @@ class MainActivity : Activity() {
                 }
 
             })();
+
         """.trimIndent()
 
         webView.evaluateJavascript(
@@ -812,11 +1151,13 @@ class MainActivity : Activity() {
     private fun injectNetworkHook() {
 
         val javascript = """
+
             (function() {
 
                 if (
                     window.__travelpins_hooked
                 ) {
+
                     return 'ALREADY_INSTALLED';
                 }
 
@@ -1024,6 +1365,7 @@ class MainActivity : Activity() {
                 return 'HOOK_INSTALLED';
 
             })();
+
         """.trimIndent()
 
         webView.evaluateJavascript(
