@@ -10,8 +10,8 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface CategoryDao {
 
-    @Query("SELECT * FROM categories ORDER BY name ASC")
-    fun getAll(): Flow<List<Category>>
+    @Query("SELECT * FROM categories ORDER BY sortOrder ASC, name ASC")
+    fun observeAll(): Flow<List<Category>>
 
     @Insert
     suspend fun insert(category: Category): Long
