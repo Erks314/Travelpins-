@@ -68,22 +68,10 @@ class MainActivity : Activity() {
             val currentUrl = url ?: ""
 
             val interesting =
-                currentUrl.contains(
-                    "userlists",
-                    ignoreCase = true
-                ) ||
-                currentUrl.contains(
-                    "listview",
-                    ignoreCase = true
-                ) ||
-                currentUrl.contains(
-                    "batchexecute",
-                    ignoreCase = true
-                ) ||
-                currentUrl.contains(
-                    "rpc",
-                    ignoreCase = true
-                )
+                currentUrl.contains("userlists", true) ||
+                currentUrl.contains("listview", true) ||
+                currentUrl.contains("batchexecute", true) ||
+                currentUrl.contains("rpc", true)
 
             if (!interesting) {
                 return
@@ -95,7 +83,7 @@ class MainActivity : Activity() {
             addLog(
                 """
                 ==============================
-                NETWORK $type
+                NETWORK ${type ?: ""}
 
                 METHOD:
                 ${method ?: ""}
@@ -120,9 +108,7 @@ class MainActivity : Activity() {
         savedInstanceState: Bundle?
     ) {
 
-        super.onCreate(
-            savedInstanceState
-        )
+        super.onCreate(savedInstanceState)
 
         createInterface()
         createWebView()
@@ -254,7 +240,7 @@ class MainActivity : Activity() {
             }
 
         // ========================================================
-        // AGGIUNTA PULSANTI
+        // TOOLBAR
         // ========================================================
 
         toolbar.addView(
@@ -382,9 +368,7 @@ class MainActivity : Activity() {
 
         CookieManager
             .getInstance()
-            .setAcceptCookie(
-                true
-            )
+            .setAcceptCookie(true)
 
         CookieManager
             .getInstance()
@@ -416,19 +400,13 @@ class MainActivity : Activity() {
                     val url =
                         request.url.toString()
 
-                    inspectNavigation(
-                        url
-                    )
+                    inspectNavigation(url)
 
                     if (
-                        url.startsWith(
-                            "intent://"
-                        )
+                        url.startsWith("intent://")
                     ) {
 
-                        handleGoogleIntent(
-                            url
-                        )
+                        handleGoogleIntent(url)
 
                         return true
                     }
@@ -437,7 +415,7 @@ class MainActivity : Activity() {
                 }
 
                 // =================================================
-                // RICHIESTE WEBVIEW
+                // REQUEST
                 // =================================================
 
                 override fun shouldInterceptRequest(
@@ -445,9 +423,7 @@ class MainActivity : Activity() {
                     request: WebResourceRequest
                 ): WebResourceResponse? {
 
-                    inspectRequest(
-                        request
-                    )
+                    inspectRequest(request)
 
                     return null
                 }
@@ -480,7 +456,8 @@ class MainActivity : Activity() {
 
                     if (
                         url.contains(
-                            "consent.google.com"
+                            "consent.google.com",
+                            true
                         )
                     ) {
 
@@ -512,15 +489,13 @@ class MainActivity : Activity() {
                     }
 
                     // =================================================
-                    // LISTA GOOGLE MAPS
-                    //
-                    // NON SCANSIONIAMO AUTOMATICAMENTE.
-                    // Rendiamo disponibile il pulsante.
+                    // LISTA GOOGLE
                     // =================================================
 
                     if (
                         url.contains(
-                            "/local/userlists/list/"
+                            "/local/userlists/list/",
+                            true
                         )
                     ) {
 
@@ -529,8 +504,7 @@ class MainActivity : Activity() {
                             ==============================
                             LISTA GOOGLE MAPS RILEVATA
 
-                            Premi SCANSIONA per leggere
-                            i luoghi della lista.
+                            Premi SCANSIONA.
 
                             ==============================
                             """.trimIndent()
@@ -545,7 +519,7 @@ class MainActivity : Activity() {
                 }
 
                 // =================================================
-                // RENDERER CRASH
+                // RENDERER
                 // =================================================
 
                 override fun onRenderProcessGone(
@@ -571,14 +545,12 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // SCANSIONE MANUALE
+    // SCANSIONE
     // ============================================================
 
     private fun scanGoogleList() {
 
-        if (
-            !scanButton.isEnabled
-        ) {
+        if (!scanButton.isEnabled) {
             return
         }
 
@@ -588,154 +560,410 @@ class MainActivity : Activity() {
         addLog(
             """
             ==============================
-            SCANSIONE AVVIATA
+            SCANSIONE DIAGNOSTICA AVVIATA
 
-            Attendo il caricamento della lista...
+            Analizzo la struttura reale
+            della pagina Google Maps.
 
             ==============================
             """.trimIndent()
         )
 
-        inspectGoogleListPage()
+        handler.postDelayed({
+
+            inspectGoogleListPage()
+
+        }, 2500)
     }
 
     // ============================================================
-    // LETTURA LISTA GOOGLE MAPS
+    // ANALISI PROFONDA DELLA PAGINA
     // ============================================================
 
     private fun inspectGoogleListPage() {
 
-        handler.postDelayed({
+        val javascript = """
 
-            val javascript = """
+            (function() {
 
-                (function() {
+                try {
 
-                    try {
+                    var result = [];
 
-                        var title =
-                            document.title || '';
+                    // ==================================================
+                    // INFORMAZIONI BASE
+                    // ==================================================
 
-                        var links = [];
+                    result.push(
+                        '===== INFO PAGINA ====='
+                    );
 
-                        var elements =
-                            document.querySelectorAll('a');
+                    result.push(
+                        'URL: ' +
+                        window.location.href
+                    );
 
-                        for (
-                            var i = 0;
-                            i < elements.length;
-                            i++
-                        ) {
+                    result.push(
+                        'TITLE: ' +
+                        (document.title || '')
+                    );
 
-                            var element =
-                                elements[i];
+                    result.push(
+                        'READY: ' +
+                        document.readyState
+                    );
 
-                            var href =
-                                element.href || '';
+                    // ==================================================
+                    // BODY TEXT
+                    // ==================================================
 
-                            var text =
-                                element.innerText || '';
+                    result.push(
+                        ''
+                    );
 
-                            text =
-                                text.trim();
+                    result.push(
+                        '===== TESTO VISIBILE ====='
+                    );
 
-                            if (
-                                href &&
-                                (
-                                    href.indexOf(
-                                        'google.com/maps'
-                                    ) >= 0 ||
-                                    href.indexOf(
-                                        '/maps/'
-                                    ) >= 0
-                                )
-                            ) {
+                    var bodyText =
+                        document.body
+                            ? document.body.innerText
+                            : '';
 
-                                links.push(
-                                    text +
-                                    ' -> ' +
-                                    href
-                                );
-                            }
-                        }
+                    bodyText =
+                        bodyText.trim();
 
-                        // Rimuove duplicati
+                    if (
+                        bodyText.length > 12000
+                    ) {
 
-                        var uniqueLinks =
-                            [];
-
-                        for (
-                            var j = 0;
-                            j < links.length;
-                            j++
-                        ) {
-
-                            if (
-                                uniqueLinks.indexOf(
-                                    links[j]
-                                ) === -1
-                            ) {
-
-                                uniqueLinks.push(
-                                    links[j]
-                                );
-                            }
-                        }
-
-                        var result =
-                            'TITLE:\\n' +
-                            title +
-                            '\\n\\n' +
-                            'MAP LINKS (' +
-                            uniqueLinks.length +
-                            '):\\n' +
-                            uniqueLinks.join('\\n');
-
-                        return result;
-
-                    } catch(e) {
-
-                        return 'ERROR:' +
-                               e.message;
+                        bodyText =
+                            bodyText.substring(
+                                0,
+                                12000
+                            );
                     }
 
-                })();
+                    result.push(
+                        bodyText ||
+                        '[NESSUN TESTO VISIBILE]'
+                    );
 
-            """.trimIndent()
+                    // ==================================================
+                    // ELEMENTI CLICCABILI
+                    // ==================================================
 
-            webView.evaluateJavascript(
-                javascript
-            ) { result ->
+                    result.push(
+                        ''
+                    );
 
-                val decoded =
-                    decodeJavascriptResult(
-                        result
-                    )
+                    result.push(
+                        '===== ELEMENTI CLICCABILI ====='
+                    );
 
-                val limited =
-                    decoded.take(
-                        15000
-                    )
+                    var clickable =
+                        document.querySelectorAll(
+                            'a, button, [role="button"], [role="link"]'
+                        );
 
-                addLog(
-                    """
-                    ==============================
-                    RISULTATO SCANSIONE
+                    var clickableCount = 0;
 
-                    $limited
+                    for (
+                        var i = 0;
+                        i < clickable.length;
+                        i++
+                    ) {
 
-                    ==============================
-                    """.trimIndent()
-                )
+                        if (
+                            clickableCount >= 200
+                        ) {
+                            break;
+                        }
 
-                runOnUiThread {
+                        var el =
+                            clickable[i];
 
-                    scanButton.isEnabled =
-                        true
+                        var txt =
+                            (
+                                el.innerText ||
+                                el.textContent ||
+                                ''
+                            )
+                            .trim()
+                            .replace(
+                                /\\s+/g,
+                                ' '
+                            );
+
+                        var aria =
+                            el.getAttribute(
+                                'aria-label'
+                            ) || '';
+
+                        var href =
+                            el.getAttribute(
+                                'href'
+                            ) || '';
+
+                        if (
+                            txt ||
+                            aria ||
+                            href
+                        ) {
+
+                            result.push(
+                                'ELEMENT ' +
+                                clickableCount +
+                                ': ' +
+                                'TEXT=[' +
+                                txt.substring(
+                                    0,
+                                    200
+                                ) +
+                                '] ' +
+                                'ARIA=[' +
+                                aria.substring(
+                                    0,
+                                    200
+                                ) +
+                                '] ' +
+                                'HREF=[' +
+                                href.substring(
+                                    0,
+                                    500
+                                ) +
+                                ']'
+                            );
+
+                            clickableCount++;
+                        }
+                    }
+
+                    // ==================================================
+                    // LINK MAPS
+                    // ==================================================
+
+                    result.push(
+                        ''
+                    );
+
+                    result.push(
+                        '===== LINK GOOGLE MAPS ====='
+                    );
+
+                    var mapLinks =
+                        document.querySelectorAll(
+                            'a[href*="google.com/maps"], a[href*="/maps/"]'
+                        );
+
+                    result.push(
+                        'TROVATI: ' +
+                        mapLinks.length
+                    );
+
+                    for (
+                        var j = 0;
+                        j < mapLinks.length &&
+                        j < 100;
+                        j++
+                    ) {
+
+                        var link =
+                            mapLinks[j];
+
+                        result.push(
+                            'MAP_LINK ' +
+                            j +
+                            ': ' +
+                            (
+                                link.innerText ||
+                                ''
+                            )
+                            .trim()
+                            .replace(
+                                /\\s+/g,
+                                ' '
+                            ) +
+                            ' -> ' +
+                            (
+                                link.href ||
+                                ''
+                            )
+                        );
+                    }
+
+                    // ==================================================
+                    // ELEMENTI CON ARIA
+                    // ==================================================
+
+                    result.push(
+                        ''
+                    );
+
+                    result.push(
+                        '===== ELEMENTI ARIA ====='
+                    );
+
+                    var ariaElements =
+                        document.querySelectorAll(
+                            '[aria-label]'
+                        );
+
+                    var ariaCount = 0;
+
+                    for (
+                        var k = 0;
+                        k < ariaElements.length;
+                        k++
+                    ) {
+
+                        if (
+                            ariaCount >= 150
+                        ) {
+                            break;
+                        }
+
+                        var ariaElement =
+                            ariaElements[k];
+
+                        var label =
+                            ariaElement.getAttribute(
+                                'aria-label'
+                            ) || '';
+
+                        if (
+                            label.trim()
+                        ) {
+
+                            result.push(
+                                'ARIA ' +
+                                ariaCount +
+                                ': ' +
+                                label.substring(
+                                    0,
+                                    300
+                                )
+                            );
+
+                            ariaCount++;
+                        }
+                    }
+
+                    // ==================================================
+                    // CLASSI IMPORTANTI
+                    // ==================================================
+
+                    result.push(
+                        ''
+                    );
+
+                    result.push(
+                        '===== ELEMENTI DATA ====='
+                    );
+
+                    var dataElements =
+                        document.querySelectorAll(
+                            '[data-place-id], [data-result-index], [data-cid], [data-item-id]'
+                        );
+
+                    result.push(
+                        'DATA ELEMENTS: ' +
+                        dataElements.length
+                    );
+
+                    for (
+                        var d = 0;
+                        d < dataElements.length &&
+                        d < 100;
+                        d++
+                    ) {
+
+                        var de =
+                            dataElements[d];
+
+                        result.push(
+                            'DATA ' +
+                            d +
+                            ': ' +
+                            de.outerHTML.substring(
+                                0,
+                                1000
+                            )
+                        );
+                    }
+
+                    // ==================================================
+                    // HTML PARZIALE
+                    // ==================================================
+
+                    result.push(
+                        ''
+                    );
+
+                    result.push(
+                        '===== HTML BODY PARZIALE ====='
+                    );
+
+                    var html =
+                        document.body
+                            ? document.body.innerHTML
+                            : '';
+
+                    html =
+                        html.substring(
+                            0,
+                            15000
+                        );
+
+                    result.push(
+                        html
+                    );
+
+                    return result.join(
+                        '\\n'
+                    );
+
+                } catch(e) {
+
+                    return (
+                        '===== ERRORE =====\\n' +
+                        e.name +
+                        ': ' +
+                        e.message
+                    );
                 }
-            }
 
-        }, 1500)
+            })();
+
+        """.trimIndent()
+
+        webView.evaluateJavascript(
+            javascript
+        ) { result ->
+
+            val decoded =
+                decodeJavascriptResult(result)
+
+            val limited =
+                decoded.take(30000)
+
+            addLog(
+                """
+                ==============================
+                RISULTATO SCANSIONE
+
+                $limited
+
+                ==============================
+                """.trimIndent()
+            )
+
+            runOnUiThread {
+
+                scanButton.isEnabled =
+                    true
+            }
+        }
     }
 
     // ============================================================
@@ -746,10 +974,7 @@ class MainActivity : Activity() {
         value: String?
     ): String {
 
-        if (
-            value.isNullOrBlank()
-        ) {
-
+        if (value.isNullOrBlank()) {
             return ""
         }
 
@@ -832,18 +1057,14 @@ class MainActivity : Activity() {
         try {
 
             val uri =
-                Uri.parse(
-                    intentUrl
-                )
+                Uri.parse(intentUrl)
 
             val fallback =
                 uri.getQueryParameter(
                     "S.browser_fallback_url"
                 )
 
-            if (
-                !fallback.isNullOrBlank()
-            ) {
+            if (!fallback.isNullOrBlank()) {
 
                 addLog(
                     """
@@ -855,9 +1076,7 @@ class MainActivity : Activity() {
                     """.trimIndent()
                 )
 
-                webView.loadUrl(
-                    fallback
-                )
+                webView.loadUrl(fallback)
 
                 return
             }
@@ -866,9 +1085,7 @@ class MainActivity : Activity() {
                 "S.browser_fallback_url="
 
             val index =
-                intentUrl.indexOf(
-                    marker
-                )
+                intentUrl.indexOf(marker)
 
             if (index >= 0) {
 
@@ -906,9 +1123,7 @@ class MainActivity : Activity() {
                     """.trimIndent()
                 )
 
-                webView.loadUrl(
-                    fallbackText
-                )
+                webView.loadUrl(fallbackText)
 
                 return
             }
@@ -921,9 +1136,7 @@ class MainActivity : Activity() {
                 """.trimIndent()
             )
 
-        } catch (
-            e: Exception
-        ) {
+        } catch (e: Exception) {
 
             addLog(
                 """
@@ -1043,9 +1256,6 @@ class MainActivity : Activity() {
                 ==============================
                 """.trimIndent()
             )
-
-            // Il pulsante SCANSIONA apparirà quando
-            // la navigazione successiva porterà alla lista.
         }
     }
 
@@ -1068,6 +1278,10 @@ class MainActivity : Activity() {
 
                 window.__travelpins_hooked =
                     true;
+
+                // ==================================================
+                // FETCH
+                // ==================================================
 
                 var originalFetch =
                     window.fetch;
@@ -1124,6 +1338,10 @@ class MainActivity : Activity() {
                             throw error;
                         }
                     };
+
+                // ==================================================
+                // XHR
+                // ==================================================
 
                 var originalOpen =
                     XMLHttpRequest.prototype.open;
@@ -1213,18 +1431,10 @@ class MainActivity : Activity() {
             url.lowercase()
 
         val interesting =
-            lower.contains(
-                "userlists"
-            ) ||
-            lower.contains(
-                "listview"
-            ) ||
-            lower.contains(
-                "batchexecute"
-            ) ||
-            lower.contains(
-                "rpc"
-            )
+            lower.contains("userlists") ||
+            lower.contains("listview") ||
+            lower.contains("batchexecute") ||
+            lower.contains("rpc")
 
         if (!interesting) {
             return
@@ -1277,7 +1487,6 @@ class MainActivity : Activity() {
             intent?.action !=
             Intent.ACTION_SEND
         ) {
-
             return
         }
 
@@ -1286,9 +1495,7 @@ class MainActivity : Activity() {
                 Intent.EXTRA_TEXT
             )
 
-        if (
-            sharedText.isNullOrBlank()
-        ) {
+        if (sharedText.isNullOrBlank()) {
 
             addLog(
                 "Nessun testo ricevuto."
@@ -1300,9 +1507,7 @@ class MainActivity : Activity() {
         val match =
             Regex(
                 """https?://\S+"""
-            ).find(
-                sharedText
-            )
+            ).find(sharedText)
 
         if (match == null) {
 
@@ -1328,9 +1533,7 @@ class MainActivity : Activity() {
             """.trimIndent()
         )
 
-        webView.loadUrl(
-            url
-        )
+        webView.loadUrl(url)
     }
 
     // ============================================================
@@ -1375,17 +1578,11 @@ class MainActivity : Activity() {
         intent: Intent
     ) {
 
-        super.onNewIntent(
-            intent
-        )
+        super.onNewIntent(intent)
 
-        setIntent(
-            intent
-        )
+        setIntent(intent)
 
-        handleIntent(
-            intent
-        )
+        handleIntent(intent)
     }
 
     // ============================================================
@@ -1395,9 +1592,7 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
-        if (
-            webView.canGoBack()
-        ) {
+        if (webView.canGoBack()) {
 
             webView.goBack()
 
