@@ -3,6 +3,7 @@ package com.travelpins.test
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.content.DialogInterface
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -10,7 +11,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
-import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -44,7 +44,7 @@ class MainActivity : Activity() {
     private val categories = ArrayList<Category>()
 
     private var importing = false
-    private var scanStarted = false
+    private var importFinished = false
 
     // ============================================================
     // MODELLI
@@ -75,8 +75,8 @@ class MainActivity : Activity() {
         loadCategories()
         loadPlaces()
 
-        createWebView()
         createInterface()
+        createWebView()
 
         handleIntent(intent)
     }
@@ -126,7 +126,7 @@ class MainActivity : Activity() {
         toolbar.addView(categoriesButton)
 
         progress = ProgressBar(this).apply {
-            visibility = View.GONE
+            visibility = ProgressBar.GONE
         }
 
         root.addView(toolbar)
@@ -157,24 +157,6 @@ class MainActivity : Activity() {
             )
         )
 
-        /*
-         * IMPORTANTISSIMO:
-         *
-         * Il WebView viene aggiunto alla gerarchia.
-         *
-         * Rimane GONE normalmente e viene usato solo
-         * durante l'importazione.
-         */
-        webView.visibility = View.GONE
-
-        root.addView(
-            webView,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                1
-            )
-        )
-
         setContentView(root)
 
         showPlaces()
@@ -193,14 +175,9 @@ class MainActivity : Activity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
-
             loadsImagesAutomatically = true
-
             javaScriptCanOpenWindowsAutomatically = true
             setSupportMultipleWindows(false)
-
-            allowFileAccess = true
-            allowContentAccess = true
 
             userAgentString =
                 "Mozilla/5.0 (Linux; Android 10) " +
@@ -239,13 +216,14 @@ class MainActivity : Activity() {
                         request.url.toString()
 
                     addLog(
-                        "NAVIGAZIONE: $url"
+                        """
+                        NAVIGAZIONE:
+                        $url
+                        """.trimIndent()
                     )
 
                     if (
-                        url.startsWith(
-                            "intent://"
-                        )
+                        url.startsWith("intent://")
                     ) {
 
                         handleGoogleIntent(url)
@@ -261,32 +239,9 @@ class MainActivity : Activity() {
                     request: WebResourceRequest
                 ): WebResourceResponse? {
 
+                    inspectRequest(request)
+
                     return null
-                }
-
-                override fun onPageStarted(
-                    view: WebView,
-                    url: String,
-                    favicon: android.graphics.Bitmap?
-                ) {
-
-                    super.onPageStarted(
-                        view,
-                        url,
-                        favicon
-                    )
-
-                    addLog(
-                        "PAGINA INIZIATA: $url"
-                    )
-
-                    /*
-                     * Il link condiviso può passare
-                     * attraverso più redirect.
-                     *
-                     * Non facciamo partire l'importazione
-                     * qui: aspettiamo onPageFinished.
-                     */
                 }
 
                 override fun onPageFinished(
@@ -294,92 +249,39 @@ class MainActivity : Activity() {
                     url: String
                 ) {
 
-                    super.onPageFinished(
-                        view,
-                        url
-                    )
-
                     addLog(
-                        "PAGINA FINITA: $url"
+                        """
+                        ==============================
+                        PAGINA CARICATA
+
+                        $url
+
+                        ==============================
+                        """.trimIndent()
                     )
 
-                    /*
-                     * Iniettiamo il codice ad ogni pagina.
-                     */
                     injectNetworkHook()
 
-                    /*
-                     * Gestione automatica del consenso Google.
-                     */
                     if (
-                        url.contains(
-                            "consent.google.",
-                            true
-                        )
+                        !importing &&
+                        !importFinished &&
+                        looksLikeGoogleMapsPage(url)
                     ) {
 
-                        handler.postDelayed(
-                            {
-                                acceptGoogleConsent()
-                            },
-                            700
-                        )
-
-                        return
-                    }
-
-                    /*
-                     * Dopo il caricamento della pagina
-                     * proviamo a capire se siamo arrivati
-                     * a Google Maps.
-                     */
-                    if (
-                        isGoogleMapsPage(url) &&
-                        importing &&
-                        !scanStarted
-                    ) {
-
-                        /*
-                         * Aspettiamo un attimo che Google
-                         * completi eventuali redirect/
-                         * inizializzazioni interne.
-                         */
                         handler.postDelayed(
                             {
 
                                 if (
-                                    importing &&
-                                    !scanStarted
+                                    !importFinished
                                 ) {
+
+                                    importing = true
 
                                     scanGoogleList()
                                 }
 
                             },
-                            1500
-                        )
-                    }
-                }
-
-                override fun onReceivedError(
-                    view: WebView,
-                    request: WebResourceRequest,
-                    error: android.webkit.WebResourceError
-                ) {
-
-                    super.onReceivedError(
-                        view,
-                        request,
-                        error
-                    )
-
-                    if (
-                        request.isForMainFrame
-                    ) {
-
-                        addLog(
-                            "WEBVIEW ERROR: " +
-                            error.description
+                            1800
                         )
                     }
                 }
@@ -387,7 +289,7 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // JAVASCRIPT BRIDGE
+    // GOOGLE BRIDGE
     // ============================================================
 
     inner class TravelPinsBridge {
@@ -395,11 +297,11 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun log(message: String?) {
 
-            if (
-                !message.isNullOrBlank()
-            ) {
+            if (!message.isNullOrBlank()) {
 
-                addLog(message)
+                addLog(
+                    message
+                )
             }
         }
 
@@ -419,27 +321,14 @@ class MainActivity : Activity() {
                         array.length() == 0
                     ) {
 
-                        importing = false
-                        scanStarted = false
-
-                        progress.visibility =
-                            View.GONE
-
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Nessun luogo trovato",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        addLog(
+                            "IMPORT PLACES: array vuoto"
+                        )
 
                         return@runOnUiThread
                     }
 
-                    /*
-                     * NON cancelliamo subito i luoghi
-                     * se l'importazione fallisce.
-                     */
-                    val imported =
-                        ArrayList<Place>()
+                    places.clear()
 
                     for (
                         i in 0 until array.length()
@@ -451,11 +340,6 @@ class MainActivity : Activity() {
                         val name =
                             item.optString(
                                 "name"
-                            )
-
-                        val address =
-                            item.optString(
-                                "address"
                             )
 
                         val lat =
@@ -476,10 +360,13 @@ class MainActivity : Activity() {
                             !lng.isNaN()
                         ) {
 
-                            imported.add(
+                            places.add(
                                 Place(
                                     name = name,
-                                    address = address,
+                                    address =
+                                        item.optString(
+                                            "address"
+                                        ),
                                     lat = lat,
                                     lng = lng
                                 )
@@ -488,37 +375,26 @@ class MainActivity : Activity() {
                     }
 
                     if (
-                        imported.isEmpty()
+                        places.isEmpty()
                     ) {
 
-                        importing = false
-                        scanStarted = false
-
-                        progress.visibility =
-                            View.GONE
-
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Nessun luogo valido trovato",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        addLog(
+                            "NESSUN LUOGO VALIDO NELL'IMPORT"
+                        )
 
                         return@runOnUiThread
                     }
 
-                    places.clear()
-                    places.addAll(imported)
-
                     savePlaces()
 
+                    importFinished = true
+                    importing = false
+
                     progress.visibility =
-                        View.GONE
+                        ProgressBar.GONE
 
                     webView.visibility =
-                        View.GONE
-
-                    importing = false
-                    scanStarted = false
+                        WebView.GONE
 
                     showPlaces()
 
@@ -528,18 +404,30 @@ class MainActivity : Activity() {
                         Toast.LENGTH_SHORT
                     ).show()
 
+                    addLog(
+                        """
+                        ==============================
+                        IMPORTAZIONE COMPLETATA
+
+                        LUOGHI:
+                        ${places.size}
+
+                        ==============================
+                        """.trimIndent()
+                    )
+
                 } catch (
                     e: Exception
                 ) {
 
                     importing = false
-                    scanStarted = false
+
+                    addLog(
+                        "ERRORE importPlaces: ${e.message}"
+                    )
 
                     progress.visibility =
-                        View.GONE
-
-                    webView.visibility =
-                        View.GONE
+                        ProgressBar.GONE
 
                     Toast.makeText(
                         this@MainActivity,
@@ -555,7 +443,7 @@ class MainActivity : Activity() {
     // RICONOSCIMENTO GOOGLE MAPS
     // ============================================================
 
-    private fun isGoogleMapsPage(
+    private fun looksLikeGoogleMapsPage(
         url: String
     ): Boolean {
 
@@ -566,526 +454,721 @@ class MainActivity : Activity() {
             "google.com/maps"
         ) ||
         lower.contains(
-            "maps.google."
-        ) ||
-        lower.contains(
             "google.it/maps"
         ) ||
         lower.contains(
-            "/local/userlists/"
+            "maps.google.com"
         ) ||
         lower.contains(
-            "/maps/preview/"
+            "consent.google.com"
+        ) ||
+        lower.contains(
+            "/local/userlists/"
         )
     }
 
     // ============================================================
-    // SCANSIONE
+    // RICONOSCIMENTO LISTA
+    // ============================================================
+
+    private fun isGoogleListUrl(
+        url: String
+    ): Boolean {
+
+        val lower =
+            url.lowercase()
+
+        val direct =
+            lower.contains(
+                "/local/userlists/list/"
+            )
+
+        val mapsData =
+            lower.contains(
+                "/maps/@/data="
+            ) &&
+            lower.contains(
+                "!11m2!2s"
+            )
+
+        val userList =
+            lower.contains(
+                "userlists"
+            )
+
+        return direct ||
+               mapsData ||
+               userList
+    }
+
+    // ============================================================
+    // IMPORTAZIONE
     // ============================================================
 
     private fun scanGoogleList() {
 
-        if (
-            !importing ||
-            scanStarted
-        ) {
-            return
+        runOnUiThread {
+
+            progress.visibility =
+                ProgressBar.VISIBLE
+
+            webView.visibility =
+                WebView.VISIBLE
         }
 
-        scanStarted = true
-
         addLog(
-            "AVVIO SCANSIONE AUTOMATICA"
+            """
+            ==============================
+            AVVIO IMPORTAZIONE GOOGLE MAPS
+
+            ==============================
+            """.trimIndent()
         )
 
-        val javascript = """
+        handler.postDelayed(
+            {
 
-            (async function() {
+                webView.evaluateJavascript(
+                    buildImportJavascript(),
+                    null
+                )
+
+            },
+            500
+        )
+    }
+
+    // ============================================================
+    // JAVASCRIPT IMPORT
+    // ============================================================
+
+    private fun buildImportJavascript(): String {
+
+        return """
+        (async function() {
+
+            try {
+
+                TravelPins.log(
+                    '===== TRAVELPINS IMPORT START ====='
+                );
+
+                var currentUrl =
+                    window.location.href;
+
+                TravelPins.log(
+                    'URL CORRENTE: ' +
+                    currentUrl
+                );
+
+                // =====================================================
+                // RACCOLTA POSSIBILI URL
+                // =====================================================
+
+                var urls = [];
+
+                function addUrl(value) {
+
+                    if (
+                        !value ||
+                        typeof value !== 'string'
+                    ) {
+                        return;
+                    }
+
+                    if (
+                        urls.indexOf(value) < 0
+                    ) {
+
+                        urls.push(value);
+                    }
+                }
+
+                addUrl(currentUrl);
 
                 try {
 
-                    TravelPins.log(
-                        'URL ANALIZZATO: ' +
-                        window.location.href
-                    );
+                    var links =
+                        document.querySelectorAll(
+                            'a[href]'
+                        );
 
-                    // =================================================
-                    // 1. URL
-                    // =================================================
+                    for (
+                        var i = 0;
+                        i < links.length;
+                        i++
+                    ) {
 
-                    var currentUrl =
-                        window.location.href;
+                        addUrl(
+                            links[i].href
+                        );
+                    }
 
-                    // =================================================
-                    // 2. LIST ID
-                    // =================================================
+                } catch(e) {}
 
-                    var listId = '';
+                // =====================================================
+                // CERCA LIST ID
+                // =====================================================
 
-                    var match =
-                        currentUrl.match(
+                var listId = '';
+
+                function findListId(
+                    value
+                ) {
+
+                    if (
+                        !value ||
+                        typeof value !== 'string'
+                    ) {
+
+                        return '';
+                    }
+
+                    var match;
+
+                    // !11m2!2sLIST_ID
+
+                    match =
+                        value.match(
                             /!11m2!2s([^!&]+)/i
                         );
 
-                    if (match) {
+                    if (
+                        match &&
+                        match[1]
+                    ) {
 
-                        listId =
-                            match[1];
+                        return match[1];
                     }
 
-                    if (!listId) {
+                    // /local/userlists/list/LIST_ID
 
-                        match =
-                            currentUrl.match(
-                                /\/local\/userlists\/list\/([^?\/]+)/i
-                            );
-
-                        if (match) {
-
-                            listId =
-                                match[1];
-                        }
-                    }
-
-                    if (!listId) {
-
-                        match =
-                            currentUrl.match(
-                                /2s([A-Za-z0-9_-]{20,})/
-                            );
-
-                        if (match) {
-
-                            listId =
-                                match[1];
-                        }
-                    }
-
-                    /*
-                     * Alcuni URL Google Maps possono
-                     * avere il parametro list=.
-                     */
-                    if (!listId) {
-
-                        match =
-                            currentUrl.match(
-                                /[?&]list=([^&]+)/i
-                            );
-
-                        if (match) {
-
-                            listId =
-                                decodeURIComponent(
-                                    match[1]
-                                );
-                        }
-                    }
-
-                    if (!listId) {
-
-                        TravelPins.log(
-                            'LIST ID NON TROVATO'
+                    match =
+                        value.match(
+                            /\/local\/userlists\/list\/([^?\/&#]+)/i
                         );
 
-                        /*
-                         * Riproviamo una volta dopo
-                         * che Google ha terminato
-                         * eventuali redirect.
-                         */
-                        setTimeout(
-                            function() {
+                    if (
+                        match &&
+                        match[1]
+                    ) {
 
-                                TravelPins.log(
-                                    'RIPROVO ESTRAZIONE LIST ID'
-                                );
-
-                                window.location.reload();
-
-                            },
-                            1200
-                        );
-
-                        return;
+                        return match[1];
                     }
 
-                    TravelPins.log(
-                        'LIST ID: ' +
+                    // 2sLIST_ID
+
+                    match =
+                        value.match(
+                            /(?:^|[!\/])2s([A-Za-z0-9_-]{20,})/i
+                        );
+
+                    if (
+                        match &&
+                        match[1]
+                    ) {
+
+                        return match[1];
+                    }
+
+                    // userlists/.../LIST_ID
+
+                    match =
+                        value.match(
+                            /userlists[^A-Za-z0-9_-]+([A-Za-z0-9_-]{20,})/i
+                        );
+
+                    if (
+                        match &&
+                        match[1]
+                    ) {
+
+                        return match[1];
+                    }
+
+                    return '';
+                }
+
+                for (
+                    var u = 0;
+                    u < urls.length;
+                    u++
+                ) {
+
+                    listId =
+                        findListId(
+                            urls[u]
+                        );
+
+                    if (
                         listId
-                    );
-
-                    // =================================================
-                    // 3. GETLIST
-                    // =================================================
-
-                    var pb =
-                        '!1m4' +
-                        '!1s' +
-                        encodeURIComponent(
-                            listId
-                        ) +
-                        '!2e1' +
-                        '!3m1!1e1' +
-                        '!2e2' +
-                        '!3e3' +
-                        '!4i500' +
-                        '!8i3' +
-                        '!16b1';
-
-                    var endpoint =
-                        '/maps/preview/entitylist/getlist' +
-                        '?authuser=0' +
-                        '&hl=it' +
-                        '&gl=it' +
-                        '&pb=' +
-                        pb;
-
-                    TravelPins.log(
-                        'CHIAMATA GETLIST'
-                    );
-
-                    var response =
-                        await fetch(
-                            endpoint,
-                            {
-                                method: 'GET',
-                                credentials: 'include',
-                                cache: 'no-store'
-                            }
-                        );
-
-                    TravelPins.log(
-                        'GETLIST HTTP: ' +
-                        response.status
-                    );
-
-                    var raw =
-                        await response.text();
-
-                    TravelPins.log(
-                        'GETLIST LENGTH: ' +
-                        raw.length
-                    );
-
-                    if (
-                        !raw ||
-                        raw.length < 10
                     ) {
 
                         TravelPins.log(
-                            'GETLIST VUOTA'
+                            'LIST ID TROVATO IN URL: ' +
+                            urls[u]
                         );
 
-                        return;
+                        break;
                     }
+                }
 
-                    // =================================================
-                    // 4. XSSI
-                    // =================================================
+                // =====================================================
+                // CERCA NEL DOCUMENTO
+                // =====================================================
 
-                    if (
-                        raw.indexOf(")]}'") === 0
-                    ) {
-
-                        raw =
-                            raw.substring(4);
-
-                        if (
-                            raw.charAt(0) === '\\n'
-                        ) {
-
-                            raw =
-                                raw.substring(1);
-                        }
-                    }
-
-                    // =================================================
-                    // 5. JSON
-                    // =================================================
-
-                    var data;
+                if (!listId) {
 
                     try {
 
-                        data =
-                            JSON.parse(raw);
+                        var html =
+                            document.documentElement
+                                .innerHTML;
 
-                    } catch(e) {
-
-                        TravelPins.log(
-                            'JSON PARSE FALLITO: ' +
-                            e.message
-                        );
-
-                        return;
-                    }
-
-                    TravelPins.log(
-                        'JSON PARSATO'
-                    );
-
-                    // =================================================
-                    // 6. UTILITIES
-                    // =================================================
-
-                    var places = [];
-
-                    function isNumber(v) {
-
-                        return (
-                            typeof v === 'number' &&
-                            isFinite(v)
-                        );
-                    }
-
-                    function looksLikeLatLng(
-                        a,
-                        b
-                    ) {
-
-                        return (
-                            isNumber(a) &&
-                            isNumber(b) &&
-                            Math.abs(a) <= 90 &&
-                            Math.abs(b) <= 180
-                        );
-                    }
-
-                    function cleanString(
-                        value
-                    ) {
-
-                        if (
-                            typeof value !==
-                            'string'
-                        ) {
-
-                            return '';
-                        }
-
-                        return value
-                            .replace(
-                                /\\s+/g,
-                                ' '
-                            )
-                            .trim();
-                    }
-
-                    function isUsefulName(
-                        value
-                    ) {
-
-                        var s =
-                            cleanString(
-                                value
+                        listId =
+                            findListId(
+                                html
                             );
 
-                        if (
-                            !s ||
-                            s.length < 2 ||
-                            s.length > 250
-                        ) {
+                    } catch(e) {}
+                }
 
-                            return false;
-                        }
+                TravelPins.log(
+                    'LIST ID FINALE: ' +
+                    (
+                        listId ||
+                        'NON TROVATO'
+                    )
+                );
 
-                        if (
-                            s.indexOf(
-                                'http://'
-                            ) === 0 ||
-                            s.indexOf(
-                                'https://'
-                            ) === 0
-                        ) {
+                if (!listId) {
 
-                            return false;
-                        }
+                    TravelPins.log(
+                        'ERRORE: impossibile determinare LIST ID'
+                    );
 
-                        return true;
-                    }
+                    return;
+                }
 
-                    // =================================================
-                    // 7. PLACE PARSER
-                    // =================================================
+                // =====================================================
+                // FUNZIONE PARSER
+                // =====================================================
 
-                    function tryKnownPlace(
-                        x
+                function cleanString(
+                    value
+                ) {
+
+                    if (
+                        typeof value !== 'string'
                     ) {
 
-                        try {
-
-                            if (
-                                !Array.isArray(x) ||
-                                x.length < 3
-                            ) {
-
-                                return;
-                            }
-
-                            var name =
-                                cleanString(
-                                    x[2]
-                                );
-
-                            if (
-                                !isUsefulName(
-                                    name
-                                )
-                            ) {
-
-                                return;
-                            }
-
-                            var envelope =
-                                x[1];
-
-                            if (
-                                !Array.isArray(
-                                    envelope
-                                )
-                            ) {
-
-                                return;
-                            }
-
-                            var coordBlock =
-                                envelope[5];
-
-                            if (
-                                !Array.isArray(
-                                    coordBlock
-                                )
-                            ) {
-
-                                return;
-                            }
-
-                            var lat =
-                                coordBlock[2];
-
-                            var lng =
-                                coordBlock[3];
-
-                            if (
-                                !looksLikeLatLng(
-                                    lat,
-                                    lng
-                                )
-                            ) {
-
-                                return;
-                            }
-
-                            var address = '';
-
-                            if (
-                                typeof x[3] ===
-                                'string'
-                            ) {
-
-                                address =
-                                    cleanString(
-                                        x[3]
-                                    );
-                            }
-
-                            places.push({
-
-                                name:
-                                    name,
-
-                                address:
-                                    address,
-
-                                lat:
-                                    lat,
-
-                                lng:
-                                    lng
-
-                            });
-
-                        } catch(e) {}
+                        return '';
                     }
 
-                    // =================================================
-                    // 8. WALK
-                    // =================================================
+                    return value
+                        .replace(
+                            /\\s+/g,
+                            ' '
+                        )
+                        .trim();
+                }
 
-                    function walk(
-                        node
+                function isNumber(v) {
+
+                    return (
+                        typeof v === 'number' &&
+                        isFinite(v)
+                    );
+                }
+
+                function looksLikeLatLng(
+                    lat,
+                    lng
+                ) {
+
+                    return (
+                        isNumber(lat) &&
+                        isNumber(lng) &&
+                        Math.abs(lat) <= 90 &&
+                        Math.abs(lng) <= 180
+                    );
+                }
+
+                function usefulName(
+                    value
+                ) {
+
+                    var s =
+                        cleanString(
+                            value
+                        );
+
+                    if (
+                        !s ||
+                        s.length < 2 ||
+                        s.length > 250
                     ) {
 
+                        return false;
+                    }
+
+                    if (
+                        s.indexOf(
+                            'http://'
+                        ) === 0 ||
+                        s.indexOf(
+                            'https://'
+                        ) === 0
+                    ) {
+
+                        return false;
+                    }
+
+                    return true;
+                }
+
+                var places = [];
+
+                function tryKnownPlace(
+                    x
+                ) {
+
+                    try {
+
                         if (
-                            node === null ||
-                            node === undefined
+                            !Array.isArray(x) ||
+                            x.length < 3
                         ) {
 
                             return;
                         }
 
-                        if (
-                            Array.isArray(node)
-                        ) {
-
-                            tryKnownPlace(
-                                node
+                        var name =
+                            cleanString(
+                                x[2]
                             );
 
-                            for (
-                                var i = 0;
-                                i < node.length;
-                                i++
-                            ) {
-
-                                walk(
-                                    node[i]
-                                );
-                            }
-
-                        } else if (
-                            typeof node ===
-                            'object'
+                        if (
+                            !usefulName(
+                                name
+                            )
                         ) {
 
-                            for (
-                                var key in node
-                            ) {
-
-                                try {
-
-                                    walk(
-                                        node[key]
-                                    );
-
-                                } catch(e) {}
-                            }
+                            return;
                         }
+
+                        var envelope =
+                            x[1];
+
+                        if (
+                            !Array.isArray(
+                                envelope
+                            )
+                        ) {
+
+                            return;
+                        }
+
+                        var coordBlock =
+                            envelope[5];
+
+                        if (
+                            !Array.isArray(
+                                coordBlock
+                            )
+                        ) {
+
+                            return;
+                        }
+
+                        var lat =
+                            coordBlock[2];
+
+                        var lng =
+                            coordBlock[3];
+
+                        if (
+                            !looksLikeLatLng(
+                                lat,
+                                lng
+                            )
+                        ) {
+
+                            return;
+                        }
+
+                        var address = '';
+
+                        if (
+                            typeof x[3] ===
+                            'string'
+                        ) {
+
+                            address =
+                                cleanString(
+                                    x[3]
+                                );
+                        }
+
+                        places.push({
+
+                            name:
+                                name,
+
+                            address:
+                                address,
+
+                            lat:
+                                lat,
+
+                            lng:
+                                lng
+                        });
+
+                    } catch(e) {}
+                }
+
+                function walk(
+                    node
+                ) {
+
+                    if (!node) {
+                        return;
                     }
 
-                    walk(data);
+                    if (
+                        Array.isArray(
+                            node
+                        )
+                    ) {
 
-                    // =================================================
-                    // 9. DUPLICATI
-                    // =================================================
+                        tryKnownPlace(
+                            node
+                        );
+
+                        for (
+                            var i = 0;
+                            i < node.length;
+                            i++
+                        ) {
+
+                            walk(
+                                node[i]
+                            );
+                        }
+
+                    } else if (
+                        typeof node ===
+                        'object'
+                    ) {
+
+                        for (
+                            var key in node
+                        ) {
+
+                            try {
+
+                                walk(
+                                    node[key]
+                                );
+
+                            } catch(e) {}
+                        }
+                    }
+                }
+
+                // =====================================================
+                // TENTATIVO GETLIST
+                // =====================================================
+
+                var endpoints = [];
+
+                function addEndpoint(
+                    value
+                ) {
+
+                    if (
+                        endpoints.indexOf(value) < 0
+                    ) {
+
+                        endpoints.push(value);
+                    }
+                }
+
+                var encodedId =
+                    encodeURIComponent(
+                        listId
+                    );
+
+                // Metodo che aveva già funzionato
+                addEndpoint(
+                    '/maps/preview/entitylist/getlist' +
+                    '?authuser=0' +
+                    '&hl=it' +
+                    '&gl=it' +
+                    '&pb=' +
+                    '!1m4!1s' +
+                    encodedId +
+                    '!2e1!3m1!1e1!2e2!3e3!4i500!8i3!16b1'
+                );
+
+                // Variante senza encodeURIComponent
+                addEndpoint(
+                    '/maps/preview/entitylist/getlist' +
+                    '?authuser=0' +
+                    '&hl=it' +
+                    '&gl=it' +
+                    '&pb=' +
+                    '!1m4!1s' +
+                    listId +
+                    '!2e1!3m1!1e1!2e2!3e3!4i500!8i3!16b1'
+                );
+
+                var success = false;
+
+                for (
+                    var ep = 0;
+                    ep < endpoints.length;
+                    ep++
+                ) {
+
+                    try {
+
+                        TravelPins.log(
+                            'TENTATIVO GETLIST #' +
+                            (ep + 1)
+                        );
+
+                        TravelPins.log(
+                            endpoints[ep]
+                        );
+
+                        var response =
+                            await fetch(
+                                endpoints[ep],
+                                {
+                                    method: 'GET',
+                                    credentials: 'include',
+                                    cache: 'no-store'
+                                }
+                            );
+
+                        TravelPins.log(
+                            'HTTP: ' +
+                            response.status
+                        );
+
+                        var raw =
+                            await response.text();
+
+                        TravelPins.log(
+                            'RISPOSTA: ' +
+                            raw.length +
+                            ' caratteri'
+                        );
+
+                        if (
+                            !raw ||
+                            raw.length < 10
+                        ) {
+
+                            continue;
+                        }
+
+                        // =================================================
+                        // XSSI
+                        // =================================================
+
+                        if (
+                            raw.indexOf(
+                                ")]}'"
+                            ) === 0
+                        ) {
+
+                            raw =
+                                raw.substring(4);
+
+                            if (
+                                raw.charAt(0) === '\\n'
+                            ) {
+
+                                raw =
+                                    raw.substring(1);
+                            }
+                        }
+
+                        var data;
+
+                        try {
+
+                            data =
+                                JSON.parse(
+                                    raw
+                                );
+
+                        } catch(e) {
+
+                            TravelPins.log(
+                                'JSON FALLITO: ' +
+                                e.message
+                            );
+
+                            continue;
+                        }
+
+                        places = [];
+
+                        walk(data);
+
+                        TravelPins.log(
+                            'PLACE TROVATI: ' +
+                            places.length
+                        );
+
+                        if (
+                            places.length > 0
+                        ) {
+
+                            success = true;
+
+                            break;
+                        }
+
+                    } catch(e) {
+
+                        TravelPins.log(
+                            'ERRORE GETLIST: ' +
+                            e.message
+                        );
+                    }
+                }
+
+                // =====================================================
+                // DEDUPLICAZIONE
+                // =====================================================
+
+                if (
+                    success
+                ) {
 
                     var unique = [];
                     var seen = {};
 
                     for (
-                        var i = 0;
-                        i < places.length;
-                        i++
+                        var p = 0;
+                        p < places.length;
+                        p++
                     ) {
 
-                        var p =
-                            places[i];
+                        var place =
+                            places[p];
 
                         var key =
-                            p.name +
+                            place.name +
                             '|' +
-                            p.lat +
+                            place.lat +
                             '|' +
-                            p.lng;
+                            place.lng;
 
                         if (
                             !seen[key]
@@ -1093,191 +1176,74 @@ class MainActivity : Activity() {
 
                             seen[key] = true;
 
-                            unique.push(p);
+                            unique.push(
+                                place
+                            );
                         }
                     }
 
-                    TravelPins.log(
-                        'LUOGHI TROVATI: ' +
-                        unique.length
-                    );
-
-                    // =================================================
-                    // 10. INVIO
-                    // =================================================
-
-                    if (
-                        unique.length > 0
-                    ) {
-
-                        TravelPins.importPlaces(
-                            JSON.stringify(
-                                unique
-                            )
-                        );
-
-                    } else {
-
-                        TravelPins.log(
-                            'NESSUN LUOGO TROVATO'
-                        );
-                    }
-
-                } catch(e) {
+                    places =
+                        unique;
 
                     TravelPins.log(
-                        'ERRORE SCANSIONE: ' +
-                        e.message
+                        'PLACE UNICI: ' +
+                        places.length
                     );
+
+                    TravelPins.importPlaces(
+                        JSON.stringify(
+                            places
+                        )
+                    );
+
+                    TravelPins.log(
+                        '===== IMPORT COMPLETATO ====='
+                    );
+
+                    return;
                 }
 
-            })();
+                // =====================================================
+                // FALLBACK: CERCA DATI GIÀ CARICATI NELLA PAGINA
+                // =====================================================
 
-        """.trimIndent()
+                TravelPins.log(
+                    'GETLIST NON HA RESTITUITO LUOGHI.'
+                );
 
-        webView.evaluateJavascript(
-            javascript
-        ) { result ->
-
-            addLog(
-                "CALLBACK SCANSIONE: $result"
-            )
-        }
-
-        /*
-         * Timeout di sicurezza.
-         *
-         * Se dopo 15 secondi Google non ha
-         * restituito nulla, non lasciamo l'app
-         * bloccata per sempre.
-         */
-        handler.postDelayed(
-            {
-
-                if (
-                    importing &&
-                    scanStarted
-                ) {
-
-                    scanStarted = false
-                    importing = false
-
-                    progress.visibility =
-                        View.GONE
-
-                    webView.visibility =
-                        View.GONE
-
-                    Toast.makeText(
-                        this,
-                        "Google Maps non ha restituito la lista. Riprova a condividere il link.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-
-            },
-            15000
-        )
-    }
-
-    // ============================================================
-    // CONSENSO GOOGLE AUTOMATICO
-    // ============================================================
-
-    private fun acceptGoogleConsent() {
-
-        val javascript = """
-
-            (function() {
+                TravelPins.log(
+                    'AVVIO FALLBACK DATI PAGINA.'
+                );
 
                 try {
 
-                    var elements =
-                        document.querySelectorAll(
-                            'button, div[role="button"], input'
-                        );
-
-                    for (
-                        var i = 0;
-                        i < elements.length;
-                        i++
-                    ) {
-
-                        var e =
-                            elements[i];
-
-                        var text =
-                            (
-                                e.innerText ||
-                                e.value ||
-                                e.getAttribute(
-                                    'aria-label'
-                                ) ||
-                                ''
-                            )
-                            .trim()
-                            .toLowerCase();
-
-                        if (
-                            text ===
-                            'accetta tutto' ||
-                            text ===
-                            'accetta' ||
-                            text ===
-                            'accept all' ||
-                            text ===
-                            'accept'
-                        ) {
-
-                            e.click();
-
-                            TravelPins.log(
-                                'CONSENSO GOOGLE ACCETTATO AUTOMATICAMENTE'
-                            );
-
-                            return;
-                        }
-                    }
+                    var text =
+                        document.documentElement
+                            .innerText || '';
 
                     TravelPins.log(
-                        'PULSANTE CONSENSO NON TROVATO'
+                        'TESTO PAGINA: ' +
+                        text.length +
+                        ' caratteri'
                     );
 
-                } catch(e) {
+                } catch(e) {}
 
-                    TravelPins.log(
-                        'ERRORE CONSENSO: ' +
-                        e.message
-                    );
-                }
+                TravelPins.log(
+                    '===== GOOGLE MAPS NON HA RESTITUITO LA LISTA ====='
+                );
 
-            })();
+            } catch(e) {
 
+                TravelPins.log(
+                    'ERRORE GENERALE IMPORT: ' +
+                    e.message
+                );
+
+            }
+
+        })();
         """.trimIndent()
-
-        webView.evaluateJavascript(
-            javascript,
-            null
-        )
-
-        /*
-         * Dopo il consenso riproviamo
-         * automaticamente.
-         */
-        handler.postDelayed(
-            {
-
-                if (
-                    importing &&
-                    !scanStarted
-                ) {
-
-                    scanGoogleList()
-                }
-
-            },
-            1500
-        )
     }
 
     // ============================================================
@@ -1305,16 +1271,80 @@ class MainActivity : Activity() {
                 window.fetch =
                     function() {
 
+                        try {
+
+                            var input =
+                                arguments[0];
+
+                            var url =
+                                typeof input ===
+                                'string'
+                                ? input
+                                : input.url;
+
+                            if (
+                                url &&
+                                (
+                                    url.indexOf(
+                                        'entitylist'
+                                    ) >= 0 ||
+                                    url.indexOf(
+                                        'userlists'
+                                    ) >= 0
+                                )
+                            ) {
+
+                                TravelPins.log(
+                                    'FETCH GOOGLE: ' +
+                                    url
+                                );
+                            }
+
+                        } catch(e) {}
+
                         return originalFetch.apply(
                             this,
                             arguments
                         );
                     };
 
+                TravelPins.log(
+                    'NETWORK HOOK INSTALLATO'
+                );
+
             })();
             """.trimIndent(),
             null
         )
+    }
+
+    // ============================================================
+    // REQUEST MONITOR
+    // ============================================================
+
+    private fun inspectRequest(
+        request: WebResourceRequest
+    ) {
+
+        val url =
+            request.url.toString()
+
+        val lower =
+            url.lowercase()
+
+        if (
+            lower.contains("entitylist") ||
+            lower.contains("userlists")
+        ) {
+
+            addLog(
+                """
+                GOOGLE REQUEST:
+                ${request.method}
+                $url
+                """.trimIndent()
+            )
+        }
     }
 
     // ============================================================
@@ -1329,23 +1359,14 @@ class MainActivity : Activity() {
             TextView(this).apply {
 
                 text =
-                    if (
-                        places.isEmpty()
-                    ) {
-
+                    if (places.isEmpty()) {
                         "📍 TravelPins"
-
                     } else {
-
                         "📍 ${places.size} luoghi"
                     }
 
                 textSize = 27f
-
-                setTextColor(
-                    Color.BLACK
-                )
-
+                setTextColor(Color.BLACK)
                 setPadding(
                     0,
                     5,
@@ -1367,11 +1388,7 @@ class MainActivity : Activity() {
                         "Condividi una lista di Google Maps con TravelPins per iniziare."
 
                     textSize = 17f
-
-                    setTextColor(
-                        Color.GRAY
-                    )
-
+                    setTextColor(Color.GRAY)
                     setPadding(
                         0,
                         10,
@@ -1386,8 +1403,8 @@ class MainActivity : Activity() {
         }
 
         places.forEachIndexed {
-            index,
-            place ->
+                index,
+                place ->
 
             addPlaceCard(
                 index,
@@ -1396,10 +1413,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // ============================================================
-    // CARD LUOGO
-    // ============================================================
-
     private fun addPlaceCard(
         index: Int,
         place: Place
@@ -1407,8 +1420,7 @@ class MainActivity : Activity() {
 
         val category =
             categories.find {
-                it.id ==
-                place.categoryId
+                it.id == place.categoryId
             }
 
         val card =
@@ -1431,10 +1443,6 @@ class MainActivity : Activity() {
                         245
                     )
                 )
-
-                setOnClickListener {
-                    chooseCategory(place)
-                }
             }
 
         val title =
@@ -1444,10 +1452,7 @@ class MainActivity : Activity() {
                     "${index + 1}. ${place.name}"
 
                 textSize = 18f
-
-                setTextColor(
-                    Color.BLACK
-                )
+                setTextColor(Color.BLACK)
             }
 
         card.addView(title)
@@ -1463,10 +1468,7 @@ class MainActivity : Activity() {
                         place.address
 
                     textSize = 14f
-
-                    setTextColor(
-                        Color.DKGRAY
-                    )
+                    setTextColor(Color.DKGRAY)
 
                     setPadding(
                         0,
@@ -1483,14 +1485,9 @@ class MainActivity : Activity() {
             TextView(this).apply {
 
                 text =
-                    if (
-                        category == null
-                    ) {
-
+                    if (category == null) {
                         "⚪ Nessuna categoria"
-
                     } else {
-
                         "${category.icon} ${category.name}"
                     }
 
@@ -1514,6 +1511,10 @@ class MainActivity : Activity() {
             }
 
         card.addView(categoryText)
+
+        card.setOnClickListener {
+            chooseCategory(place)
+        }
 
         val params =
             LinearLayout.LayoutParams(
@@ -1564,13 +1565,11 @@ class MainActivity : Activity() {
             .setItems(
                 names
             ) {
-                _: android.content.DialogInterface,
-                which: Int ->
+                    _: DialogInterface,
+                    which: Int ->
 
                 place.categoryId =
-                    categories[
-                        which
-                    ].id
+                    categories[which].id
 
                 savePlaces()
 
@@ -1579,10 +1578,11 @@ class MainActivity : Activity() {
             .setNegativeButton(
                 "Nessuna categoria"
             ) {
-                _: android.content.DialogInterface,
-                _: Int ->
+                    _: DialogInterface,
+                    _: Int ->
 
-                place.categoryId = ""
+                place.categoryId =
+                    ""
 
                 savePlaces()
 
@@ -1612,7 +1612,7 @@ class MainActivity : Activity() {
             }
 
         categories.forEach {
-            category ->
+                category ->
 
             val row =
                 LinearLayout(this).apply {
@@ -1694,9 +1694,11 @@ class MainActivity : Activity() {
             )
             .setView(layout)
             .setPositiveButton(
-                "Chiudi",
-                null
-            )
+                "Chiudi"
+            ) {
+                    _: DialogInterface,
+                    _: Int ->
+            }
             .show()
     }
 
@@ -1726,7 +1728,7 @@ class MainActivity : Activity() {
                 hint =
                     "Nome categoria"
 
-                setSingleLine()
+                setSingleLine(true)
             }
 
         val icons =
@@ -1743,7 +1745,10 @@ class MainActivity : Activity() {
                 "🚗",
                 "🏨",
                 "⭐",
-                "🌿"
+                "🌿",
+                "⛪",
+                "🎭",
+                "🏛️"
             )
 
         val iconSpinner =
@@ -1774,8 +1779,8 @@ class MainActivity : Activity() {
             .setPositiveButton(
                 "Crea"
             ) {
-                _: android.content.DialogInterface,
-                _: Int ->
+                    _: DialogInterface,
+                    _: Int ->
 
                 val categoryName =
                     name.text
@@ -1805,8 +1810,10 @@ class MainActivity : Activity() {
                             categoryName,
 
                         color =
-                            getCategoryColor(
-                                categories.size
+                            Color.rgb(
+                                30,
+                                100,
+                                200
                             ),
 
                         icon =
@@ -1819,8 +1826,6 @@ class MainActivity : Activity() {
 
                 saveCategories()
 
-                showPlaces()
-
                 Toast.makeText(
                     this,
                     "Categoria creata",
@@ -1828,75 +1833,12 @@ class MainActivity : Activity() {
                 ).show()
             }
             .setNegativeButton(
-                "Annulla",
-                null
-            )
+                "Annulla"
+            ) {
+                    _: DialogInterface,
+                    _: Int ->
+            }
             .show()
-    }
-
-    // ============================================================
-    // COLORI CATEGORIE
-    // ============================================================
-
-    private fun getCategoryColor(
-        index: Int
-    ): Int {
-
-        val colors =
-            intArrayOf(
-
-                Color.rgb(
-                    30,
-                    100,
-                    200
-                ),
-
-                Color.rgb(
-                    220,
-                    80,
-                    50
-                ),
-
-                Color.rgb(
-                    40,
-                    150,
-                    70
-                ),
-
-                Color.rgb(
-                    140,
-                    70,
-                    190
-                ),
-
-                Color.rgb(
-                    220,
-                    140,
-                    30
-                ),
-
-                Color.rgb(
-                    20,
-                    150,
-                    170
-                ),
-
-                Color.rgb(
-                    210,
-                    50,
-                    120
-                ),
-
-                Color.rgb(
-                    90,
-                    90,
-                    90
-                )
-            )
-
-        return colors[
-            index % colors.size
-        ]
     }
 
     // ============================================================
@@ -1909,7 +1851,7 @@ class MainActivity : Activity() {
             JSONArray()
 
         categories.forEach {
-            category ->
+                category ->
 
             val obj =
                 JSONObject()
@@ -2030,7 +1972,6 @@ class MainActivity : Activity() {
 
                 categories.add(
                     Category(
-
                         id =
                             obj.getString(
                                 "id"
@@ -2072,7 +2013,7 @@ class MainActivity : Activity() {
             JSONArray()
 
         places.forEach {
-            place ->
+                place ->
 
             val obj =
                 JSONObject()
@@ -2154,7 +2095,6 @@ class MainActivity : Activity() {
 
                 places.add(
                     Place(
-
                         name =
                             obj.optString(
                                 "name"
@@ -2215,6 +2155,10 @@ class MainActivity : Activity() {
                 !fallback.isNullOrBlank()
             ) {
 
+                addLog(
+                    "FALLBACK GOOGLE: $fallback"
+                )
+
                 webView.loadUrl(
                     fallback
                 )
@@ -2236,8 +2180,7 @@ class MainActivity : Activity() {
 
                 var fallbackText =
                     intentUrl.substring(
-                        index +
-                            marker.length
+                        index + marker.length
                     )
 
                 val end =
@@ -2261,17 +2204,21 @@ class MainActivity : Activity() {
                         fallbackText
                     )
 
+                addLog(
+                    "FALLBACK GOOGLE: $fallbackText"
+                )
+
                 webView.loadUrl(
                     fallbackText
                 )
             }
 
         } catch (
-            _: Exception
+            e: Exception
         ) {
 
             addLog(
-                "ERRORE GOOGLE INTENT"
+                "ERRORE GOOGLE INTENT: ${e.message}"
             )
         }
     }
@@ -2301,12 +2248,29 @@ class MainActivity : Activity() {
             sharedText.isNullOrBlank()
         ) {
 
+            Toast.makeText(
+                this,
+                "Nessun contenuto ricevuto",
+                Toast.LENGTH_LONG
+            ).show()
+
             return
         }
 
+        addLog(
+            """
+            ==============================
+            CONDIVISIONE RICEVUTA
+
+            $sharedText
+
+            ==============================
+            """.trimIndent()
+        )
+
         val match =
             Regex(
-                """https?://\S+"""
+                """https?://[^\s]+"""
             ).find(
                 sharedText
             )
@@ -2327,67 +2291,38 @@ class MainActivity : Activity() {
         var url =
             match.value
 
-        /*
-         * Rimuove eventuali caratteri finali
-         * provenienti dal testo condiviso.
-         */
         url =
-            url.trimEnd(
-                '.',
-                ',',
-                ';',
-                ')',
-                ']'
-            )
+            url
+                .trim()
+                .trimEnd(
+                    '.',
+                    ',',
+                    ')',
+                    ']'
+                )
 
-        addLog(
-            "LINK RICEVUTO: $url"
-        )
-
-        importing = true
-        scanStarted = false
+        importing = false
+        importFinished = false
 
         progress.visibility =
-            View.VISIBLE
+            ProgressBar.VISIBLE
 
-        /*
-         * Il WebView ora è realmente nella
-         * gerarchia dell'Activity.
-         */
         webView.visibility =
-            View.VISIBLE
+            WebView.VISIBLE
 
-        /*
-         * Puliamo la pagina precedente.
-         */
-        webView.stopLoading()
+        addLog(
+            """
+            ==============================
+            APERTURA GOOGLE MAPS
 
-        webView.clearHistory()
+            $url
 
-        /*
-         * Partiamo direttamente dal link
-         * ricevuto.
-         */
-        webView.loadUrl(url)
+            ==============================
+            """.trimIndent()
+        )
 
-        /*
-         * Timeout generale.
-         */
-        handler.postDelayed(
-            {
-
-                if (
-                    importing &&
-                    !scanStarted
-                ) {
-
-                    addLog(
-                        "ATTESA GOOGLE MAPS OLTRE IL TEMPO PREVISTO"
-                    )
-                }
-
-            },
-            8000
+        webView.loadUrl(
+            url
         )
     }
 
@@ -2399,13 +2334,13 @@ class MainActivity : Activity() {
         intent: Intent
     ) {
 
-        super.onNewIntent(
-            intent
-        )
+        super.onNewIntent(intent)
 
         setIntent(intent)
 
-        handleIntent(intent)
+        handleIntent(
+            intent
+        )
     }
 
     // ============================================================
@@ -2421,7 +2356,7 @@ class MainActivity : Activity() {
         )
 
         while (
-            log.size > 50
+            log.size > 80
         ) {
 
             log.poll()
@@ -2436,23 +2371,12 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
 
         if (
-            webView.visibility ==
-            View.VISIBLE &&
             webView.canGoBack()
         ) {
 
             webView.goBack()
 
         } else {
-
-            webView.visibility =
-                View.GONE
-
-            progress.visibility =
-                View.GONE
-
-            importing = false
-            scanStarted = false
 
             super.onBackPressed()
         }
