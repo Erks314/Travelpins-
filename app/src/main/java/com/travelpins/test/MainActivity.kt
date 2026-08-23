@@ -1,6 +1,9 @@
 package com.travelpins.test
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -8,6 +11,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -15,7 +19,15 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.*
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.TextView
+import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -54,13 +66,15 @@ class MainActivity : Activity() {
     )
 
     // ============================================================
-    // AVVIO
+    // ON CREATE
     // ============================================================
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         loadCategories()
+        loadPlaces()
+
         createInterface()
         createWebView()
 
@@ -68,7 +82,7 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // INTERFACCIA PRINCIPALE
+    // INTERFACCIA
     // ============================================================
 
     private fun createInterface() {
@@ -80,7 +94,8 @@ class MainActivity : Activity() {
 
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(20, 18, 20, 18)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(16, 12, 16, 12)
             setBackgroundColor(Color.rgb(35, 35, 35))
         }
 
@@ -88,7 +103,7 @@ class MainActivity : Activity() {
             text = "📍 TravelPins"
             textSize = 22f
             setTextColor(Color.WHITE)
-            gravity = android.view.Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
         }
 
         toolbar.addView(
@@ -102,6 +117,7 @@ class MainActivity : Activity() {
 
         val categoriesButton = Button(this).apply {
             text = "Categorie"
+
             setOnClickListener {
                 showCategories()
             }
@@ -114,7 +130,14 @@ class MainActivity : Activity() {
         }
 
         root.addView(toolbar)
-        root.addView(progress)
+
+        root.addView(
+            progress,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         val scroll = ScrollView(this)
 
@@ -136,51 +159,7 @@ class MainActivity : Activity() {
 
         setContentView(root)
 
-        showWelcome()
-    }
-
-    // ============================================================
-    // SCHERMATA INIZIALE
-    // ============================================================
-
-    private fun showWelcome() {
-
-        output.removeAllViews()
-
-        val title = TextView(this).apply {
-            text = "Le tue destinazioni"
-            textSize = 28f
-            setTextColor(Color.BLACK)
-            setPadding(0, 10, 0, 20)
-        }
-
-        output.addView(title)
-
-        val info = TextView(this).apply {
-            text =
-                "Condividi una lista di Google Maps con TravelPins.\n\n" +
-                "I luoghi verranno importati automaticamente e potrai " +
-                "organizzarli nelle tue categorie."
-            textSize = 17f
-            setTextColor(Color.DKGRAY)
-        }
-
-        output.addView(info)
-
-        if (places.isEmpty()) {
-
-            val empty = TextView(this).apply {
-                text = "\n\n📍 Nessun luogo importato."
-                textSize = 18f
-                setTextColor(Color.GRAY)
-            }
-
-            output.addView(empty)
-
-        } else {
-
-            showPlaces()
-        }
+        showPlaces()
     }
 
     // ============================================================
@@ -203,22 +182,26 @@ class MainActivity : Activity() {
             userAgentString =
                 "Mozilla/5.0 (Linux; Android 10) " +
                 "AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) " +
-                "Chrome/131.0.0.0 " +
+                "(KHTML, like Gecko) Chrome/131.0.0.0 " +
                 "Mobile Safari/537.36"
         }
 
         CookieManager.getInstance().setAcceptCookie(true)
 
-        CookieManager.getInstance()
-            .setAcceptThirdPartyCookies(webView, true)
+        CookieManager
+            .getInstance()
+            .setAcceptThirdPartyCookies(
+                webView,
+                true
+            )
 
         webView.addJavascriptInterface(
             TravelPinsBridge(),
             "TravelPins"
         )
 
-        webView.webChromeClient = WebChromeClient()
+        webView.webChromeClient =
+            WebChromeClient()
 
         webView.webViewClient =
             object : WebViewClient() {
@@ -228,9 +211,14 @@ class MainActivity : Activity() {
                     request: WebResourceRequest
                 ): Boolean {
 
-                    val url = request.url.toString()
+                    val url =
+                        request.url.toString()
 
-                    if (url.startsWith("intent://")) {
+                    if (
+                        url.startsWith(
+                            "intent://"
+                        )
+                    ) {
 
                         handleGoogleIntent(url)
 
@@ -255,18 +243,19 @@ class MainActivity : Activity() {
 
                     injectNetworkHook()
 
-                    if (isGoogleListUrl(url)) {
+                    if (
+                        isGoogleListUrl(url) &&
+                        !importing
+                    ) {
 
-                        if (!importing) {
+                        importing = true
 
-                            importing = true
-
-                            handler.postDelayed({
-
+                        handler.postDelayed(
+                            {
                                 scanGoogleList()
-
-                            }, 1200)
-                        }
+                            },
+                            1200
+                        )
                     }
                 }
             }
@@ -287,33 +276,52 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun importPlaces(json: String) {
+        fun importPlaces(
+            json: String
+        ) {
 
             runOnUiThread {
 
                 try {
 
-                    val array = JSONArray(json)
+                    val array =
+                        JSONArray(json)
 
                     places.clear()
 
-                    for (i in 0 until array.length()) {
+                    for (
+                        i in 0 until array.length()
+                    ) {
 
-                        val item = array.getJSONObject(i)
+                        val item =
+                            array.getJSONObject(i)
 
                         places.add(
                             Place(
                                 name =
-                                    item.optString("name"),
+                                    item.optString(
+                                        "name"
+                                    ),
+
                                 address =
-                                    item.optString("address"),
+                                    item.optString(
+                                        "address"
+                                    ),
+
                                 lat =
-                                    item.optDouble("lat"),
+                                    item.optDouble(
+                                        "lat"
+                                    ),
+
                                 lng =
-                                    item.optDouble("lng")
+                                    item.optDouble(
+                                        "lng"
+                                    )
                             )
                         )
                     }
+
+                    savePlaces()
 
                     progress.visibility =
                         ProgressBar.GONE
@@ -325,7 +333,15 @@ class MainActivity : Activity() {
 
                     showPlaces()
 
-                } catch (e: Exception) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "${places.size} luoghi importati",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                } catch (
+                    e: Exception
+                ) {
 
                     importing = false
 
@@ -343,20 +359,20 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // RICONOSCIMENTO LISTA
+    // RICONOSCIMENTO LISTA GOOGLE
     // ============================================================
 
     private fun isGoogleListUrl(
         url: String
     ): Boolean {
 
-        return (
+        val direct =
             url.contains(
                 "/local/userlists/list/",
                 true
             )
-        ) ||
-        (
+
+        val mapsData =
             url.contains(
                 "/maps/@/data=",
                 true
@@ -365,11 +381,12 @@ class MainActivity : Activity() {
                 "!11m2!2s",
                 true
             )
-        )
+
+        return direct || mapsData
     }
 
     // ============================================================
-    // IMPORTAZIONE
+    // IMPORTAZIONE LISTA
     // ============================================================
 
     private fun scanGoogleList() {
@@ -388,6 +405,15 @@ class MainActivity : Activity() {
 
                     var currentUrl =
                         window.location.href;
+
+                    TravelPins.log(
+                        'URL ANALIZZATO: ' +
+                        currentUrl
+                    );
+
+                    // ================================================
+                    // LIST ID
+                    // ================================================
 
                     var listId = '';
 
@@ -414,12 +440,33 @@ class MainActivity : Activity() {
 
                     if (!listId) {
 
+                        match =
+                            currentUrl.match(
+                                /2s([A-Za-z0-9_-]{20,})/
+                            );
+
+                        if (match) {
+                            listId = match[1];
+                        }
+                    }
+
+                    if (!listId) {
+
                         TravelPins.log(
                             'LIST ID NON TROVATO'
                         );
 
                         return;
                     }
+
+                    TravelPins.log(
+                        'LIST ID: ' +
+                        listId
+                    );
+
+                    // ================================================
+                    // GETLIST
+                    // ================================================
 
                     var pb =
                         '!1m4' +
@@ -441,6 +488,11 @@ class MainActivity : Activity() {
                         '&pb=' +
                         pb;
 
+                    TravelPins.log(
+                        'GETLIST URL: ' +
+                        endpoint
+                    );
+
                     var response =
                         await fetch(
                             endpoint,
@@ -451,70 +503,155 @@ class MainActivity : Activity() {
                             }
                         );
 
+                    TravelPins.log(
+                        'GETLIST HTTP: ' +
+                        response.status
+                    );
+
                     var raw =
                         await response.text();
 
+                    TravelPins.log(
+                        'GETLIST LENGTH: ' +
+                        raw.length
+                    );
+
                     if (!raw) {
+
+                        TravelPins.log(
+                            'RISPOSTA VUOTA'
+                        );
+
                         return;
                     }
+
+                    // ================================================
+                    // XSSI
+                    // ================================================
 
                     if (
                         raw.indexOf(")]}'") === 0
                     ) {
 
-                        raw = raw.substring(4);
+                        raw =
+                            raw.substring(4);
 
                         if (
                             raw.charAt(0) === '\\n'
                         ) {
-                            raw = raw.substring(1);
+
+                            raw =
+                                raw.substring(1);
                         }
                     }
 
-                    var data =
-                        JSON.parse(raw);
+                    // ================================================
+                    // JSON
+                    // ================================================
+
+                    var data;
+
+                    try {
+
+                        data =
+                            JSON.parse(raw);
+
+                        TravelPins.log(
+                            'JSON PARSATO CORRETTAMENTE'
+                        );
+
+                    } catch(e) {
+
+                        TravelPins.log(
+                            'JSON PARSE FALLITO: ' +
+                            e.message
+                        );
+
+                        return;
+                    }
+
+                    // ================================================
+                    // UTILITIES
+                    // ================================================
 
                     var places = [];
 
-                    function number(v) {
-                        return typeof v === 'number' &&
-                               isFinite(v);
+                    function isNumber(v) {
+
+                        return (
+                            typeof v === 'number' &&
+                            isFinite(v)
+                        );
                     }
 
-                    function coords(a,b) {
+                    function looksLikeLatLng(
+                        a,
+                        b
+                    ) {
 
-                        return number(a) &&
-                               number(b) &&
-                               Math.abs(a) <= 90 &&
-                               Math.abs(b) <= 180;
+                        return (
+                            isNumber(a) &&
+                            isNumber(b) &&
+                            Math.abs(a) <= 90 &&
+                            Math.abs(b) <= 180
+                        );
                     }
 
-                    function clean(v) {
+                    function cleanString(
+                        value
+                    ) {
 
                         if (
-                            typeof v !== 'string'
+                            typeof value !==
+                            'string'
                         ) {
                             return '';
                         }
 
-                        return v
-                            .replace(/\\s+/g,' ')
+                        return value
+                            .replace(
+                                /\\s+/g,
+                                ' '
+                            )
                             .trim();
                     }
 
-                    function useful(v) {
+                    function isUsefulName(
+                        value
+                    ) {
 
-                        v = clean(v);
+                        var s =
+                            cleanString(value);
 
-                        return (
-                            v.length >= 2 &&
-                            v.length <= 250 &&
-                            v.indexOf('http://') !== 0 &&
-                            v.indexOf('https://') !== 0
-                        );
+                        if (
+                            !s ||
+                            s.length < 2 ||
+                            s.length > 250
+                        ) {
+                            return false;
+                        }
+
+                        if (
+                            s.indexOf(
+                                'http://'
+                            ) === 0 ||
+                            s.indexOf(
+                                'https://'
+                            ) === 0
+                        ) {
+                            return false;
+                        }
+
+                        return true;
                     }
 
-                    function parsePlace(x) {
+                    // ================================================
+                    // PLACE PARSER
+                    // ================================================
+
+                    function tryKnownPlace(
+                        x
+                    ) {
 
                         try {
 
@@ -526,9 +663,15 @@ class MainActivity : Activity() {
                             }
 
                             var name =
-                                clean(x[2]);
+                                cleanString(
+                                    x[2]
+                                );
 
-                            if (!useful(name)) {
+                            if (
+                                !isUsefulName(
+                                    name
+                                )
+                            ) {
                                 return;
                             }
 
@@ -536,50 +679,78 @@ class MainActivity : Activity() {
                                 x[1];
 
                             if (
-                                !Array.isArray(envelope)
+                                !Array.isArray(
+                                    envelope
+                                )
                             ) {
                                 return;
                             }
 
-                            var block =
+                            var coordBlock =
                                 envelope[5];
 
                             if (
-                                !Array.isArray(block)
+                                !Array.isArray(
+                                    coordBlock
+                                )
                             ) {
                                 return;
                             }
 
                             var lat =
-                                block[2];
+                                coordBlock[2];
 
                             var lng =
-                                block[3];
+                                coordBlock[3];
 
-                            if (!coords(lat,lng)) {
+                            if (
+                                !looksLikeLatLng(
+                                    lat,
+                                    lng
+                                )
+                            ) {
                                 return;
                             }
 
                             var address = '';
 
                             if (
-                                typeof x[3] === 'string'
+                                typeof x[3] ===
+                                'string'
                             ) {
+
                                 address =
-                                    clean(x[3]);
+                                    cleanString(
+                                        x[3]
+                                    );
                             }
 
                             places.push({
-                                name:name,
-                                address:address,
-                                lat:lat,
-                                lng:lng
+
+                                name:
+                                    name,
+
+                                address:
+                                    address,
+
+                                lat:
+                                    lat,
+
+                                lng:
+                                    lng
+
                             });
 
                         } catch(e) {}
                     }
 
-                    function walk(node) {
+                    // ================================================
+                    // WALK JSON
+                    // ================================================
+
+                    function walk(
+                        node
+                    ) {
 
                         if (!node) {
                             return;
@@ -589,37 +760,53 @@ class MainActivity : Activity() {
                             Array.isArray(node)
                         ) {
 
-                            parsePlace(node);
+                            tryKnownPlace(
+                                node
+                            );
 
                             for (
-                                var i=0;
-                                i<node.length;
+                                var i = 0;
+                                i < node.length;
                                 i++
                             ) {
-                                walk(node[i]);
+
+                                walk(
+                                    node[i]
+                                );
                             }
 
                         } else if (
-                            typeof node === 'object'
+                            typeof node ===
+                            'object'
                         ) {
 
                             for (
                                 var key in node
                             ) {
 
-                                walk(node[key]);
+                                try {
+
+                                    walk(
+                                        node[key]
+                                    );
+
+                                } catch(e) {}
                             }
                         }
                     }
 
                     walk(data);
 
+                    // ================================================
+                    // DUPLICATI
+                    // ================================================
+
                     var unique = [];
                     var seen = {};
 
                     for (
-                        var i=0;
-                        i<places.length;
+                        var i = 0;
+                        i < places.length;
                         i++
                     ) {
 
@@ -646,6 +833,10 @@ class MainActivity : Activity() {
                         unique.length
                     );
 
+                    // ================================================
+                    // INVIO A KOTLIN
+                    // ================================================
+
                     TravelPins.importPlaces(
                         JSON.stringify(unique)
                     );
@@ -653,7 +844,7 @@ class MainActivity : Activity() {
                 } catch(e) {
 
                     TravelPins.log(
-                        'ERRORE: ' +
+                        'ERRORE GENERALE: ' +
                         e.message
                     );
                 }
@@ -669,29 +860,35 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // HOOK
+    // NETWORK HOOK
     // ============================================================
 
     private fun injectNetworkHook() {
 
         webView.evaluateJavascript(
             """
-            (function(){
+            (function() {
 
-                if(window.__tp_hooked)
+                if (
+                    window.__travelpins_hooked
+                ) {
                     return;
+                }
 
-                window.__tp_hooked=true;
+                window.__travelpins_hooked =
+                    true;
 
-                var f=window.fetch;
+                var originalFetch =
+                    window.fetch;
 
-                window.fetch=function(){
+                window.fetch =
+                    function() {
 
-                    return f.apply(
-                        this,
-                        arguments
-                    );
-                };
+                        return originalFetch.apply(
+                            this,
+                            arguments
+                        );
+                    };
 
             })();
             """.trimIndent(),
@@ -707,17 +904,39 @@ class MainActivity : Activity() {
 
         output.removeAllViews()
 
-        val title = TextView(this).apply {
+        val title =
+            TextView(this).apply {
 
-            text =
-                "📍 Luoghi importati: ${places.size}"
+                text =
+                    if (places.isEmpty())
+                        "📍 TravelPins"
+                    else
+                        "📍 ${places.size} luoghi"
 
-            textSize = 25f
-            setTextColor(Color.BLACK)
-            setPadding(0,10,0,20)
-        }
+                textSize = 27f
+                setTextColor(Color.BLACK)
+                setPadding(0, 5, 0, 20)
+            }
 
         output.addView(title)
+
+        if (places.isEmpty()) {
+
+            val empty =
+                TextView(this).apply {
+
+                    text =
+                        "Condividi una lista di Google Maps con TravelPins per iniziare."
+
+                    textSize = 17f
+                    setTextColor(Color.GRAY)
+                    setPadding(0, 10, 0, 20)
+                }
+
+            output.addView(empty)
+
+            return
+        }
 
         places.forEachIndexed { index, place ->
 
@@ -745,10 +964,10 @@ class MainActivity : Activity() {
                     LinearLayout.VERTICAL
 
                 setPadding(
-                    20,
                     18,
-                    20,
-                    18
+                    16,
+                    18,
+                    16
                 )
 
                 setBackgroundColor(
@@ -772,7 +991,9 @@ class MainActivity : Activity() {
 
         card.addView(title)
 
-        if (place.address.isNotBlank()) {
+        if (
+            place.address.isNotBlank()
+        ) {
 
             val address =
                 TextView(this).apply {
@@ -782,7 +1003,13 @@ class MainActivity : Activity() {
 
                     textSize = 14f
                     setTextColor(Color.DKGRAY)
-                    setPadding(0,8,0,8)
+
+                    setPadding(
+                        0,
+                        7,
+                        0,
+                        7
+                    )
                 }
 
             card.addView(address)
@@ -792,23 +1019,27 @@ class MainActivity : Activity() {
             TextView(this).apply {
 
                 text =
-                    if (category == null)
+                    if (category == null) {
                         "⚪ Nessuna categoria"
-                    else
+                    } else {
                         "${category.icon} ${category.name}"
+                    }
 
                 textSize = 15f
 
-                if (category != null) {
-                    setTextColor(category.color)
-                } else {
-                    setTextColor(Color.GRAY)
-                }
+                setTextColor(
+                    category?.color
+                        ?: Color.GRAY
+                )
 
-                setPadding(0,6,0,6)
+                setPadding(
+                    0,
+                    5,
+                    0,
+                    5
+                )
 
                 setOnClickListener {
-
                     chooseCategory(place)
                 }
             }
@@ -816,7 +1047,6 @@ class MainActivity : Activity() {
         card.addView(categoryText)
 
         card.setOnClickListener {
-
             chooseCategory(place)
         }
 
@@ -830,7 +1060,7 @@ class MainActivity : Activity() {
             0,
             0,
             0,
-            15
+            14
         )
 
         output.addView(
@@ -840,21 +1070,69 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
+    // SCELTA CATEGORIA
+    // ============================================================
+
+    private fun chooseCategory(
+        place: Place
+    ) {
+
+        if (categories.isEmpty()) {
+
+            createCategory()
+
+            return
+        }
+
+        val names =
+            categories.map { category ->
+                "${category.icon} ${category.name}"
+            }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                "Categoria"
+            )
+            .setItems(
+                names
+            ) { _: android.content.DialogInterface, which: Int ->
+
+                place.categoryId =
+                    categories[which].id
+
+                savePlaces()
+
+                showPlaces()
+            }
+            .setNegativeButton(
+                "Nessuna categoria"
+            ) { _: android.content.DialogInterface, _: Int ->
+
+                place.categoryId = ""
+
+                savePlaces()
+
+                showPlaces()
+            }
+            .show()
+    }
+
+    // ============================================================
     // CATEGORIE
     // ============================================================
 
     private fun showCategories() {
 
-        val dialog =
+        val layout =
             LinearLayout(this).apply {
 
                 orientation =
                     LinearLayout.VERTICAL
 
                 setPadding(
-                    40,
-                    20,
-                    40,
+                    30,
+                    10,
+                    30,
                     10
                 )
             }
@@ -867,11 +1145,14 @@ class MainActivity : Activity() {
                     orientation =
                         LinearLayout.HORIZONTAL
 
+                    gravity =
+                        Gravity.CENTER_VERTICAL
+
                     setPadding(
                         0,
-                        15,
+                        12,
                         0,
-                        15
+                        12
                     )
                 }
 
@@ -897,7 +1178,7 @@ class MainActivity : Activity() {
                     )
 
                     setPadding(
-                        20,
+                        18,
                         0,
                         0,
                         0
@@ -915,10 +1196,10 @@ class MainActivity : Activity() {
                 )
             )
 
-            dialog.addView(row)
+            layout.addView(row)
         }
 
-        val add =
+        val addButton =
             Button(this).apply {
 
                 text =
@@ -927,53 +1208,26 @@ class MainActivity : Activity() {
                 setOnClickListener {
 
                     createCategory()
-
                 }
             }
 
-        dialog.addView(add)
-
-        AlertDialogBuilder(
-            "Categorie",
-            dialog
-        )
-    }
-
-    private fun chooseCategory(
-        place: Place
-    ) {
-
-        if (categories.isEmpty()) {
-
-            createCategory()
-
-            return
-        }
-
-        val names =
-            categories.map {
-                "${it.icon} ${it.name}"
-            }.toTypedArray()
+        layout.addView(addButton)
 
         AlertDialog.Builder(this)
             .setTitle(
-                "Categoria per ${place.name}"
+                "Categorie"
             )
-            .setItems(names) { _, which ->
-
-                place.categoryId =
-                    categories[which].id
-
-                savePlaces()
-
-                showPlaces()
+            .setView(layout)
+            .setPositiveButton(
+                "Chiudi"
+            ) { _: android.content.DialogInterface, _: Int ->
             }
-            .setNegativeButton(
-                "Nessuna",
-                null
-            )
             .show()
     }
+
+    // ============================================================
+    // CREAZIONE CATEGORIA
+    // ============================================================
 
     private fun createCategory() {
 
@@ -984,18 +1238,20 @@ class MainActivity : Activity() {
                     LinearLayout.VERTICAL
 
                 setPadding(
-                    40,
+                    30,
                     10,
-                    40,
+                    30,
                     10
                 )
-            }
+        }
 
         val name =
             EditText(this).apply {
 
                 hint =
                     "Nome categoria"
+
+                singleLine = true
             }
 
         val icons =
@@ -1025,7 +1281,14 @@ class MainActivity : Activity() {
             )
 
         layout.addView(name)
-        layout.addView(iconSpinner)
+
+        layout.addView(
+            iconSpinner,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         AlertDialog.Builder(this)
             .setTitle(
@@ -1034,16 +1297,24 @@ class MainActivity : Activity() {
             .setView(layout)
             .setPositiveButton(
                 "Crea"
-            ) { _, _ ->
+            ) { _: android.content.DialogInterface, _: Int ->
 
                 val categoryName =
                     name.text.toString().trim()
 
-                if (categoryName.isBlank()) {
+                if (
+                    categoryName.isBlank()
+                ) {
                     return@setPositiveButton
                 }
 
-                val newCategory =
+                val icon =
+                    icons[
+                        iconSpinner
+                            .selectedItemPosition
+                    ]
+
+                val category =
                     Category(
                         id =
                             System.currentTimeMillis()
@@ -1060,14 +1331,11 @@ class MainActivity : Activity() {
                             ),
 
                         icon =
-                            icons[
-                                iconSpinner
-                                    .selectedItemPosition
-                            ]
+                            icon
                     )
 
                 categories.add(
-                    newCategory
+                    category
                 )
 
                 saveCategories()
@@ -1077,31 +1345,11 @@ class MainActivity : Activity() {
                     "Categoria creata",
                     Toast.LENGTH_SHORT
                 ).show()
-
             }
             .setNegativeButton(
-                "Annulla",
-                null
-            )
-            .show()
-    }
-
-    // ============================================================
-    // DIALOG CATEGORIE
-    // ============================================================
-
-    private fun AlertDialogBuilder(
-        title: String,
-        view: LinearLayout
-    ) {
-
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setView(view)
-            .setPositiveButton(
-                "Chiudi",
-                null
-            )
+                "Annulla"
+            ) { _: android.content.DialogInterface, _: Int ->
+            }
             .show()
     }
 
@@ -1111,31 +1359,32 @@ class MainActivity : Activity() {
 
     private fun saveCategories() {
 
-        val array = JSONArray()
+        val array =
+            JSONArray()
 
-        categories.forEach {
+        categories.forEach { category ->
 
             val obj =
                 JSONObject()
 
             obj.put(
                 "id",
-                it.id
+                category.id
             )
 
             obj.put(
                 "name",
-                it.name
+                category.name
             )
 
             obj.put(
                 "color",
-                it.color
+                category.color
             )
 
             obj.put(
                 "icon",
-                it.icon
+                category.icon
             )
 
             array.put(obj)
@@ -1152,6 +1401,10 @@ class MainActivity : Activity() {
             .apply()
     }
 
+    // ============================================================
+    // CARICAMENTO CATEGORIE
+    // ============================================================
+
     private fun loadCategories() {
 
         categories.clear()
@@ -1165,32 +1418,46 @@ class MainActivity : Activity() {
                     null
                 )
 
-        if (raw.isNullOrBlank()) {
+        if (
+            raw.isNullOrBlank()
+        ) {
 
             categories.add(
                 Category(
-                    "1",
-                    "Da vedere",
-                    Color.rgb(30,100,200),
-                    "📍"
+                    id = "default_1",
+                    name = "Da vedere",
+                    color = Color.rgb(
+                        30,
+                        100,
+                        200
+                    ),
+                    icon = "📍"
                 )
             )
 
             categories.add(
                 Category(
-                    "2",
-                    "Ristoranti",
-                    Color.rgb(220,80,50),
-                    "🍴"
+                    id = "default_2",
+                    name = "Ristoranti",
+                    color = Color.rgb(
+                        220,
+                        80,
+                        50
+                    ),
+                    icon = "🍴"
                 )
             )
 
             categories.add(
                 Category(
-                    "3",
-                    "Natura",
-                    Color.rgb(40,150,70),
-                    "🌿"
+                    id = "default_3",
+                    name = "Natura",
+                    color = Color.rgb(
+                        40,
+                        150,
+                        70
+                    ),
+                    icon = "🌿"
                 )
             )
 
@@ -1204,22 +1471,43 @@ class MainActivity : Activity() {
             val array =
                 JSONArray(raw)
 
-            for (i in 0 until array.length()) {
+            for (
+                i in 0 until array.length()
+            ) {
 
                 val obj =
                     array.getJSONObject(i)
 
                 categories.add(
                     Category(
-                        obj.getString("id"),
-                        obj.getString("name"),
-                        obj.getInt("color"),
-                        obj.getString("icon")
+                        id =
+                            obj.getString(
+                                "id"
+                            ),
+
+                        name =
+                            obj.getString(
+                                "name"
+                            ),
+
+                        color =
+                            obj.getInt(
+                                "color"
+                            ),
+
+                        icon =
+                            obj.getString(
+                                "icon"
+                            )
                     )
                 )
             }
 
-        } catch (e: Exception) {}
+        } catch (
+            _: Exception
+        ) {
+            categories.clear()
+        }
     }
 
     // ============================================================
@@ -1231,34 +1519,34 @@ class MainActivity : Activity() {
         val array =
             JSONArray()
 
-        places.forEach {
+        places.forEach { place ->
 
             val obj =
                 JSONObject()
 
             obj.put(
                 "name",
-                it.name
+                place.name
             )
 
             obj.put(
                 "address",
-                it.address
+                place.address
             )
 
             obj.put(
                 "lat",
-                it.lat
+                place.lat
             )
 
             obj.put(
                 "lng",
-                it.lng
+                place.lng
             )
 
             obj.put(
                 "category",
-                it.categoryId
+                place.categoryId
             )
 
             array.put(obj)
@@ -1276,6 +1564,78 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
+    // CARICAMENTO LUOGHI
+    // ============================================================
+
+    private fun loadPlaces() {
+
+        places.clear()
+
+        val raw =
+            getPreferences(
+                Context.MODE_PRIVATE
+            )
+                .getString(
+                    "places",
+                    null
+                )
+
+        if (
+            raw.isNullOrBlank()
+        ) {
+            return
+        }
+
+        try {
+
+            val array =
+                JSONArray(raw)
+
+            for (
+                i in 0 until array.length()
+            ) {
+
+                val obj =
+                    array.getJSONObject(i)
+
+                places.add(
+                    Place(
+                        name =
+                            obj.optString(
+                                "name"
+                            ),
+
+                        address =
+                            obj.optString(
+                                "address"
+                            ),
+
+                        lat =
+                            obj.optDouble(
+                                "lat"
+                            ),
+
+                        lng =
+                            obj.optDouble(
+                                "lng"
+                            ),
+
+                        categoryId =
+                            obj.optString(
+                                "category"
+                            )
+                    )
+                )
+            }
+
+        } catch (
+            _: Exception
+        ) {
+            places.clear()
+        }
+    }
+
+    // ============================================================
     // GOOGLE INTENT
     // ============================================================
 
@@ -1286,25 +1646,77 @@ class MainActivity : Activity() {
         try {
 
             val uri =
-                Uri.parse(intentUrl)
+                Uri.parse(
+                    intentUrl
+                )
 
             val fallback =
                 uri.getQueryParameter(
                     "S.browser_fallback_url"
                 )
 
-            if (!fallback.isNullOrBlank()) {
+            if (
+                !fallback.isNullOrBlank()
+            ) {
 
                 webView.loadUrl(
                     fallback
                 )
+
+                return
             }
 
-        } catch (e: Exception) {}
+            val marker =
+                "S.browser_fallback_url="
+
+            val index =
+                intentUrl.indexOf(
+                    marker
+                )
+
+            if (
+                index >= 0
+            ) {
+
+                var fallbackText =
+                    intentUrl.substring(
+                        index + marker.length
+                    )
+
+                val end =
+                    fallbackText.indexOf(
+                        "#Intent"
+                    )
+
+                if (
+                    end >= 0
+                ) {
+
+                    fallbackText =
+                        fallbackText.substring(
+                            0,
+                            end
+                        )
+                }
+
+                fallbackText =
+                    Uri.decode(
+                        fallbackText
+                    )
+
+                webView.loadUrl(
+                    fallbackText
+                )
+            }
+
+        } catch (
+            _: Exception
+        ) {
+        }
     }
 
     // ============================================================
-    // CONDIVIDI
+    // CONDIVIDI DA GOOGLE MAPS
     // ============================================================
 
     private fun handleIntent(
@@ -1323,27 +1735,48 @@ class MainActivity : Activity() {
                 Intent.EXTRA_TEXT
             )
 
-        if (sharedText.isNullOrBlank()) {
+        if (
+            sharedText.isNullOrBlank()
+        ) {
             return
         }
 
         val match =
             Regex(
                 """https?://\S+"""
-            ).find(sharedText)
+            ).find(
+                sharedText
+            )
 
-        if (match == null) {
+        if (
+            match == null
+        ) {
+            Toast.makeText(
+                this,
+                "Nessun link Google Maps trovato",
+                Toast.LENGTH_LONG
+            ).show()
+
             return
         }
 
         val url =
             match.value
 
+        importing = false
+
+        progress.visibility =
+            ProgressBar.VISIBLE
+
         webView.visibility =
             WebView.VISIBLE
 
         webView.loadUrl(url)
     }
+
+    // ============================================================
+    // NUOVO INTENT
+    // ============================================================
 
     override fun onNewIntent(
         intent: Intent
@@ -1357,7 +1790,7 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // LOG
+    // LOG INTERNO
     // ============================================================
 
     private fun addLog(
@@ -1366,7 +1799,9 @@ class MainActivity : Activity() {
 
         log.add(message)
 
-        while (log.size > 50) {
+        while (
+            log.size > 50
+        ) {
             log.poll()
         }
     }
@@ -1378,7 +1813,9 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
-        if (webView.canGoBack()) {
+        if (
+            webView.canGoBack()
+        ) {
 
             webView.goBack()
 
@@ -1394,7 +1831,9 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
 
-        handler.removeCallbacksAndMessages(null)
+        handler.removeCallbacksAndMessages(
+            null
+        )
 
         webView.stopLoading()
 
