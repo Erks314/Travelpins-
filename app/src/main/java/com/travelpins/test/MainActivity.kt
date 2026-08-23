@@ -5,10 +5,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
@@ -29,6 +29,7 @@ class MainActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var output: TextView
     private lateinit var consentButton: Button
+    private lateinit var scanButton: Button
 
     private val log = ConcurrentLinkedQueue<String>()
     private val handler = Handler(Looper.getMainLooper())
@@ -46,10 +47,12 @@ class MainActivity : Activity() {
 
             addLog(
                 """
+                ==============================
                 [JAVASCRIPT]
 
                 $message
 
+                ==============================
                 """.trimIndent()
             )
         }
@@ -61,6 +64,9 @@ class MainActivity : Activity() {
             url: String?,
             data: String?
         ) {
+
+            val safeData =
+                data ?: ""
 
             addLog(
                 """
@@ -74,13 +80,39 @@ class MainActivity : Activity() {
                 ${url ?: ""}
 
                 DATA:
-                ${data ?: ""}
+                $safeData
 
                 ==============================
                 """.trimIndent()
             )
         }
+
+        @JavascriptInterface
+        fun listDetected(
+            id: String?,
+            url: String?
+        ) {
+
+            addLog(
+                """
+                =========================================
+                LISTA GOOGLE MAPS DETECTATA
+
+                ID:
+                ${id ?: ""}
+
+                URL:
+                ${url ?: ""}
+
+                =========================================
+                """.trimIndent()
+            )
+        }
     }
+
+    // ============================================================
+    // ON CREATE
+    // ============================================================
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -98,67 +130,102 @@ class MainActivity : Activity() {
 
     private fun createInterface() {
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(12, 12, 12, 12)
-        }
+        val root =
+            LinearLayout(this).apply {
 
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
+                orientation =
+                    LinearLayout.VERTICAL
 
-        val copyButton = Button(this).apply {
-
-            text = "COPIA TUTTO"
-
-            setOnClickListener {
-
-                val clipboard =
-                    getSystemService(
-                        Context.CLIPBOARD_SERVICE
-                    ) as ClipboardManager
-
-                clipboard.setPrimaryClip(
-                    ClipData.newPlainText(
-                        "TravelPins",
-                        output.text.toString()
-                    )
+                setPadding(
+                    12,
+                    12,
+                    12,
+                    12
                 )
-
-                Toast.makeText(
-                    this@MainActivity,
-                    "Copiato!",
-                    Toast.LENGTH_SHORT
-                ).show()
             }
-        }
 
-        val clearButton = Button(this).apply {
+        val toolbar =
+            LinearLayout(this).apply {
 
-            text = "PULISCI"
-
-            setOnClickListener {
-
-                log.clear()
-
-                output.text =
-                    """
-                    TRAVELPINS NETWORK MONITOR
-
-                    Monitor pulito.
-                    """.trimIndent()
+                orientation =
+                    LinearLayout.HORIZONTAL
             }
-        }
 
-        consentButton = Button(this).apply {
+        val copyButton =
+            Button(this).apply {
 
-            text = "ACCETTA GOOGLE"
-            visibility = Button.GONE
+                text =
+                    "COPIA TUTTO"
 
-            setOnClickListener {
-                acceptGoogleConsent()
+                setOnClickListener {
+
+                    val clipboard =
+                        getSystemService(
+                            Context.CLIPBOARD_SERVICE
+                        ) as ClipboardManager
+
+                    clipboard.setPrimaryClip(
+                        ClipData.newPlainText(
+                            "TravelPins",
+                            output.text.toString()
+                        )
+                    )
+
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Copiato!",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
-        }
+
+        val clearButton =
+            Button(this).apply {
+
+                text =
+                    "PULISCI"
+
+                setOnClickListener {
+
+                    log.clear()
+
+                    output.text =
+                        """
+                        TRAVELPINS NETWORK MONITOR
+
+                        Monitor pulito.
+                        """.trimIndent()
+                }
+            }
+
+        consentButton =
+            Button(this).apply {
+
+                text =
+                    "ACCETTA GOOGLE"
+
+                visibility =
+                    Button.GONE
+
+                setOnClickListener {
+
+                    acceptGoogleConsent()
+                }
+            }
+
+        scanButton =
+            Button(this).apply {
+
+                text =
+                    "SCANSIONA"
+
+                setOnClickListener {
+
+                    inspectGoogleListPage(
+                        immediate = true
+                    )
+                }
+            }
 
         toolbar.addView(
             copyButton,
@@ -187,30 +254,45 @@ class MainActivity : Activity() {
             )
         )
 
-        output = TextView(this).apply {
-
-            textSize = 13f
-
-            setTextIsSelectable(true)
-
-            setPadding(
-                12,
-                12,
-                12,
-                30
+        toolbar.addView(
+            scanButton,
+            LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
             )
+        )
 
-            text =
-                """
-                TRAVELPINS NETWORK MONITOR
+        output =
+            TextView(this).apply {
 
-                In attesa del link...
-                """.trimIndent()
-        }
+                textSize =
+                    13f
 
-        val scroll = ScrollView(this).apply {
-            addView(output)
-        }
+                setTextIsSelectable(
+                    true
+                )
+
+                setPadding(
+                    12,
+                    12,
+                    12,
+                    30
+                )
+
+                text =
+                    """
+                    TRAVELPINS NETWORK MONITOR
+
+                    In attesa del link...
+                    """.trimIndent()
+            }
+
+        val scroll =
+            ScrollView(this).apply {
+
+                addView(output)
+            }
 
         root.addView(toolbar)
 
@@ -232,17 +314,29 @@ class MainActivity : Activity() {
 
     private fun createWebView() {
 
-        webView = WebView(this)
+        webView =
+            WebView(this)
 
         webView.settings.apply {
 
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true
-            loadsImagesAutomatically = true
+            javaScriptEnabled =
+                true
 
-            javaScriptCanOpenWindowsAutomatically = true
-            setSupportMultipleWindows(false)
+            domStorageEnabled =
+                true
+
+            databaseEnabled =
+                true
+
+            loadsImagesAutomatically =
+                true
+
+            javaScriptCanOpenWindowsAutomatically =
+                true
+
+            setSupportMultipleWindows(
+                false
+            )
 
             userAgentString =
                 "Mozilla/5.0 (Linux; Android 10) " +
@@ -254,7 +348,9 @@ class MainActivity : Activity() {
 
         CookieManager
             .getInstance()
-            .setAcceptCookie(true)
+            .setAcceptCookie(
+                true
+            )
 
         CookieManager
             .getInstance()
@@ -274,9 +370,9 @@ class MainActivity : Activity() {
         webView.webViewClient =
             object : WebViewClient() {
 
-                // ------------------------------------------------
+                // =================================================
                 // NAVIGAZIONE
-                // ------------------------------------------------
+                // =================================================
 
                 override fun shouldOverrideUrlLoading(
                     view: WebView,
@@ -286,11 +382,19 @@ class MainActivity : Activity() {
                     val url =
                         request.url.toString()
 
-                    inspectNavigation(url)
+                    inspectNavigation(
+                        url
+                    )
 
-                    if (url.startsWith("intent://")) {
+                    if (
+                        url.startsWith(
+                            "intent://"
+                        )
+                    ) {
 
-                        handleGoogleIntent(url)
+                        handleGoogleIntent(
+                            url
+                        )
 
                         return true
                     }
@@ -298,23 +402,25 @@ class MainActivity : Activity() {
                     return false
                 }
 
-                // ------------------------------------------------
-                // RICHIESTE WEBVIEW
-                // ------------------------------------------------
+                // =================================================
+                // REQUEST
+                // =================================================
 
                 override fun shouldInterceptRequest(
                     view: WebView,
                     request: WebResourceRequest
                 ): WebResourceResponse? {
 
-                    inspectRequest(request)
+                    inspectRequest(
+                        request
+                    )
 
                     return null
                 }
 
-                // ------------------------------------------------
+                // =================================================
                 // PAGINA CARICATA
-                // ------------------------------------------------
+                // =================================================
 
                 override fun onPageFinished(
                     view: WebView,
@@ -323,30 +429,35 @@ class MainActivity : Activity() {
 
                     addLog(
                         """
-                        ==============================
+                        =========================================
                         PAGINA CARICATA
+
                         $url
 
-                        ==============================
+                        =========================================
                         """.trimIndent()
                     )
 
                     injectNetworkHook()
 
-                    if (url.contains("consent.google.com")) {
+                    if (
+                        url.contains(
+                            "consent.google.com"
+                        )
+                    ) {
 
                         consentButton.visibility =
                             Button.VISIBLE
 
                         addLog(
                             """
-                            ==============================
+                            =========================================
                             CONSENSO GOOGLE RILEVATO
 
                             Premi:
                             ACCETTA GOOGLE
 
-                            ==============================
+                            =========================================
                             """.trimIndent()
                         )
 
@@ -356,23 +467,27 @@ class MainActivity : Activity() {
                             Button.GONE
                     }
 
-                    // ------------------------------------------------
-                    // LISTA GOOGLE MAPS
-                    // ------------------------------------------------
-
                     if (
                         url.contains(
                             "/local/userlists/list/"
                         )
                     ) {
 
-                        inspectGoogleListPage()
+                        detectListUrl(
+                            url
+                        )
+
+                        installListObserver()
+
+                        inspectGoogleListPage(
+                            immediate = false
+                        )
                     }
                 }
 
-                // ------------------------------------------------
+                // =================================================
                 // RENDERER CRASH
-                // ------------------------------------------------
+                // =================================================
 
                 override fun onRenderProcessGone(
                     view: WebView,
@@ -381,13 +496,13 @@ class MainActivity : Activity() {
 
                     addLog(
                         """
-                        ==============================
+                        =========================================
                         WEBVIEW RENDERER TERMINATO
 
                         CRASH:
                         ${detail.didCrash()}
 
-                        ==============================
+                        =========================================
                         """.trimIndent()
                     )
 
@@ -397,276 +512,79 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // LETTURA LISTA GOOGLE MAPS
+    // DETECT LIST URL
     // ============================================================
 
-    private fun inspectGoogleListPage() {
-
-        addLog(
-            """
-            ==============================
-            LISTA GOOGLE MAPS RILEVATA
-
-            Avvio monitoraggio contenuto...
-
-            ==============================
-            """.trimIndent()
-        )
-
-        // --------------------------------------------------------
-        // Prima lettura dopo 2 secondi
-        // --------------------------------------------------------
-
-        handler.postDelayed({
-
-            readGoogleListPage(
-                "CONTROLLO 2 SECONDI"
-            )
-
-        }, 2000)
-
-        // --------------------------------------------------------
-        // Seconda lettura dopo 5 secondi
-        // --------------------------------------------------------
-
-        handler.postDelayed({
-
-            readGoogleListPage(
-                "CONTROLLO 5 SECONDI"
-            )
-
-        }, 5000)
-
-        // --------------------------------------------------------
-        // Terza lettura dopo 8 secondi
-        // --------------------------------------------------------
-
-        handler.postDelayed({
-
-            readGoogleListPage(
-                "CONTROLLO 8 SECONDI"
-            )
-
-        }, 8000)
-
-        // --------------------------------------------------------
-        // Quarta lettura dopo 12 secondi
-        // --------------------------------------------------------
-
-        handler.postDelayed({
-
-            readGoogleListPage(
-                "CONTROLLO 12 SECONDI"
-            )
-
-        }, 12000)
-
-        // --------------------------------------------------------
-        // Installiamo anche un MutationObserver.
-        //
-        // Google Maps costruisce la pagina dinamicamente.
-        // Questo ci permette di sapere quando il contenuto cambia.
-        // --------------------------------------------------------
-
-        installListMutationObserver()
-    }
-
-    // ============================================================
-    // LETTURA PAGINA
-    // ============================================================
-
-    private fun readGoogleListPage(
-        label: String
+    private fun detectListUrl(
+        url: String
     ) {
 
-        val javascript = """
+        try {
 
-            (function() {
+            val marker =
+                "/local/userlists/list/"
 
-                try {
+            val index =
+                url.indexOf(
+                    marker
+                )
 
-                    var bodyText =
-                        document.body
-                            ? document.body.innerText
-                            : '';
+            if (index < 0) return
 
-                    var title =
-                        document.title || '';
+            var id =
+                url.substring(
+                    index + marker.length
+                )
 
-                    var links = [];
+            id =
+                id.substringBefore(
+                    "?"
+                )
 
-                    var elements =
-                        document.querySelectorAll('a');
-
-                    for (
-                        var i = 0;
-                        i < elements.length;
-                        i++
-                    ) {
-
-                        var element =
-                            elements[i];
-
-                        var href =
-                            element.href || '';
-
-                        var text =
-                            element.innerText || '';
-
-                        text =
-                            text.trim();
-
-                        if (
-                            href &&
-                            (
-                                href.indexOf(
-                                    'google.com/maps'
-                                ) >= 0
-                                ||
-                                href.indexOf(
-                                    '/maps/'
-                                ) >= 0
-                            )
-                        ) {
-
-                            links.push(
-                                text +
-                                ' -> ' +
-                                href
-                            );
-                        }
-                    }
-
-                    // ------------------------------------------------
-                    // Cerchiamo anche elementi che sembrano
-                    // contenere nomi di luoghi.
-                    // ------------------------------------------------
-
-                    var buttons = [];
-
-                    var clickable =
-                        document.querySelectorAll(
-                            '[role="button"]'
-                        );
-
-                    for (
-                        var j = 0;
-                        j < clickable.length;
-                        j++
-                    ) {
-
-                        var button =
-                            clickable[j];
-
-                        var buttonText =
-                            button.innerText || '';
-
-                        buttonText =
-                            buttonText.trim();
-
-                        if (
-                            buttonText.length > 0
-                        ) {
-
-                            buttons.push(
-                                buttonText
-                            );
-                        }
-                    }
-
-                    // ------------------------------------------------
-                    // Limitiamo la quantità di testo.
-                    // ------------------------------------------------
-
-                    if (
-                        bodyText.length > 40000
-                    ) {
-
-                        bodyText =
-                            bodyText.substring(
-                                0,
-                                40000
-                            );
-                    }
-
-                    if (
-                        links.length > 500
-                    ) {
-
-                        links =
-                            links.slice(
-                                0,
-                                500
-                            );
-                    }
-
-                    if (
-                        buttons.length > 500
-                    ) {
-
-                        buttons =
-                            buttons.slice(
-                                0,
-                                500
-                            );
-                    }
-
-                    var result =
-                        'TITLE:\\n' +
-                        title +
-                        '\\n\\n' +
-
-                        'BODY TEXT:\\n' +
-                        bodyText +
-                        '\\n\\n' +
-
-                        'MAP LINKS:\\n' +
-                        links.join('\\n') +
-                        '\\n\\n' +
-
-                        'BUTTONS / CLICKABLE:\\n' +
-                        buttons.join('\\n');
-
-                    return result;
-
-                } catch(e) {
-
-                    return 'ERROR:' +
-                           e.message;
-                }
-
-            })();
-
-        """.trimIndent()
-
-        webView.evaluateJavascript(
-            javascript
-        ) { result ->
-
-            val decoded =
-                decodeJavascriptResult(result)
+            id =
+                id.substringBefore(
+                    "/"
+                )
 
             addLog(
                 """
-                ==============================
-                $label
+                =========================================
+                GOOGLE LIST ID
 
-                $decoded
+                $id
 
-                ==============================
+                =========================================
                 """.trimIndent()
+            )
+
+            webView.evaluateJavascript(
+                """
+                try {
+                    TravelPins.listDetected(
+                        ${jsQuote(id)},
+                        ${jsQuote(url)}
+                    );
+                } catch(e) {}
+                """.trimIndent(),
+                null
+            )
+
+        } catch (e: Exception) {
+
+            addLog(
+                "Errore detectListUrl: ${e.message}"
             )
         }
     }
 
     // ============================================================
-    // MUTATION OBSERVER
+    // OSSERVATORE DOM
     // ============================================================
 
-    private fun installListMutationObserver() {
+    private fun installListObserver() {
 
-        val javascript = """
-
+        val javascript =
+            """
             (function() {
 
                 try {
@@ -674,131 +592,55 @@ class MainActivity : Activity() {
                     if (
                         window.__travelpins_list_observer
                     ) {
-
-                        return 'OBSERVER_ALREADY_INSTALLED';
+                        return 'LIST_OBSERVER_ALREADY';
                     }
 
                     window.__travelpins_list_observer =
                         true;
 
-                    var lastText = '';
-
-                    function checkPage() {
-
-                        try {
-
-                            var text =
-                                document.body
-                                    ? document.body.innerText
-                                    : '';
-
-                            if (
-                                !text ||
-                                text === lastText
-                            ) {
-
-                                return;
-                            }
-
-                            lastText = text;
-
-                            TravelPins.log(
-                                'LIST_PAGE_CHANGED: ' +
-                                text.length +
-                                ' caratteri'
-                            );
-
-                            // Quando Google ha finalmente
-                            // inserito abbastanza contenuto,
-                            // chiediamo a Kotlin di leggerlo.
-
-                            if (
-                                text.length > 100
-                            ) {
-
-                                setTimeout(
-                                    function() {
-
-                                        var links =
-                                            document.querySelectorAll(
-                                                'a'
-                                            );
-
-                                        var found = [];
-
-                                        for (
-                                            var i = 0;
-                                            i < links.length;
-                                            i++
-                                        ) {
-
-                                            var href =
-                                                links[i].href ||
-                                                '';
-
-                                            var linkText =
-                                                links[i].innerText ||
-                                                '';
-
-                                            linkText =
-                                                linkText.trim();
-
-                                            if (
-                                                href &&
-                                                linkText
-                                            ) {
-
-                                                if (
-                                                    href.indexOf(
-                                                        'google.com/maps'
-                                                    ) >= 0
-                                                    ||
-                                                    href.indexOf(
-                                                        '/maps/'
-                                                    ) >= 0
-                                                ) {
-
-                                                    found.push(
-                                                        linkText +
-                                                        ' -> ' +
-                                                        href
-                                                    );
-                                                }
-                                            }
-                                        }
-
-                                        TravelPins.log(
-                                            'MAP_LINKS_FOUND:\\n' +
-                                            found.join(
-                                                '\\n'
-                                            )
-                                        );
-
-                                    },
-                                    500
-                                );
-                            }
-
-                        } catch(e) {
-
-                            TravelPins.log(
-                                'OBSERVER_ERROR:' +
-                                e.message
-                            );
-                        }
-                    }
+                    var timer = null;
 
                     var observer =
                         new MutationObserver(
                             function() {
 
-                                checkPage();
+                                if (timer) {
+                                    clearTimeout(timer);
+                                }
 
+                                timer =
+                                    setTimeout(
+                                        function() {
+
+                                            try {
+
+                                                TravelPins.log(
+                                                    'DOM MODIFICATO - NUOVA SCANSIONE'
+                                                );
+
+                                            } catch(e) {}
+
+                                            try {
+
+                                                if (
+                                                    typeof window.__travelpins_scan_list ===
+                                                    'function'
+                                                ) {
+
+                                                    window.__travelpins_scan_list();
+
+                                                }
+
+                                            } catch(e) {}
+                                        },
+                                        1200
+                                    );
                             }
                         );
 
                     observer.observe(
-                        document.documentElement,
+                        document.documentElement ||
+                        document.body,
                         {
                             childList: true,
                             subtree: true,
@@ -806,14 +648,10 @@ class MainActivity : Activity() {
                         }
                     );
 
-                    setInterval(
-                        checkPage,
-                        2000
-                    );
+                    window.__travelpins_list_observer =
+                        observer;
 
-                    checkPage();
-
-                    return 'OBSERVER_INSTALLED';
+                    return 'LIST_OBSERVER_INSTALLED';
 
                 } catch(e) {
 
@@ -822,8 +660,493 @@ class MainActivity : Activity() {
                 }
 
             })();
+            """.trimIndent()
 
-        """.trimIndent()
+        webView.evaluateJavascript(
+            javascript
+        ) { result ->
+
+            addLog(
+                "[LIST OBSERVER] $result"
+            )
+        }
+    }
+
+    // ============================================================
+    // SCANSIONE GOOGLE LIST
+    // ============================================================
+
+    private fun inspectGoogleListPage(
+        immediate: Boolean
+    ) {
+
+        addLog(
+            """
+            =========================================
+            SCANSIONE LISTA GOOGLE MAPS
+
+            Attendo contenuto dinamico...
+
+            =========================================
+            """.trimIndent()
+        )
+
+        val delay =
+            if (immediate) {
+                300
+            } else {
+                2500
+            }
+
+        handler.postDelayed(
+            {
+
+                scanListJavascript()
+
+            },
+            delay.toLong()
+        )
+
+        // Altre scansioni perché Google costruisce
+        // la pagina progressivamente.
+
+        if (!immediate) {
+
+            handler.postDelayed(
+                {
+                    scanListJavascript()
+                },
+                6000
+            )
+
+            handler.postDelayed(
+                {
+                    scanListJavascript()
+                },
+                10000
+            )
+        }
+    }
+
+    // ============================================================
+    // JAVASCRIPT SCANSIONE
+    // ============================================================
+
+    private fun scanListJavascript() {
+
+        val javascript =
+            """
+            (function() {
+
+                try {
+
+                    var result = [];
+
+                    result.push(
+                        '===== LIST SCAN ====='
+                    );
+
+                    result.push(
+                        'URL=' +
+                        location.href
+                    );
+
+                    result.push(
+                        'TITLE=' +
+                        (document.title || '')
+                    );
+
+                    // =============================================
+                    // BODY TEXT
+                    // =============================================
+
+                    var bodyText =
+                        document.body
+                            ? document.body.innerText
+                            : '';
+
+                    bodyText =
+                        bodyText.trim();
+
+                    if (
+                        bodyText.length >
+                        50000
+                    ) {
+
+                        bodyText =
+                            bodyText.substring(
+                                0,
+                                50000
+                            );
+                    }
+
+                    result.push(
+                        '===== BODY TEXT ====='
+                    );
+
+                    result.push(
+                        bodyText
+                    );
+
+                    // =============================================
+                    // LINKS
+                    // =============================================
+
+                    result.push(
+                        '===== GOOGLE MAP LINKS ====='
+                    );
+
+                    var links =
+                        document.querySelectorAll(
+                            'a'
+                        );
+
+                    var linkCount =
+                        0;
+
+                    for (
+                        var i = 0;
+                        i < links.length;
+                        i++
+                    ) {
+
+                        var a =
+                            links[i];
+
+                        var href =
+                            a.href || '';
+
+                        var txt =
+                            (
+                                a.innerText ||
+                                a.textContent ||
+                                ''
+                            )
+                            .trim()
+                            .replace(
+                                /\\s+/g,
+                                ' '
+                            );
+
+                        if (
+                            href.indexOf(
+                                'google.com/maps'
+                            ) >= 0 ||
+                            href.indexOf(
+                                '/maps/'
+                            ) >= 0
+                        ) {
+
+                            result.push(
+                                '[' +
+                                linkCount +
+                                '] ' +
+                                txt +
+                                ' -> ' +
+                                href
+                            );
+
+                            linkCount++;
+                        }
+                    }
+
+                    // =============================================
+                    // ELEMENTI CON DATA ATTRIBUTES
+                    // =============================================
+
+                    result.push(
+                        '===== DATA ATTRIBUTES ====='
+                    );
+
+                    var all =
+                        document.querySelectorAll(
+                            '*'
+                        );
+
+                    var dataCount =
+                        0;
+
+                    for (
+                        var j = 0;
+                        j < all.length &&
+                        dataCount < 300;
+                        j++
+                    ) {
+
+                        var el =
+                            all[j];
+
+                        if (
+                            !el.attributes
+                        ) {
+                            continue;
+                        }
+
+                        var attrs = [];
+
+                        for (
+                            var k = 0;
+                            k < el.attributes.length;
+                            k++
+                        ) {
+
+                            var attr =
+                                el.attributes[k];
+
+                            if (
+                                attr.name.indexOf(
+                                    'data-'
+                                ) === 0
+                            ) {
+
+                                attrs.push(
+                                    attr.name +
+                                    '=' +
+                                    attr.value
+                                );
+                            }
+                        }
+
+                        if (
+                            attrs.length > 0
+                        ) {
+
+                            var elementText =
+                                (
+                                    el.innerText ||
+                                    ''
+                                )
+                                .trim()
+                                .replace(
+                                    /\\s+/g,
+                                    ' '
+                                );
+
+                            if (
+                                elementText.length >
+                                200
+                            ) {
+
+                                elementText =
+                                    elementText.substring(
+                                        0,
+                                        200
+                                    );
+                            }
+
+                            result.push(
+                                'TEXT=' +
+                                elementText +
+                                ' | ' +
+                                attrs.join(
+                                    ' ; '
+                                )
+                            );
+
+                            dataCount++;
+                        }
+                    }
+
+                    // =============================================
+                    // SCRIPT
+                    // =============================================
+
+                    result.push(
+                        '===== SCRIPT DATA ====='
+                    );
+
+                    var scripts =
+                        document.querySelectorAll(
+                            'script'
+                        );
+
+                    var scriptCount =
+                        0;
+
+                    for (
+                        var s = 0;
+                        s < scripts.length &&
+                        scriptCount < 100;
+                        s++
+                    ) {
+
+                        var script =
+                            scripts[s];
+
+                        var scriptText =
+                            script.textContent ||
+                            '';
+
+                        scriptText =
+                            scriptText.trim();
+
+                        if (
+                            scriptText.length === 0
+                        ) {
+                            continue;
+                        }
+
+                        var lower =
+                            scriptText.toLowerCase();
+
+                        if (
+                            lower.indexOf(
+                                'maps'
+                            ) >= 0 ||
+                            lower.indexOf(
+                                'place'
+                            ) >= 0 ||
+                            lower.indexOf(
+                                'list'
+                            ) >= 0 ||
+                            lower.indexOf(
+                                'entity'
+                            ) >= 0
+                        ) {
+
+                            if (
+                                scriptText.length >
+                                10000
+                            ) {
+
+                                scriptText =
+                                    scriptText.substring(
+                                        0,
+                                        10000
+                                    );
+                            }
+
+                            result.push(
+                                'SCRIPT[' +
+                                scriptCount +
+                                ']=' +
+                                scriptText
+                            );
+
+                            scriptCount++;
+                        }
+                    }
+
+                    // =============================================
+                    // PERFORMANCE RESOURCE
+                    // =============================================
+
+                    result.push(
+                        '===== PERFORMANCE RESOURCES ====='
+                    );
+
+                    try {
+
+                        var resources =
+                            performance.getEntriesByType(
+                                'resource'
+                            );
+
+                        var resourceCount =
+                            0;
+
+                        for (
+                            var r = 0;
+                            r < resources.length &&
+                            resourceCount < 300;
+                            r++
+                        ) {
+
+                            var resource =
+                                resources[r];
+
+                            var resourceUrl =
+                                resource.name ||
+                                '';
+
+                            var lowerUrl =
+                                resourceUrl.toLowerCase();
+
+                            if (
+                                lowerUrl.indexOf(
+                                    'local'
+                                ) >= 0 ||
+                                lowerUrl.indexOf(
+                                    'list'
+                                ) >= 0 ||
+                                lowerUrl.indexOf(
+                                    'place'
+                                ) >= 0 ||
+                                lowerUrl.indexOf(
+                                    'batchexecute'
+                                ) >= 0 ||
+                                lowerUrl.indexOf(
+                                    'rpc'
+                                ) >= 0 ||
+                                lowerUrl.indexOf(
+                                    'boq'
+                                ) >= 0
+                            ) {
+
+                                result.push(
+                                    resourceUrl
+                                );
+
+                                resourceCount++;
+                            }
+                        }
+
+                    } catch(e) {
+
+                        result.push(
+                            'PERFORMANCE ERROR:' +
+                            e.message
+                        );
+                    }
+
+                    result.push(
+                        '===== END SCAN ====='
+                    );
+
+                    var finalResult =
+                        result.join(
+                            '\\n'
+                        );
+
+                    if (
+                        finalResult.length >
+                        100000
+                    ) {
+
+                        finalResult =
+                            finalResult.substring(
+                                0,
+                                100000
+                            );
+                    }
+
+                    try {
+
+                        TravelPins.log(
+                            finalResult
+                        );
+
+                    } catch(e) {}
+
+                    return 'SCAN_OK';
+
+                } catch(e) {
+
+                    try {
+
+                        TravelPins.log(
+                            'SCAN ERROR:' +
+                            e.message
+                        );
+
+                    } catch(x) {}
+
+                    return 'SCAN_ERROR:' +
+                           e.message;
+                }
+
+            })();
+            """.trimIndent()
 
         webView.evaluateJavascript(
             javascript
@@ -831,208 +1154,427 @@ class MainActivity : Activity() {
 
             addLog(
                 """
-                ==============================
-                LIST MUTATION OBSERVER
+                =========================================
+                SCAN JAVASCRIPT RESULT
 
                 $result
 
-                ==============================
+                =========================================
                 """.trimIndent()
             )
         }
     }
 
     // ============================================================
-    // DECODIFICA RISULTATO JAVASCRIPT
+    // NETWORK HOOK
     // ============================================================
 
-    private fun decodeJavascriptResult(
-        value: String?
-    ): String {
+    private fun injectNetworkHook() {
 
-        if (value.isNullOrBlank()) {
-            return ""
+        val javascript =
+            """
+            (function() {
+
+                if (
+                    window.__travelpins_hooked
+                ) {
+
+                    return 'ALREADY_INSTALLED';
+                }
+
+                window.__travelpins_hooked =
+                    true;
+
+                // =================================================
+                // FETCH
+                // =================================================
+
+                var originalFetch =
+                    window.fetch;
+
+                window.fetch =
+                    async function() {
+
+                        var input =
+                            arguments[0];
+
+                        var options =
+                            arguments[1] || {};
+
+                        var url =
+                            typeof input ===
+                            'string'
+                            ? input
+                            : (
+                                input &&
+                                input.url
+                                ? input.url
+                                : ''
+                            );
+
+                        var method =
+                            options.method ||
+                            (
+                                typeof input !==
+                                'string' &&
+                                input
+                                ? input.method
+                                : 'GET'
+                            ) ||
+                            'GET';
+
+                        var body =
+                            options.body ||
+                            '';
+
+                        try {
+
+                            TravelPins.network(
+                                'FETCH_REQUEST',
+                                method,
+                                url,
+                                String(body)
+                            );
+
+                        } catch(e) {}
+
+                        try {
+
+                            var response =
+                                await originalFetch.apply(
+                                    this,
+                                    arguments
+                                );
+
+                            try {
+
+                                var clone =
+                                    response.clone();
+
+                                var text =
+                                    await clone.text();
+
+                                var lowerUrl =
+                                    (
+                                        url || ''
+                                    )
+                                    .toLowerCase();
+
+                                if (
+                                    lowerUrl.indexOf(
+                                        'boq'
+                                    ) >= 0 ||
+                                    lowerUrl.indexOf(
+                                        'list'
+                                    ) >= 0 ||
+                                    lowerUrl.indexOf(
+                                        'place'
+                                    ) >= 0 ||
+                                    lowerUrl.indexOf(
+                                        'rpc'
+                                    ) >= 0 ||
+                                    lowerUrl.indexOf(
+                                        'batchexecute'
+                                    ) >= 0
+                                ) {
+
+                                    TravelPins.network(
+                                        'FETCH_RESPONSE',
+                                        method,
+                                        url,
+                                        text
+                                    );
+                                }
+
+                            } catch(e) {
+
+                                TravelPins.network(
+                                    'FETCH_RESPONSE_ERROR',
+                                    method,
+                                    url,
+                                    e.message
+                                );
+                            }
+
+                            return response;
+
+                        } catch(error) {
+
+                            try {
+
+                                TravelPins.network(
+                                    'FETCH_ERROR',
+                                    method,
+                                    url,
+                                    error.message
+                                );
+
+                            } catch(e) {}
+
+                            throw error;
+                        }
+                    };
+
+                // =================================================
+                // XHR OPEN
+                // =================================================
+
+                var originalOpen =
+                    XMLHttpRequest
+                        .prototype
+                        .open;
+
+                var originalSend =
+                    XMLHttpRequest
+                        .prototype
+                        .send;
+
+                XMLHttpRequest
+                    .prototype
+                    .open =
+                    function(
+                        method,
+                        url
+                    ) {
+
+                        this.__tp_method =
+                            method;
+
+                        this.__tp_url =
+                            url;
+
+                        return originalOpen.apply(
+                            this,
+                            arguments
+                        );
+                    };
+
+                // =================================================
+                // XHR SEND
+                // =================================================
+
+                XMLHttpRequest
+                    .prototype
+                    .send =
+                    function(body) {
+
+                        var xhr =
+                            this;
+
+                        var method =
+                            xhr.__tp_method ||
+                            'GET';
+
+                        var url =
+                            xhr.__tp_url ||
+                            '';
+
+                        var lowerUrl =
+                            String(url)
+                                .toLowerCase();
+
+                        var interesting =
+                            lowerUrl.indexOf(
+                                'boq'
+                            ) >= 0 ||
+                            lowerUrl.indexOf(
+                                'list'
+                            ) >= 0 ||
+                            lowerUrl.indexOf(
+                                'place'
+                            ) >= 0 ||
+                            lowerUrl.indexOf(
+                                'rpc'
+                            ) >= 0 ||
+                            lowerUrl.indexOf(
+                                'batchexecute'
+                            ) >= 0 ||
+                            lowerUrl.indexOf(
+                                'local'
+                            ) >= 0;
+
+                        if (
+                            interesting
+                        ) {
+
+                            try {
+
+                                TravelPins.network(
+                                    'XHR_REQUEST',
+                                    method,
+                                    url,
+                                    body
+                                    ? String(body)
+                                    : ''
+                                );
+
+                            } catch(e) {}
+                        }
+
+                        xhr.addEventListener(
+                            'load',
+                            function() {
+
+                                if (!interesting) {
+                                    return;
+                                }
+
+                                try {
+
+                                    var response =
+                                        xhr.responseText ||
+                                        '';
+
+                                    TravelPins.network(
+                                        'XHR_RESPONSE',
+                                        method,
+                                        url,
+                                        response
+                                    );
+
+                                } catch(e) {
+
+                                    try {
+
+                                        TravelPins.network(
+                                            'XHR_RESPONSE_ERROR',
+                                            method,
+                                            url,
+                                            e.message
+                                        );
+
+                                    } catch(x) {}
+                                }
+                            }
+                        );
+
+                        return originalSend.apply(
+                            this,
+                            arguments
+                        );
+                    };
+
+                try {
+
+                    TravelPins.log(
+                        'NETWORK HOOK INSTALLATO'
+                    );
+
+                } catch(e) {}
+
+                return 'HOOK_INSTALLED';
+
+            })();
+            """.trimIndent()
+
+        webView.evaluateJavascript(
+            javascript
+        ) { result ->
+
+            addLog(
+                "[JAVASCRIPT HOOK] $result"
+            )
         }
-
-        var result = value
-
-        if (
-            result.startsWith("\"") &&
-            result.endsWith("\"")
-        ) {
-
-            result =
-                result.substring(
-                    1,
-                    result.length - 1
-                )
-        }
-
-        result =
-            result.replace(
-                "\\n",
-                "\n"
-            )
-
-        result =
-            result.replace(
-                "\\r",
-                "\r"
-            )
-
-        result =
-            result.replace(
-                "\\t",
-                "\t"
-            )
-
-        result =
-            result.replace(
-                "\\\"",
-                "\""
-            )
-
-        result =
-            result.replace(
-                "\\/",
-                "/"
-            )
-
-        result =
-            result.replace(
-                "\\\\",
-                "\\"
-            )
-
-        return result
     }
 
     // ============================================================
-    // GOOGLE INTENT
+    // REQUEST MONITOR
     // ============================================================
 
-    private fun handleGoogleIntent(
-        intentUrl: String
+    private fun inspectRequest(
+        request: WebResourceRequest
+    ) {
+
+        val url =
+            request.url.toString()
+
+        val lower =
+            url.lowercase()
+
+        val interesting =
+            lower.contains(
+                "google.com/maps"
+            ) ||
+            lower.contains(
+                "maps.google"
+            ) ||
+            lower.contains(
+                "/maps/preview"
+            ) ||
+            lower.contains(
+                "entitylist"
+            ) ||
+            lower.contains(
+                "placelist"
+            ) ||
+            lower.contains(
+                "userlists"
+            ) ||
+            lower.contains(
+                "local-search"
+            ) ||
+            lower.contains(
+                "boq-local-search"
+            ) ||
+            lower.contains(
+                "place"
+            ) ||
+            lower.contains(
+                "saved"
+            ) ||
+            lower.contains(
+                "list"
+            ) ||
+            lower.contains(
+                "batchexecute"
+            ) ||
+            lower.contains(
+                "rpc"
+            ) ||
+            lower.contains(
+                "pb="
+            ) ||
+            lower.contains(
+                "data="
+            )
+
+        if (!interesting) {
+            return
+        }
+
+        addLog(
+            """
+            [GOOGLE REQUEST]
+
+            METHOD:
+            ${request.method}
+
+            URL:
+            $url
+
+            MAIN FRAME:
+            ${request.isForMainFrame}
+
+            """.trimIndent()
+        )
+    }
+
+    // ============================================================
+    // NAVIGATION
+    // ============================================================
+
+    private fun inspectNavigation(
+        url: String
     ) {
 
         addLog(
             """
-            ==============================
-            GOOGLE INTENT INTERCETTATO
+            [NAVIGAZIONE]
 
-            Google voleva aprire:
-            APP GOOGLE MAPS
-
-            ==============================
-            CERCO FALLBACK WEB...
+            $url
 
             """.trimIndent()
         )
-
-        try {
-
-            val uri =
-                Uri.parse(intentUrl)
-
-            val fallback =
-                uri.getQueryParameter(
-                    "S.browser_fallback_url"
-                )
-
-            if (!fallback.isNullOrBlank()) {
-
-                addLog(
-                    """
-                    [FALLBACK URL TROVATO]
-
-                    $fallback
-
-                    ==============================
-                    CARICO FALLBACK NELLA WEBVIEW...
-                    ==============================
-                    """.trimIndent()
-                )
-
-                webView.loadUrl(fallback)
-
-                return
-            }
-
-            // ------------------------------------------------
-            // FALLBACK MANUALE
-            // ------------------------------------------------
-
-            val marker =
-                "S.browser_fallback_url="
-
-            val index =
-                intentUrl.indexOf(marker)
-
-            if (index >= 0) {
-
-                var fallbackText =
-                    intentUrl.substring(
-                        index + marker.length
-                    )
-
-                val end =
-                    fallbackText.indexOf(
-                        "#Intent"
-                    )
-
-                if (end >= 0) {
-
-                    fallbackText =
-                        fallbackText.substring(
-                            0,
-                            end
-                        )
-                }
-
-                fallbackText =
-                    Uri.decode(
-                        fallbackText
-                    )
-
-                addLog(
-                    """
-                    [FALLBACK MANUALE]
-
-                    $fallbackText
-
-                    ==============================
-                    CARICO FALLBACK...
-                    ==============================
-                    """.trimIndent()
-                )
-
-                webView.loadUrl(
-                    fallbackText
-                )
-
-                return
-            }
-
-            addLog(
-                """
-                ❌ FALLBACK URL NON TROVATO
-
-                ==============================
-                """.trimIndent()
-            )
-
-        } catch (e: Exception) {
-
-            addLog(
-                """
-                ❌ ERRORE PARSING INTENT
-
-                ${e.message}
-
-                ==============================
-                """.trimIndent()
-            )
-        }
     }
 
     // ============================================================
@@ -1043,15 +1585,15 @@ class MainActivity : Activity() {
 
         addLog(
             """
-            ==============================
+            =========================================
             AVVIO ACCETTAZIONE GOOGLE
 
-            ==============================
+            =========================================
             """.trimIndent()
         )
 
-        val javascript = """
-
+        val javascript =
+            """
             (function() {
 
                 try {
@@ -1085,10 +1627,14 @@ class MainActivity : Activity() {
                             .toLowerCase();
 
                         if (
-                            text === 'accetta tutto' ||
-                            text === 'accetta' ||
-                            text === 'accept all' ||
-                            text === 'accept'
+                            text ===
+                            'accetta tutto' ||
+                            text ===
+                            'accetta' ||
+                            text ===
+                            'accept all' ||
+                            text ===
+                            'accept'
                         ) {
 
                             result.push(
@@ -1116,7 +1662,9 @@ class MainActivity : Activity() {
                         }
                     }
 
-                    return result.join('|');
+                    return result.join(
+                        '|'
+                    );
 
                 } catch(e) {
 
@@ -1125,8 +1673,7 @@ class MainActivity : Activity() {
                 }
 
             })();
-
-        """.trimIndent()
+            """.trimIndent()
 
         webView.evaluateJavascript(
             javascript
@@ -1138,311 +1685,146 @@ class MainActivity : Activity() {
 
                 $result
 
-                ==============================
+                =========================================
                 """.trimIndent()
             )
         }
     }
 
     // ============================================================
-    // NETWORK HOOK
+    // GOOGLE INTENT
     // ============================================================
 
-    private fun injectNetworkHook() {
+    private fun handleGoogleIntent(
+        intentUrl: String
+    ) {
 
-        val javascript = """
+        addLog(
+            """
+            =========================================
+            GOOGLE INTENT INTERCETTATO
 
-            (function() {
+            Google voleva aprire:
+            APP GOOGLE MAPS
 
-                if (
-                    window.__travelpins_hooked
-                ) {
+            =========================================
+            CERCO FALLBACK WEB...
 
-                    return 'ALREADY_INSTALLED';
+            """.trimIndent()
+        )
+
+        try {
+
+            val uri =
+                Uri.parse(
+                    intentUrl
+                )
+
+            var fallback =
+                uri.getQueryParameter(
+                    "S.browser_fallback_url"
+                )
+
+            if (
+                fallback.isNullOrBlank()
+            ) {
+
+                val marker =
+                    "S.browser_fallback_url="
+
+                val index =
+                    intentUrl.indexOf(
+                        marker
+                    )
+
+                if (index >= 0) {
+
+                    fallback =
+                        intentUrl.substring(
+                            index +
+                            marker.length
+                        )
+
+                    val endIntent =
+                        fallback.indexOf(
+                            "#Intent"
+                        )
+
+                    if (endIntent >= 0) {
+
+                        fallback =
+                            fallback.substring(
+                                0,
+                                endIntent
+                            )
+                    }
+
+                    fallback =
+                        fallback.substringBefore(
+                            ";end;"
+                        )
+
+                    fallback =
+                        Uri.decode(
+                            fallback
+                        )
                 }
+            }
 
-                window.__travelpins_hooked =
-                    true;
+            if (
+                !fallback.isNullOrBlank()
+            ) {
 
-                // ==================================================
-                // FETCH
-                // ==================================================
+                fallback =
+                    fallback
+                        .replace(
+                            ";end;",
+                            ""
+                        )
+                        .replace(
+                            ";end",
+                            ""
+                        )
 
-                var originalFetch =
-                    window.fetch;
+                addLog(
+                    """
+                    [FALLBACK URL]
 
-                window.fetch =
-                    async function() {
+                    $fallback
 
-                        var input =
-                            arguments[0];
+                    =========================================
+                    CARICO FALLBACK NELLA WEBVIEW...
+                    =========================================
+                    """.trimIndent()
+                )
 
-                        var options =
-                            arguments[1] || {};
+                webView.loadUrl(
+                    fallback
+                )
 
-                        var url =
-                            typeof input === 'string'
-                            ? input
-                            : input.url;
-
-                        var method =
-                            options.method ||
-                            (
-                                typeof input !== 'string'
-                                ? input.method
-                                : 'GET'
-                            ) ||
-                            'GET';
-
-                        var body =
-                            options.body || '';
-
-                        try {
-
-                            TravelPins.network(
-                                'FETCH_REQUEST',
-                                method,
-                                url,
-                                body
-                            );
-
-                        } catch(e) {}
-
-                        try {
-
-                            var response =
-                                await originalFetch.apply(
-                                    this,
-                                    arguments
-                                );
-
-                            try {
-
-                                var clone =
-                                    response.clone();
-
-                                var text =
-                                    await clone.text();
-
-                                TravelPins.network(
-                                    'FETCH_RESPONSE',
-                                    method,
-                                    url,
-                                    text
-                                );
-
-                            } catch(e) {
-
-                                TravelPins.network(
-                                    'FETCH_RESPONSE_ERROR',
-                                    method,
-                                    url,
-                                    e.message
-                                );
-                            }
-
-                            return response;
-
-                        } catch(error) {
-
-                            try {
-
-                                TravelPins.network(
-                                    'FETCH_ERROR',
-                                    method,
-                                    url,
-                                    error.message
-                                );
-
-                            } catch(e) {}
-
-                            throw error;
-                        }
-                    };
-
-                // ==================================================
-                // XMLHttpRequest
-                // ==================================================
-
-                var originalOpen =
-                    XMLHttpRequest.prototype.open;
-
-                var originalSend =
-                    XMLHttpRequest.prototype.send;
-
-                XMLHttpRequest.prototype.open =
-                    function(
-                        method,
-                        url
-                    ) {
-
-                        this.__tp_method =
-                            method;
-
-                        this.__tp_url =
-                            url;
-
-                        try {
-
-                            TravelPins.network(
-                                'XHR_OPEN',
-                                method,
-                                url,
-                                ''
-                            );
-
-                        } catch(e) {}
-
-                        return originalOpen.apply(
-                            this,
-                            arguments
-                        );
-                    };
-
-                XMLHttpRequest.prototype.send =
-                    function(body) {
-
-                        var xhr =
-                            this;
-
-                        try {
-
-                            TravelPins.network(
-                                'XHR_REQUEST',
-                                xhr.__tp_method ||
-                                'GET',
-                                xhr.__tp_url ||
-                                '',
-                                body || ''
-                            );
-
-                        } catch(e) {}
-
-                        xhr.addEventListener(
-                            'load',
-                            function() {
-
-                                try {
-
-                                    TravelPins.network(
-                                        'XHR_RESPONSE',
-                                        xhr.__tp_method ||
-                                        'GET',
-                                        xhr.__tp_url ||
-                                        '',
-                                        xhr.responseText ||
-                                        ''
-                                    );
-
-                                } catch(e) {
-
-                                    TravelPins.network(
-                                        'XHR_RESPONSE_ERROR',
-                                        xhr.__tp_method ||
-                                        'GET',
-                                        xhr.__tp_url ||
-                                        '',
-                                        e.message
-                                    );
-                                }
-                            }
-                        );
-
-                        return originalSend.apply(
-                            this,
-                            arguments
-                        );
-                    };
-
-                try {
-
-                    TravelPins.log(
-                        'NETWORK HOOK INSTALLATO'
-                    );
-
-                } catch(e) {}
-
-                return 'HOOK_INSTALLED';
-
-            })();
-
-        """.trimIndent()
-
-        webView.evaluateJavascript(
-            javascript
-        ) { result ->
+                return
+            }
 
             addLog(
-                "[JAVASCRIPT HOOK] $result"
+                """
+                ❌ FALLBACK URL NON TROVATO
+
+                =========================================
+                """.trimIndent()
+            )
+
+        } catch (e: Exception) {
+
+            addLog(
+                """
+                ❌ ERRORE PARSING INTENT
+
+                ${e.message}
+
+                =========================================
+                """.trimIndent()
             )
         }
-    }
-
-    // ============================================================
-    // WEBVIEW REQUEST MONITOR
-    // ============================================================
-
-    private fun inspectRequest(
-        request: WebResourceRequest
-    ) {
-
-        val url =
-            request.url.toString()
-
-        val lower =
-            url.lowercase()
-
-        val interesting =
-            lower.contains("google.com/maps") ||
-            lower.contains("maps.google") ||
-            lower.contains("/maps/preview") ||
-            lower.contains("entitylist") ||
-            lower.contains("placelist") ||
-            lower.contains("place") ||
-            lower.contains("saved") ||
-            lower.contains("list") ||
-            lower.contains("batchexecute") ||
-            lower.contains("rpc") ||
-            lower.contains("pb=") ||
-            lower.contains("data=")
-
-        if (!interesting) {
-            return
-        }
-
-        addLog(
-            """
-            [GOOGLE REQUEST]
-
-            METHOD:
-            ${request.method}
-
-            URL:
-            $url
-
-            MAIN FRAME:
-            ${request.isForMainFrame}
-
-            """.trimIndent()
-        )
-    }
-
-    // ============================================================
-    // NAVIGATION MONITOR
-    // ============================================================
-
-    private fun inspectNavigation(
-        url: String
-    ) {
-
-        addLog(
-            """
-            [NAVIGAZIONE]
-
-            $url
-
-            """.trimIndent()
-        )
     }
 
     // ============================================================
@@ -1457,6 +1839,7 @@ class MainActivity : Activity() {
             intent?.action !=
             Intent.ACTION_SEND
         ) {
+
             return
         }
 
@@ -1465,7 +1848,9 @@ class MainActivity : Activity() {
                 Intent.EXTRA_TEXT
             )
 
-        if (sharedText.isNullOrBlank()) {
+        if (
+            sharedText.isNullOrBlank()
+        ) {
 
             addLog(
                 "Nessun testo ricevuto."
@@ -1495,16 +1880,48 @@ class MainActivity : Activity() {
 
         addLog(
             """
-            ==============================
+            =========================================
             LINK RICEVUTO
 
             $url
-            ==============================
+
+            =========================================
             AVVIO GOOGLE MAPS...
             """.trimIndent()
         )
 
-        webView.loadUrl(url)
+        webView.loadUrl(
+            url
+        )
+    }
+
+    // ============================================================
+    // JS STRING ESCAPE
+    // ============================================================
+
+    private fun jsQuote(
+        value: String
+    ): String {
+
+        return "'" +
+            value
+                .replace(
+                    "\\",
+                    "\\\\"
+                )
+                .replace(
+                    "'",
+                    "\\'"
+                )
+                .replace(
+                    "\n",
+                    "\\n"
+                )
+                .replace(
+                    "\r",
+                    "\\r"
+                ) +
+            "'"
     }
 
     // ============================================================
@@ -1515,7 +1932,9 @@ class MainActivity : Activity() {
         text: String
     ) {
 
-        log.add(text)
+        log.add(
+            text
+        )
 
         updateScreen()
     }
@@ -1540,11 +1959,17 @@ class MainActivity : Activity() {
         intent: Intent
     ) {
 
-        super.onNewIntent(intent)
+        super.onNewIntent(
+            intent
+        )
 
-        setIntent(intent)
+        setIntent(
+            intent
+        )
 
-        handleIntent(intent)
+        handleIntent(
+            intent
+        )
     }
 
     // ============================================================
@@ -1554,7 +1979,9 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
-        if (webView.canGoBack()) {
+        if (
+            webView.canGoBack()
+        ) {
 
             webView.goBack()
 
