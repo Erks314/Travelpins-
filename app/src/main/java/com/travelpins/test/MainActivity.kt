@@ -35,6 +35,22 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
 
     // ============================================================
+    // DESKTOP USER AGENT
+    //
+    // Google Maps dal 2026 non restituisce correttamente alcune
+    // liste con user-agent mobile/WebView.
+    //
+    // GeoShare usa un desktop UA per questo caso.
+    // ============================================================
+
+    private val desktopUserAgent =
+        "Mozilla/5.0 (X11; Linux x86_64) " +
+        "AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) " +
+        "Chrome/131.0.0.0 " +
+        "Safari/537.36"
+
+    // ============================================================
     // JAVASCRIPT -> KOTLIN
     // ============================================================
 
@@ -68,17 +84,29 @@ class MainActivity : Activity() {
             val currentUrl = url ?: ""
 
             val interesting =
-                currentUrl.contains("userlists", true) ||
-                currentUrl.contains("listview", true) ||
-                currentUrl.contains("batchexecute", true) ||
-                currentUrl.contains("rpc", true)
+                currentUrl.contains(
+                    "userlists",
+                    ignoreCase = true
+                ) ||
+                currentUrl.contains(
+                    "listview",
+                    ignoreCase = true
+                ) ||
+                currentUrl.contains(
+                    "batchexecute",
+                    ignoreCase = true
+                ) ||
+                currentUrl.contains(
+                    "rpc",
+                    ignoreCase = true
+                )
 
             if (!interesting) {
                 return
             }
 
             val limitedData =
-                (data ?: "").take(3000)
+                (data ?: "").take(2000)
 
             addLog(
                 """
@@ -108,7 +136,9 @@ class MainActivity : Activity() {
         savedInstanceState: Bundle?
     ) {
 
-        super.onCreate(savedInstanceState)
+        super.onCreate(
+            savedInstanceState
+        )
 
         createInterface()
         createWebView()
@@ -143,15 +173,10 @@ class MainActivity : Activity() {
                     LinearLayout.HORIZONTAL
             }
 
-        // ========================================================
-        // COPIA
-        // ========================================================
-
         val copyButton =
             Button(this).apply {
 
-                text =
-                    "COPIA TUTTO"
+                text = "COPIA TUTTO"
 
                 setOnClickListener {
 
@@ -175,15 +200,10 @@ class MainActivity : Activity() {
                 }
             }
 
-        // ========================================================
-        // PULISCI
-        // ========================================================
-
         val clearButton =
             Button(this).apply {
 
-                text =
-                    "PULISCI"
+                text = "PULISCI"
 
                 setOnClickListener {
 
@@ -198,15 +218,10 @@ class MainActivity : Activity() {
                 }
             }
 
-        // ========================================================
-        // CONSENSO GOOGLE
-        // ========================================================
-
         consentButton =
             Button(this).apply {
 
-                text =
-                    "ACCETTA GOOGLE"
+                text = "ACCETTA GOOGLE"
 
                 visibility =
                     Button.GONE
@@ -217,15 +232,10 @@ class MainActivity : Activity() {
                 }
             }
 
-        // ========================================================
-        // SCANSIONA
-        // ========================================================
-
         scanButton =
             Button(this).apply {
 
-                text =
-                    "SCANSIONA"
+                text = "SCANSIONA"
 
                 visibility =
                     Button.GONE
@@ -238,10 +248,6 @@ class MainActivity : Activity() {
                     scanGoogleList()
                 }
             }
-
-        // ========================================================
-        // TOOLBAR
-        // ========================================================
 
         toolbar.addView(
             copyButton,
@@ -279,15 +285,10 @@ class MainActivity : Activity() {
             )
         )
 
-        // ========================================================
-        // OUTPUT
-        // ========================================================
-
         output =
             TextView(this).apply {
 
-                textSize =
-                    13f
+                textSize = 13f
 
                 setTextIsSelectable(
                     true
@@ -358,17 +359,19 @@ class MainActivity : Activity() {
                 false
             )
 
+            // ====================================================
+            // CAMBIAMENTO IMPORTANTE
+            // ====================================================
+
             userAgentString =
-                "Mozilla/5.0 (Linux; Android 10) " +
-                "AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) " +
-                "Chrome/131.0.0.0 " +
-                "Mobile Safari/537.36"
+                desktopUserAgent
         }
 
         CookieManager
             .getInstance()
-            .setAcceptCookie(true)
+            .setAcceptCookie(
+                true
+            )
 
         CookieManager
             .getInstance()
@@ -388,10 +391,6 @@ class MainActivity : Activity() {
         webView.webViewClient =
             object : WebViewClient() {
 
-                // =================================================
-                // NAVIGAZIONE
-                // =================================================
-
                 override fun shouldOverrideUrlLoading(
                     view: WebView,
                     request: WebResourceRequest
@@ -403,7 +402,9 @@ class MainActivity : Activity() {
                     inspectNavigation(url)
 
                     if (
-                        url.startsWith("intent://")
+                        url.startsWith(
+                            "intent://"
+                        )
                     ) {
 
                         handleGoogleIntent(url)
@@ -414,10 +415,6 @@ class MainActivity : Activity() {
                     return false
                 }
 
-                // =================================================
-                // REQUEST
-                // =================================================
-
                 override fun shouldInterceptRequest(
                     view: WebView,
                     request: WebResourceRequest
@@ -427,10 +424,6 @@ class MainActivity : Activity() {
 
                     return null
                 }
-
-                // =================================================
-                // PAGINA CARICATA
-                // =================================================
 
                 override fun onPageFinished(
                     view: WebView,
@@ -444,20 +437,19 @@ class MainActivity : Activity() {
 
                         $url
 
+                        USER AGENT:
+                        DESKTOP
+
                         ==============================
                         """.trimIndent()
                     )
 
                     injectNetworkHook()
 
-                    // =================================================
-                    // CONSENSO
-                    // =================================================
-
                     if (
                         url.contains(
                             "consent.google.com",
-                            true
+                            ignoreCase = true
                         )
                     ) {
 
@@ -472,11 +464,9 @@ class MainActivity : Activity() {
 
                         addLog(
                             """
-                            ==============================
-                            CONSENSO GOOGLE RILEVATO
+                            CONSENSO GOOGLE RILEVATO.
 
-                            Premi:
-                            ACCETTA GOOGLE
+                            Premi ACCETTA GOOGLE.
 
                             ==============================
                             """.trimIndent()
@@ -489,20 +479,23 @@ class MainActivity : Activity() {
                     }
 
                     // =================================================
-                    // LISTA GOOGLE
+                    // RICONOSCIMENTO LISTA
+                    //
+                    // Accettiamo sia il vecchio percorso /local/
+                    // sia /maps/placelists/
                     // =================================================
 
                     if (
-                        url.contains(
-                            "/local/userlists/list/",
-                            true
-                        )
+                        isGoogleListUrl(url)
                     ) {
 
                         addLog(
                             """
                             ==============================
                             LISTA GOOGLE MAPS RILEVATA
+
+                            Google sta utilizzando
+                            la modalità desktop.
 
                             Premi SCANSIONA.
 
@@ -517,10 +510,6 @@ class MainActivity : Activity() {
                             true
                     }
                 }
-
-                // =================================================
-                // RENDERER
-                // =================================================
 
                 override fun onRenderProcessGone(
                     view: WebView,
@@ -545,12 +534,36 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
+    // RICONOSCIMENTO LISTA
+    // ============================================================
+
+    private fun isGoogleListUrl(
+        url: String
+    ): Boolean {
+
+        val lower =
+            url.lowercase()
+
+        return lower.contains(
+            "/local/userlists/list/"
+        ) ||
+        lower.contains(
+            "/maps/placelists/list/"
+        ) ||
+        lower.contains(
+            "placelists/list"
+        )
+    }
+
+    // ============================================================
     // SCANSIONE
     // ============================================================
 
     private fun scanGoogleList() {
 
-        if (!scanButton.isEnabled) {
+        if (
+            !scanButton.isEnabled
+        ) {
             return
         }
 
@@ -560,410 +573,249 @@ class MainActivity : Activity() {
         addLog(
             """
             ==============================
-            SCANSIONE DIAGNOSTICA AVVIATA
+            SCANSIONE AVVIATA
 
-            Analizzo la struttura reale
-            della pagina Google Maps.
+            Analizzo APP_INITIALIZATION_STATE
+            di Google Maps.
 
             ==============================
             """.trimIndent()
         )
 
-        handler.postDelayed({
-
-            inspectGoogleListPage()
-
-        }, 2500)
+        inspectGoogleListPage()
     }
 
     // ============================================================
-    // ANALISI PROFONDA DELLA PAGINA
+    // LETTURA GOOGLE MAPS
+    //
+    // NON cerchiamo più solamente i tag <a>.
+    //
+    // Google inserisce i dati della lista nello stato iniziale
+    // dell'applicazione JavaScript.
     // ============================================================
 
     private fun inspectGoogleListPage() {
 
-        val javascript = """
+        handler.postDelayed({
 
-            (function() {
+            val javascript = """
 
-                try {
+                (function() {
 
-                    var result = [];
+                    try {
 
-                    // ==================================================
-                    // INFORMAZIONI BASE
-                    // ==================================================
-
-                    result.push(
-                        '===== INFO PAGINA ====='
-                    );
-
-                    result.push(
-                        'URL: ' +
-                        window.location.href
-                    );
-
-                    result.push(
-                        'TITLE: ' +
-                        (document.title || '')
-                    );
-
-                    result.push(
-                        'READY: ' +
-                        document.readyState
-                    );
-
-                    // ==================================================
-                    // BODY TEXT
-                    // ==================================================
-
-                    result.push(
-                        ''
-                    );
-
-                    result.push(
-                        '===== TESTO VISIBILE ====='
-                    );
-
-                    var bodyText =
-                        document.body
-                            ? document.body.innerText
-                            : '';
-
-                    bodyText =
-                        bodyText.trim();
-
-                    if (
-                        bodyText.length > 12000
-                    ) {
-
-                        bodyText =
-                            bodyText.substring(
-                                0,
-                                12000
-                            );
-                    }
-
-                    result.push(
-                        bodyText ||
-                        '[NESSUN TESTO VISIBILE]'
-                    );
-
-                    // ==================================================
-                    // ELEMENTI CLICCABILI
-                    // ==================================================
-
-                    result.push(
-                        ''
-                    );
-
-                    result.push(
-                        '===== ELEMENTI CLICCABILI ====='
-                    );
-
-                    var clickable =
-                        document.querySelectorAll(
-                            'a, button, [role="button"], [role="link"]'
-                        );
-
-                    var clickableCount = 0;
-
-                    for (
-                        var i = 0;
-                        i < clickable.length;
-                        i++
-                    ) {
-
-                        if (
-                            clickableCount >= 200
-                        ) {
-                            break;
-                        }
-
-                        var el =
-                            clickable[i];
-
-                        var txt =
-                            (
-                                el.innerText ||
-                                el.textContent ||
-                                ''
-                            )
-                            .trim()
-                            .replace(
-                                /\\s+/g,
-                                ' '
-                            );
-
-                        var aria =
-                            el.getAttribute(
-                                'aria-label'
-                            ) || '';
-
-                        var href =
-                            el.getAttribute(
-                                'href'
-                            ) || '';
-
-                        if (
-                            txt ||
-                            aria ||
-                            href
-                        ) {
-
-                            result.push(
-                                'ELEMENT ' +
-                                clickableCount +
-                                ': ' +
-                                'TEXT=[' +
-                                txt.substring(
-                                    0,
-                                    200
-                                ) +
-                                '] ' +
-                                'ARIA=[' +
-                                aria.substring(
-                                    0,
-                                    200
-                                ) +
-                                '] ' +
-                                'HREF=[' +
-                                href.substring(
-                                    0,
-                                    500
-                                ) +
-                                ']'
-                            );
-
-                            clickableCount++;
-                        }
-                    }
-
-                    // ==================================================
-                    // LINK MAPS
-                    // ==================================================
-
-                    result.push(
-                        ''
-                    );
-
-                    result.push(
-                        '===== LINK GOOGLE MAPS ====='
-                    );
-
-                    var mapLinks =
-                        document.querySelectorAll(
-                            'a[href*="google.com/maps"], a[href*="/maps/"]'
-                        );
-
-                    result.push(
-                        'TROVATI: ' +
-                        mapLinks.length
-                    );
-
-                    for (
-                        var j = 0;
-                        j < mapLinks.length &&
-                        j < 100;
-                        j++
-                    ) {
-
-                        var link =
-                            mapLinks[j];
+                        var result = [];
 
                         result.push(
-                            'MAP_LINK ' +
-                            j +
-                            ': ' +
-                            (
-                                link.innerText ||
-                                ''
-                            )
-                            .trim()
-                            .replace(
-                                /\\s+/g,
-                                ' '
-                            ) +
-                            ' -> ' +
-                            (
-                                link.href ||
-                                ''
-                            )
-                        );
-                    }
-
-                    // ==================================================
-                    // ELEMENTI CON ARIA
-                    // ==================================================
-
-                    result.push(
-                        ''
-                    );
-
-                    result.push(
-                        '===== ELEMENTI ARIA ====='
-                    );
-
-                    var ariaElements =
-                        document.querySelectorAll(
-                            '[aria-label]'
+                            'URL: ' +
+                            location.href
                         );
 
-                    var ariaCount = 0;
+                        result.push(
+                            'TITLE: ' +
+                            (document.title || '')
+                        );
 
-                    for (
-                        var k = 0;
-                        k < ariaElements.length;
-                        k++
-                    ) {
-
-                        if (
-                            ariaCount >= 150
-                        ) {
-                            break;
-                        }
-
-                        var ariaElement =
-                            ariaElements[k];
-
-                        var label =
-                            ariaElement.getAttribute(
-                                'aria-label'
-                            ) || '';
+                        // =================================================
+                        // APP_INITIALIZATION_STATE
+                        // =================================================
 
                         if (
-                            label.trim()
+                            typeof APP_INITIALIZATION_STATE !==
+                            'undefined'
                         ) {
 
                             result.push(
-                                'ARIA ' +
-                                ariaCount +
-                                ': ' +
-                                label.substring(
+                                'APP_INITIALIZATION_STATE: PRESENTE'
+                            );
+
+                            try {
+
+                                var state =
+                                    JSON.stringify(
+                                        APP_INITIALIZATION_STATE
+                                    );
+
+                                result.push(
+                                    'STATE_LENGTH: ' +
+                                    state.length
+                                );
+
+                                // Cerchiamo URL Google Maps
+                                // e coordinate presenti nello stato.
+
+                                var found =
+                                    [];
+
+                                var urlRegex =
+                                    /https?:\\\\/\\\\/(?:www\\\\.)?google\\\\.com\\\\/maps[^"\\\\s\\\\]+/g;
+
+                                var matches =
+                                    state.match(
+                                        urlRegex
+                                    );
+
+                                if (matches) {
+
+                                    for (
+                                        var i = 0;
+                                        i < matches.length;
+                                        i++
+                                    ) {
+
+                                        var u =
+                                            matches[i];
+
+                                        u =
+                                            u.replace(
+                                                /\\\\\\\\\\\\/g,
+                                                '/'
+                                            );
+
+                                        if (
+                                            found.indexOf(u)
+                                            === -1
+                                        ) {
+
+                                            found.push(u);
+                                        }
+                                    }
+                                }
+
+                                result.push(
+                                    'MAP_URLS: ' +
+                                    found.length
+                                );
+
+                                for (
+                                    var j = 0;
+                                    j < found.length;
+                                    j++
+                                ) {
+
+                                    result.push(
+                                        found[j]
+                                    );
+                                }
+
+                                // =================================================
+                                // Coordinate
+                                // =================================================
+
+                                var coordRegex =
+                                    /-?\\\\d{1,3}\\\\.\\\\d{4,}/g;
+
+                                var coords =
+                                    state.match(
+                                        coordRegex
+                                    ) || [];
+
+                                var uniqueCoords =
+                                    [];
+
+                                for (
+                                    var k = 0;
+                                    k < coords.length;
+                                    k++
+                                ) {
+
+                                    if (
+                                        uniqueCoords.indexOf(
+                                            coords[k]
+                                        ) === -1
+                                    ) {
+
+                                        uniqueCoords.push(
+                                            coords[k]
+                                        );
+                                    }
+                                }
+
+                                result.push(
+                                    'NUMERIC_VALUES: ' +
+                                    uniqueCoords.length
+                                );
+
+                            } catch(e) {
+
+                                result.push(
+                                    'STATE_ERROR: ' +
+                                    e.message
+                                );
+                            }
+
+                        } else {
+
+                            result.push(
+                                'APP_INITIALIZATION_STATE: ASSENTE'
+                            );
+                        }
+
+                        // =================================================
+                        // FALLBACK: testo pagina
+                        // =================================================
+
+                        var bodyText =
+                            document.body
+                                ? document.body.innerText
+                                : '';
+
+                        result.push(
+                            'VISIBLE_TEXT: ' +
+                            bodyText
+                                .substring(
                                     0,
-                                    300
+                                    3000
                                 )
-                            );
+                        );
 
-                            ariaCount++;
-                        }
+                        return result.join(
+                            '\\n'
+                        );
+
+                    } catch(e) {
+
+                        return 'SCAN_ERROR:' +
+                               e.message;
                     }
 
-                    // ==================================================
-                    // CLASSI IMPORTANTI
-                    // ==================================================
+                })();
 
-                    result.push(
-                        ''
-                    );
+            """.trimIndent()
 
-                    result.push(
-                        '===== ELEMENTI DATA ====='
-                    );
+            webView.evaluateJavascript(
+                javascript
+            ) { rawResult ->
 
-                    var dataElements =
-                        document.querySelectorAll(
-                            '[data-place-id], [data-result-index], [data-cid], [data-item-id]'
-                        );
+                val decoded =
+                    decodeJavascriptResult(
+                        rawResult
+                    )
 
-                    result.push(
-                        'DATA ELEMENTS: ' +
-                        dataElements.length
-                    );
+                val limited =
+                    decoded.take(
+                        12000
+                    )
 
-                    for (
-                        var d = 0;
-                        d < dataElements.length &&
-                        d < 100;
-                        d++
-                    ) {
+                addLog(
+                    """
+                    ==============================
+                    RISULTATO SCANSIONE
 
-                        var de =
-                            dataElements[d];
+                    $limited
 
-                        result.push(
-                            'DATA ' +
-                            d +
-                            ': ' +
-                            de.outerHTML.substring(
-                                0,
-                                1000
-                            )
-                        );
-                    }
+                    ==============================
+                    """.trimIndent()
+                )
 
-                    // ==================================================
-                    // HTML PARZIALE
-                    // ==================================================
+                runOnUiThread {
 
-                    result.push(
-                        ''
-                    );
-
-                    result.push(
-                        '===== HTML BODY PARZIALE ====='
-                    );
-
-                    var html =
-                        document.body
-                            ? document.body.innerHTML
-                            : '';
-
-                    html =
-                        html.substring(
-                            0,
-                            15000
-                        );
-
-                    result.push(
-                        html
-                    );
-
-                    return result.join(
-                        '\\n'
-                    );
-
-                } catch(e) {
-
-                    return (
-                        '===== ERRORE =====\\n' +
-                        e.name +
-                        ': ' +
-                        e.message
-                    );
+                    scanButton.isEnabled =
+                        true
                 }
-
-            })();
-
-        """.trimIndent()
-
-        webView.evaluateJavascript(
-            javascript
-        ) { result ->
-
-            val decoded =
-                decodeJavascriptResult(result)
-
-            val limited =
-                decoded.take(30000)
-
-            addLog(
-                """
-                ==============================
-                RISULTATO SCANSIONE
-
-                $limited
-
-                ==============================
-                """.trimIndent()
-            )
-
-            runOnUiThread {
-
-                scanButton.isEnabled =
-                    true
             }
-        }
+
+        }, 2500)
     }
 
     // ============================================================
@@ -974,7 +826,10 @@ class MainActivity : Activity() {
         value: String?
     ): String {
 
-        if (value.isNullOrBlank()) {
+        if (
+            value.isNullOrBlank()
+        ) {
+
             return ""
         }
 
@@ -1045,38 +900,31 @@ class MainActivity : Activity() {
             ==============================
             GOOGLE INTENT INTERCETTATO
 
-            Google voleva aprire:
-            APP GOOGLE MAPS
+            Cerco fallback web...
 
             ==============================
-            CERCO FALLBACK WEB...
-
             """.trimIndent()
         )
 
         try {
 
             val uri =
-                Uri.parse(intentUrl)
+                Uri.parse(
+                    intentUrl
+                )
 
             val fallback =
                 uri.getQueryParameter(
                     "S.browser_fallback_url"
                 )
 
-            if (!fallback.isNullOrBlank()) {
+            if (
+                !fallback.isNullOrBlank()
+            ) {
 
-                addLog(
-                    """
-                    [FALLBACK URL TROVATO]
-
-                    Carico versione web...
-
-                    ==============================
-                    """.trimIndent()
+                webView.loadUrl(
+                    fallback
                 )
-
-                webView.loadUrl(fallback)
 
                 return
             }
@@ -1085,13 +933,16 @@ class MainActivity : Activity() {
                 "S.browser_fallback_url="
 
             val index =
-                intentUrl.indexOf(marker)
+                intentUrl.indexOf(
+                    marker
+                )
 
             if (index >= 0) {
 
                 var fallbackText =
                     intentUrl.substring(
-                        index + marker.length
+                        index +
+                        marker.length
                     )
 
                 val end =
@@ -1113,38 +964,26 @@ class MainActivity : Activity() {
                         fallbackText
                     )
 
-                addLog(
-                    """
-                    [FALLBACK MANUALE]
-
-                    Carico versione web...
-
-                    ==============================
-                    """.trimIndent()
+                webView.loadUrl(
+                    fallbackText
                 )
-
-                webView.loadUrl(fallbackText)
 
                 return
             }
 
             addLog(
-                """
-                ❌ FALLBACK URL NON TROVATO
-
-                ==============================
-                """.trimIndent()
+                "❌ FALLBACK URL NON TROVATO"
             )
 
-        } catch (e: Exception) {
+        } catch (
+            e: Exception
+        ) {
 
             addLog(
                 """
                 ❌ ERRORE PARSING INTENT
 
                 ${e.message}
-
-                ==============================
                 """.trimIndent()
             )
         }
@@ -1160,7 +999,6 @@ class MainActivity : Activity() {
             """
             ==============================
             AVVIO ACCETTAZIONE GOOGLE
-
             ==============================
             """.trimIndent()
         )
@@ -1170,8 +1008,6 @@ class MainActivity : Activity() {
             (function() {
 
                 try {
-
-                    var result = [];
 
                     var elements =
                         document.querySelectorAll(
@@ -1206,32 +1042,16 @@ class MainActivity : Activity() {
                             text === 'accept'
                         ) {
 
-                            result.push(
-                                'BUTTON_FOUND:' +
+                            e.click();
+
+                            return (
+                                'CLICK_OK: ' +
                                 text
                             );
-
-                            try {
-
-                                e.click();
-
-                                result.push(
-                                    'CLICK_OK'
-                                );
-
-                            } catch(err) {
-
-                                result.push(
-                                    'CLICK_ERROR:' +
-                                    err.message
-                                );
-                            }
-
-                            break;
                         }
                     }
 
-                    return result.join('|');
+                    return 'PULSANTE NON TROVATO';
 
                 } catch(e) {
 
@@ -1249,7 +1069,7 @@ class MainActivity : Activity() {
 
             addLog(
                 """
-                [CONSENSO RISULTATO]
+                [CONSENSO]
 
                 $result
 
@@ -1278,10 +1098,6 @@ class MainActivity : Activity() {
 
                 window.__travelpins_hooked =
                     true;
-
-                // ==================================================
-                // FETCH
-                // ==================================================
 
                 var originalFetch =
                     window.fetch;
@@ -1323,25 +1139,11 @@ class MainActivity : Activity() {
 
                         } catch(e) {}
 
-                        try {
-
-                            var response =
-                                await originalFetch.apply(
-                                    this,
-                                    arguments
-                                );
-
-                            return response;
-
-                        } catch(error) {
-
-                            throw error;
-                        }
+                        return originalFetch.apply(
+                            this,
+                            arguments
+                        );
                     };
-
-                // ==================================================
-                // XHR
-                // ==================================================
 
                 var originalOpen =
                     XMLHttpRequest.prototype.open;
@@ -1370,16 +1172,13 @@ class MainActivity : Activity() {
                 XMLHttpRequest.prototype.send =
                     function(body) {
 
-                        var xhr =
-                            this;
-
                         try {
 
                             TravelPins.network(
                                 'XHR_REQUEST',
-                                xhr.__tp_method ||
+                                this.__tp_method ||
                                 'GET',
-                                xhr.__tp_url ||
+                                this.__tp_url ||
                                 '',
                                 body || ''
                             );
@@ -1444,14 +1243,8 @@ class MainActivity : Activity() {
             """
             [GOOGLE REQUEST]
 
-            METHOD:
             ${request.method}
-
-            URL:
             $url
-
-            MAIN FRAME:
-            ${request.isForMainFrame}
 
             """.trimIndent()
         )
@@ -1495,7 +1288,9 @@ class MainActivity : Activity() {
                 Intent.EXTRA_TEXT
             )
 
-        if (sharedText.isNullOrBlank()) {
+        if (
+            sharedText.isNullOrBlank()
+        ) {
 
             addLog(
                 "Nessun testo ricevuto."
@@ -1507,7 +1302,9 @@ class MainActivity : Activity() {
         val match =
             Regex(
                 """https?://\S+"""
-            ).find(sharedText)
+            ).find(
+                sharedText
+            )
 
         if (match == null) {
 
@@ -1529,11 +1326,13 @@ class MainActivity : Activity() {
             $url
 
             ==============================
-            AVVIO GOOGLE MAPS...
+            AVVIO GOOGLE MAPS WEB...
             """.trimIndent()
         )
 
-        webView.loadUrl(url)
+        webView.loadUrl(
+            url
+        )
     }
 
     // ============================================================
@@ -1545,11 +1344,11 @@ class MainActivity : Activity() {
     ) {
 
         log.add(
-            text.take(5000)
+            text.take(4000)
         )
 
         while (
-            log.size > 100
+            log.size > 80
         ) {
 
             log.poll()
@@ -1578,11 +1377,17 @@ class MainActivity : Activity() {
         intent: Intent
     ) {
 
-        super.onNewIntent(intent)
+        super.onNewIntent(
+            intent
+        )
 
-        setIntent(intent)
+        setIntent(
+            intent
+        )
 
-        handleIntent(intent)
+        handleIntent(
+            intent
+        )
     }
 
     // ============================================================
@@ -1592,7 +1397,9 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
-        if (webView.canGoBack()) {
+        if (
+            webView.canGoBack()
+        ) {
 
             webView.goBack()
 
