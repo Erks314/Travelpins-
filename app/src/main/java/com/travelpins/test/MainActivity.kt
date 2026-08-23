@@ -31,7 +31,6 @@ class MainActivity : Activity() {
     private lateinit var consentButton: Button
 
     private val log = ConcurrentLinkedQueue<String>()
-
     private val handler = Handler(Looper.getMainLooper())
 
     // ============================================================
@@ -42,10 +41,7 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun log(message: String?) {
-
-            if (message.isNullOrBlank()) {
-                return
-            }
+            if (message.isNullOrBlank()) return
 
             addLog(
                 """
@@ -64,7 +60,6 @@ class MainActivity : Activity() {
             url: String?,
             data: String?
         ) {
-
             addLog(
                 """
                 ==============================
@@ -85,9 +80,7 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         createInterface()
@@ -102,83 +95,62 @@ class MainActivity : Activity() {
 
     private fun createInterface() {
 
-        val root =
-            LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.VERTICAL
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(12, 12, 12, 12)
+        }
 
-                setPadding(
-                    12,
-                    12,
-                    12,
-                    12
-                )
-            }
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
 
-        val toolbar =
-            LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.HORIZONTAL
-            }
+        val copyButton = Button(this).apply {
+            text = "COPIA TUTTO"
 
-        val copyButton =
-            Button(this).apply {
+            setOnClickListener {
+                val clipboard =
+                    getSystemService(
+                        Context.CLIPBOARD_SERVICE
+                    ) as ClipboardManager
 
-                text = "COPIA TUTTO"
-
-                setOnClickListener {
-
-                    val clipboard =
-                        getSystemService(
-                            Context.CLIPBOARD_SERVICE
-                        ) as ClipboardManager
-
-                    clipboard.setPrimaryClip(
-                        ClipData.newPlainText(
-                            "TravelPins",
-                            output.text.toString()
-                        )
+                clipboard.setPrimaryClip(
+                    ClipData.newPlainText(
+                        "TravelPins",
+                        output.text.toString()
                     )
+                )
 
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Copiato!",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                Toast.makeText(
+                    this@MainActivity,
+                    "Copiato!",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
+        }
 
-        val clearButton =
-            Button(this).apply {
+        val clearButton = Button(this).apply {
+            text = "PULISCI"
 
-                text = "PULISCI"
+            setOnClickListener {
+                log.clear()
 
-                setOnClickListener {
+                output.text =
+                    """
+                    TRAVELPINS NETWORK MONITOR
 
-                    log.clear()
-
-                    output.text =
-                        """
-                        TRAVELPINS NETWORK MONITOR
-
-                        Monitor pulito.
-                        """.trimIndent()
-                }
+                    Monitor pulito.
+                    """.trimIndent()
             }
+        }
 
-        consentButton =
-            Button(this).apply {
+        consentButton = Button(this).apply {
+            text = "ACCETTA GOOGLE"
+            visibility = Button.GONE
 
-                text = "ACCETTA GOOGLE"
-
-                visibility =
-                    Button.GONE
-
-                setOnClickListener {
-
-                    acceptGoogleConsent()
-                }
+            setOnClickListener {
+                acceptGoogleConsent()
             }
+        }
 
         toolbar.addView(
             copyButton,
@@ -207,33 +179,28 @@ class MainActivity : Activity() {
             )
         )
 
-        output =
-            TextView(this).apply {
+        output = TextView(this).apply {
+            textSize = 13f
+            setTextIsSelectable(true)
 
-                textSize = 13f
+            setPadding(
+                12,
+                12,
+                12,
+                30
+            )
 
-                setTextIsSelectable(true)
+            text =
+                """
+                TRAVELPINS NETWORK MONITOR
 
-                setPadding(
-                    12,
-                    12,
-                    12,
-                    30
-                )
+                In attesa del link...
+                """.trimIndent()
+        }
 
-                text =
-                    """
-                    TRAVELPINS NETWORK MONITOR
-
-                    In attesa del link...
-                    """.trimIndent()
-            }
-
-        val scroll =
-            ScrollView(this).apply {
-
-                addView(output)
-            }
+        val scroll = ScrollView(this).apply {
+            addView(output)
+        }
 
         root.addView(toolbar)
 
@@ -255,22 +222,16 @@ class MainActivity : Activity() {
 
     private fun createWebView() {
 
-        webView =
-            WebView(this)
+        webView = WebView(this)
 
         webView.settings.apply {
 
             javaScriptEnabled = true
-
             domStorageEnabled = true
-
             databaseEnabled = true
-
             loadsImagesAutomatically = true
 
-            javaScriptCanOpenWindowsAutomatically =
-                true
-
+            javaScriptCanOpenWindowsAutomatically = true
             setSupportMultipleWindows(false)
 
             userAgentString =
@@ -292,7 +253,6 @@ class MainActivity : Activity() {
                 true
             )
 
-        // Ponte JavaScript -> Kotlin
         webView.addJavascriptInterface(
             TravelPinsBridge(),
             "TravelPins"
@@ -318,14 +278,8 @@ class MainActivity : Activity() {
 
                     inspectNavigation(url)
 
-                    if (
-                        url.startsWith(
-                            "intent://"
-                        )
-                    ) {
-
+                    if (url.startsWith("intent://")) {
                         handleGoogleIntent(url)
-
                         return true
                     }
 
@@ -359,27 +313,15 @@ class MainActivity : Activity() {
                         """
                         ==============================
                         PAGINA CARICATA
-
                         $url
 
                         ==============================
                         """.trimIndent()
                     )
 
-                    /*
-                     * IMPORTANTE:
-                     *
-                     * installiamo il network hook
-                     * dopo il caricamento della pagina.
-                     */
-
                     injectNetworkHook()
 
-                    if (
-                        url.contains(
-                            "consent.google.com"
-                        )
-                    ) {
+                    if (url.contains("consent.google.com")) {
 
                         consentButton.visibility =
                             Button.VISIBLE
@@ -400,6 +342,20 @@ class MainActivity : Activity() {
 
                         consentButton.visibility =
                             Button.GONE
+                    }
+
+                    // ------------------------------------------------
+                    // NUOVO TEST:
+                    // quando arriviamo alla lista Google Maps,
+                    // leggiamo il contenuto visibile della pagina.
+                    // ------------------------------------------------
+
+                    if (
+                        url.contains(
+                            "/local/userlists/list/"
+                        )
+                    ) {
+                        inspectGoogleListPage()
                     }
                 }
 
@@ -430,6 +386,191 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
+    // LETTURA LISTA GOOGLE MAPS
+    // ============================================================
+
+    private fun inspectGoogleListPage() {
+
+        addLog(
+            """
+            ==============================
+            LISTA GOOGLE MAPS RILEVATA
+
+            Attendo il caricamento del contenuto...
+
+            ==============================
+            """.trimIndent()
+        )
+
+        handler.postDelayed({
+
+            val javascript = """
+                (function() {
+
+                    try {
+
+                        var text =
+                            document.body
+                                ? document.body.innerText
+                                : '';
+
+                        var title =
+                            document.title || '';
+
+                        var links = [];
+
+                        var elements =
+                            document.querySelectorAll('a');
+
+                        for (
+                            var i = 0;
+                            i < elements.length;
+                            i++
+                        ) {
+
+                            var href =
+                                elements[i].href || '';
+
+                            var linkText =
+                                elements[i].innerText || '';
+
+                            linkText =
+                                linkText.trim();
+
+                            if (
+                                href &&
+                                (
+                                    href.indexOf('google.com/maps') >= 0 ||
+                                    href.indexOf('/maps/') >= 0
+                                )
+                            ) {
+
+                                links.push(
+                                    linkText +
+                                    ' -> ' +
+                                    href
+                                );
+                            }
+                        }
+
+                        if (text.length > 30000) {
+                            text =
+                                text.substring(
+                                    0,
+                                    30000
+                                );
+                        }
+
+                        var result =
+                            'TITLE:\\n' +
+                            title +
+                            '\\n\\n' +
+                            'PAGE TEXT:\\n' +
+                            text +
+                            '\\n\\n' +
+                            'MAP LINKS:\\n' +
+                            links.join('\\n');
+
+                        return result;
+
+                    } catch(e) {
+
+                        return 'ERROR:' +
+                               e.message;
+                    }
+
+                })();
+            """.trimIndent()
+
+            webView.evaluateJavascript(
+                javascript
+            ) { result ->
+
+                val decoded =
+                    decodeJavascriptResult(
+                        result
+                    )
+
+                addLog(
+                    """
+                    ==============================
+                    CONTENUTO LISTA GOOGLE MAPS
+
+                    $decoded
+
+                    ==============================
+                    """.trimIndent()
+                )
+            }
+
+        }, 4000)
+    }
+
+    // ============================================================
+    // DECODIFICA RISULTATO JAVASCRIPT
+    // ============================================================
+
+    private fun decodeJavascriptResult(
+        value: String?
+    ): String {
+
+        if (value.isNullOrBlank()) {
+            return ""
+        }
+
+        var result = value
+
+        if (
+            result.startsWith("\"") &&
+            result.endsWith("\"")
+        ) {
+            result =
+                result.substring(
+                    1,
+                    result.length - 1
+                )
+        }
+
+        result =
+            result.replace(
+                "\\n",
+                "\n"
+            )
+
+        result =
+            result.replace(
+                "\\r",
+                "\r"
+            )
+
+        result =
+            result.replace(
+                "\\t",
+                "\t"
+            )
+
+        result =
+            result.replace(
+                "\\\"",
+                "\""
+            )
+
+        result =
+            result.replace(
+                "\\/",
+                "/"
+            )
+
+        result =
+            result.replace(
+                "\\\\",
+                "\\"
+            )
+
+        return result
+    }
+
+    // ============================================================
     // GOOGLE INTENT
     // ============================================================
 
@@ -456,14 +597,12 @@ class MainActivity : Activity() {
             val uri =
                 Uri.parse(intentUrl)
 
-            var fallback =
+            val fallback =
                 uri.getQueryParameter(
                     "S.browser_fallback_url"
                 )
 
-            if (
-                !fallback.isNullOrBlank()
-            ) {
+            if (!fallback.isNullOrBlank()) {
 
                 addLog(
                     """
@@ -477,16 +616,14 @@ class MainActivity : Activity() {
                     """.trimIndent()
                 )
 
-                webView.loadUrl(
-                    fallback
-                )
+                webView.loadUrl(fallback)
 
                 return
             }
 
-            /*
-             * Fallback manuale.
-             */
+            // ------------------------------------------------
+            // FALLBACK MANUALE
+            // ------------------------------------------------
 
             val marker =
                 "S.browser_fallback_url="
@@ -557,7 +694,7 @@ class MainActivity : Activity() {
 
                 ==============================
                 """.trimIndent()
-                )
+            )
         }
     }
 
@@ -577,7 +714,6 @@ class MainActivity : Activity() {
         )
 
         val javascript = """
-
             (function() {
 
                 try {
@@ -651,7 +787,6 @@ class MainActivity : Activity() {
                 }
 
             })();
-
         """.trimIndent()
 
         webView.evaluateJavascript(
@@ -677,24 +812,20 @@ class MainActivity : Activity() {
     private fun injectNetworkHook() {
 
         val javascript = """
-
             (function() {
 
                 if (
                     window.__travelpins_hooked
                 ) {
-
                     return 'ALREADY_INSTALLED';
                 }
 
                 window.__travelpins_hooked =
                     true;
 
-                /*
-                 * ==================================================
-                 * FETCH
-                 * ==================================================
-                 */
+                // ==================================================
+                // FETCH
+                // ==================================================
 
                 var originalFetch =
                     window.fetch;
@@ -788,11 +919,9 @@ class MainActivity : Activity() {
                         }
                     };
 
-                /*
-                 * ==================================================
-                 * XMLHttpRequest
-                 * ==================================================
-                 */
+                // ==================================================
+                // XMLHttpRequest
+                // ==================================================
 
                 var originalOpen =
                     XMLHttpRequest.prototype.open;
@@ -830,9 +959,7 @@ class MainActivity : Activity() {
                     };
 
                 XMLHttpRequest.prototype.send =
-                    function(
-                        body
-                    ) {
+                    function(body) {
 
                         var xhr =
                             this;
@@ -877,7 +1004,6 @@ class MainActivity : Activity() {
                                         e.message
                                     );
                                 }
-
                             }
                         );
 
@@ -886,12 +1012,6 @@ class MainActivity : Activity() {
                             arguments
                         );
                     };
-
-                /*
-                 * ==================================================
-                 * INSTALLATO
-                 * ==================================================
-                 */
 
                 try {
 
@@ -904,7 +1024,6 @@ class MainActivity : Activity() {
                 return 'HOOK_INSTALLED';
 
             })();
-
         """.trimIndent()
 
         webView.evaluateJavascript(
@@ -1004,9 +1123,7 @@ class MainActivity : Activity() {
                 Intent.EXTRA_TEXT
             )
 
-        if (
-            sharedText.isNullOrBlank()
-        ) {
+        if (sharedText.isNullOrBlank()) {
 
             addLog(
                 "Nessun testo ricevuto."
@@ -1040,15 +1157,12 @@ class MainActivity : Activity() {
             LINK RICEVUTO
 
             $url
-
             ==============================
             AVVIO GOOGLE MAPS...
             """.trimIndent()
         )
 
-        webView.loadUrl(
-            url
-        )
+        webView.loadUrl(url)
     }
 
     // ============================================================
@@ -1098,9 +1212,7 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
-        if (
-            webView.canGoBack()
-        ) {
+        if (webView.canGoBack()) {
 
             webView.goBack()
 
