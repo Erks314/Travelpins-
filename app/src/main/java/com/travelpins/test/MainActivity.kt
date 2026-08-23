@@ -11,6 +11,9 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.ArrayAdapter
@@ -24,18 +27,9 @@ import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
-import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentLinkedQueue
 
 class MainActivity : Activity() {
-
-    // ============================================================
-    // UI
-    // ============================================================
 
     private lateinit var webView: WebView
     private lateinit var output: LinearLayout
@@ -43,21 +37,14 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var scanButton: Button
 
-    // ============================================================
-    // DATI
-    // ============================================================
+    private val handler = Handler(Looper.getMainLooper())
+    private val log = ConcurrentLinkedQueue<String>()
 
     private val places = ArrayList<Place>()
     private val categories = ArrayList<Category>()
 
-    private var currentSharedUrl: String = ""
-    private var importing = false
-
-    private val handler =
-        Handler(Looper.getMainLooper())
-
-    private val executor =
-        Executors.newSingleThreadExecutor()
+    private var pageReady = false
+    private var scanning = false
 
     // ============================================================
     // MODELLI
@@ -79,15 +66,11 @@ class MainActivity : Activity() {
     )
 
     // ============================================================
-    // CREATE
+    // ON CREATE
     // ============================================================
 
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
-        super.onCreate(
-            savedInstanceState
-        )
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
         loadCategories()
         loadPlaces()
@@ -104,59 +87,28 @@ class MainActivity : Activity() {
 
     private fun createInterface() {
 
-        val root =
-            LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.VERTICAL
-
-                setBackgroundColor(
-                    Color.WHITE
-                )
-            }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.WHITE)
+        }
 
         // --------------------------------------------------------
         // TOOLBAR
         // --------------------------------------------------------
 
-        val toolbar =
-            LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.HORIZONTAL
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(16, 12, 16, 12)
+            setBackgroundColor(Color.rgb(35, 35, 35))
+        }
 
-                gravity =
-                    Gravity.CENTER_VERTICAL
-
-                setPadding(
-                    12,
-                    10,
-                    12,
-                    10
-                )
-
-                setBackgroundColor(
-                    Color.rgb(
-                        35,
-                        35,
-                        35
-                    )
-                )
-            }
-
-        val title =
-            TextView(this).apply {
-                text =
-                    "📍 TravelPins"
-
-                textSize =
-                    21f
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                gravity =
-                    Gravity.CENTER_VERTICAL
-            }
+        val title = TextView(this).apply {
+            text = "📍 TravelPins"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER_VERTICAL
+        }
 
         toolbar.addView(
             title,
@@ -167,70 +119,60 @@ class MainActivity : Activity() {
             )
         )
 
-        scanButton =
-            Button(this).apply {
+        val categoriesButton = Button(this).apply {
+            text = "Categorie"
 
-                text =
-                    "🔎 SCANSIONA"
-
-                isAllCaps =
-                    false
-
-                setOnClickListener {
-
-                    if (
-                        currentSharedUrl.isBlank()
-                    ) {
-
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Prima condividi una lista Google Maps.",
-                            Toast.LENGTH_LONG
-                        ).show()
-
-                    } else {
-
-                        scanCurrentList()
-                    }
-                }
+            setOnClickListener {
+                showCategories()
             }
+        }
 
-        toolbar.addView(
-            scanButton
-        )
+        toolbar.addView(categoriesButton)
 
-        val categoriesButton =
-            Button(this).apply {
+        root.addView(toolbar)
 
-                text =
-                    "Categorie"
+        // --------------------------------------------------------
+        // PULSANTE SCANSIONA
+        // --------------------------------------------------------
 
-                isAllCaps =
-                    false
+        scanButton = Button(this).apply {
 
-                setOnClickListener {
-                    showCategories()
+            text = "🔎 SCANSIONA LISTA"
+
+            textSize = 17f
+
+            setOnClickListener {
+
+                if (webView.url.isNullOrBlank()) {
+
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Prima apri una lista Google Maps.",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    return@setOnClickListener
                 }
-            }
 
-        toolbar.addView(
-            categoriesButton
-        )
+                scanGoogleMapsPage()
+            }
+        }
 
         root.addView(
-            toolbar
+            scanButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         )
 
         // --------------------------------------------------------
         // PROGRESS
         // --------------------------------------------------------
 
-        progress =
-            ProgressBar(this).apply {
-
-                visibility =
-                    ProgressBar.GONE
-            }
+        progress = ProgressBar(this).apply {
+            visibility = ProgressBar.GONE
+        }
 
         root.addView(
             progress,
@@ -244,32 +186,25 @@ class MainActivity : Activity() {
         // STATUS
         // --------------------------------------------------------
 
-        statusText =
-            TextView(this).apply {
+        statusText = TextView(this).apply {
 
-                text =
-                    ""
+            text = ""
 
-                textSize =
-                    15f
+            textSize = 15f
 
-                setTextColor(
-                    Color.DKGRAY
-                )
+            setTextColor(Color.DKGRAY)
 
-                gravity =
-                    Gravity.CENTER
+            gravity = Gravity.CENTER
 
-                setPadding(
-                    20,
-                    10,
-                    20,
-                    10
-                )
+            setPadding(
+                20,
+                12,
+                20,
+                12
+            )
 
-                visibility =
-                    TextView.GONE
-            }
+            visibility = TextView.GONE
+        }
 
         root.addView(
             statusText,
@@ -280,29 +215,37 @@ class MainActivity : Activity() {
         )
 
         // --------------------------------------------------------
-        // LISTA
+        // WEBVIEW
         // --------------------------------------------------------
 
-        val scroll =
-            ScrollView(this)
+        webView = WebView(this)
 
-        output =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.VERTICAL
-
-                setPadding(
-                    20,
-                    20,
-                    20,
-                    40
-                )
-            }
-
-        scroll.addView(
-            output
+        root.addView(
+            webView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
         )
+
+        // --------------------------------------------------------
+        // OUTPUT
+        // --------------------------------------------------------
+
+        val scroll = ScrollView(this)
+
+        output = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                20,
+                20,
+                20,
+                40
+            )
+        }
+
+        scroll.addView(output)
 
         root.addView(
             scroll,
@@ -313,11 +256,25 @@ class MainActivity : Activity() {
             )
         )
 
-        setContentView(
-            root
-        )
+        setContentView(root)
 
         showPlaces()
+    }
+
+    // ============================================================
+    // STATUS
+    // ============================================================
+
+    private fun showStatus(text: String) {
+
+        statusText.text = text
+
+        statusText.visibility =
+            if (text.isBlank()) {
+                TextView.GONE
+            } else {
+                TextView.VISIBLE
+            }
     }
 
     // ============================================================
@@ -326,36 +283,31 @@ class MainActivity : Activity() {
 
     private fun createWebView() {
 
-        webView =
-            WebView(this)
-
         webView.settings.apply {
 
-            javaScriptEnabled =
-                true
+            javaScriptEnabled = true
 
-            domStorageEnabled =
-                true
+            domStorageEnabled = true
 
-            databaseEnabled =
-                true
+            databaseEnabled = true
 
-            loadsImagesAutomatically =
-                true
+            loadsImagesAutomatically = true
+
+            javaScriptCanOpenWindowsAutomatically = true
+
+            setSupportMultipleWindows(false)
 
             userAgentString =
                 "Mozilla/5.0 (Linux; Android 10) " +
-                "AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) " +
-                "Chrome/151.0.0.0 " +
-                "Mobile Safari/537.36"
+                        "AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) " +
+                        "Chrome/131.0.0.0 " +
+                        "Mobile Safari/537.36"
         }
 
         CookieManager
             .getInstance()
-            .setAcceptCookie(
-                true
-            )
+            .setAcceptCookie(true)
 
         CookieManager
             .getInstance()
@@ -364,8 +316,65 @@ class MainActivity : Activity() {
                 true
             )
 
+        webView.addJavascriptInterface(
+            TravelPinsBridge(),
+            "TravelPins"
+        )
+
+        webView.webChromeClient =
+            WebChromeClient()
+
         webView.webViewClient =
             object : WebViewClient() {
+
+                override fun shouldOverrideUrlLoading(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): Boolean {
+
+                    val url =
+                        request.url.toString()
+
+                    addLog(
+                        "[NAVIGAZIONE]\n$url"
+                    )
+
+                    if (
+                        url.startsWith(
+                            "intent://"
+                        )
+                    ) {
+
+                        handleGoogleIntent(url)
+
+                        return true
+                    }
+
+                    return false
+                }
+
+                override fun onPageStarted(
+                    view: WebView,
+                    url: String,
+                    favicon: android.graphics.Bitmap?
+                ) {
+
+                    super.onPageStarted(
+                        view,
+                        url,
+                        favicon
+                    )
+
+                    pageReady = false
+
+                    showStatus(
+                        "Caricamento Google Maps…"
+                    )
+
+                    addLog(
+                        "[PAGINA IN CARICAMENTO]\n$url"
+                    )
+                }
 
                 override fun onPageFinished(
                     view: WebView,
@@ -377,174 +386,243 @@ class MainActivity : Activity() {
                         url
                     )
 
+                    pageReady = true
+
                     showStatus(
-                        "Google Maps caricata."
+                        "Lista caricata. Premi SCANSIONA LISTA."
                     )
 
-                    /*
-                     * NON facciamo più partire immediatamente
-                     * una richiesta getlist costruita a mano.
-                     *
-                     * Aspettiamo che la pagina abbia fornito
-                     * il suo vero preload URL.
-                     */
+                    addLog(
+                        "[PAGINA CARICATA]\n$url"
+                    )
 
-                    if (
-                        currentSharedUrl.isBlank()
-                    ) {
-
-                        currentSharedUrl =
-                            url
-                    }
-
-                    /*
-                     * Dopo il caricamento proviamo
-                     * automaticamente una volta.
-                     */
+                    // Aspettiamo che Google Maps completi
+                    // il rendering dinamico.
 
                     handler.postDelayed(
                         {
 
                             if (
-                                !importing &&
-                                currentSharedUrl.isNotBlank()
+                                pageReady &&
+                                !scanning
                             ) {
 
-                                scanCurrentList()
+                                showStatus(
+                                    "Lista pronta. Premi SCANSIONA LISTA."
+                                )
                             }
 
                         },
-                        1200
+                        1500
                     )
                 }
 
-                override fun shouldOverrideUrlLoading(
+                override fun onReceivedError(
                     view: WebView,
-                    url: String
-                ): Boolean {
+                    request: WebResourceRequest,
+                    error: android.webkit.WebResourceError
+                ) {
 
-                    return false
+                    if (
+                        request.isForMainFrame
+                    ) {
+
+                        addLog(
+                            "[WEBVIEW ERROR]\n" +
+                                    error.description
+                        )
+
+                        showStatus(
+                            "Errore nel caricamento di Google Maps."
+                        )
+                    }
+
+                    super.onReceivedError(
+                        view,
+                        request,
+                        error
+                    )
                 }
             }
     }
 
     // ============================================================
-    // IMPORT LINK
+    // JAVASCRIPT BRIDGE
     // ============================================================
 
-    private fun handleIntent(
-        intent: Intent?
-    ) {
+    inner class TravelPinsBridge {
 
-        if (
-            intent?.action !=
-            Intent.ACTION_SEND
-        ) {
-            return
+        @JavascriptInterface
+        fun log(message: String?) {
+
+            if (
+                !message.isNullOrBlank()
+            ) {
+
+                addLog(message)
+            }
         }
 
-        val sharedText =
-            intent.getStringExtra(
-                Intent.EXTRA_TEXT
-            )
-
-        if (
-            sharedText.isNullOrBlank()
+        @JavascriptInterface
+        fun importPlaces(
+            json: String
         ) {
 
-            return
+            runOnUiThread {
+
+                try {
+
+                    val array =
+                        JSONArray(json)
+
+                    if (
+                        array.length() == 0
+                    ) {
+
+                        scanning = false
+
+                        progress.visibility =
+                            ProgressBar.GONE
+
+                        scanButton.isEnabled =
+                            true
+
+                        showStatus(
+                            "Nessun luogo trovato."
+                        )
+
+                        return@runOnUiThread
+                    }
+
+                    places.clear()
+
+                    for (
+                        i in 0 until array.length()
+                    ) {
+
+                        val item =
+                            array.getJSONObject(i)
+
+                        val name =
+                            item.optString(
+                                "name"
+                            )
+
+                        val address =
+                            item.optString(
+                                "address"
+                            )
+
+                        val lat =
+                            item.optDouble(
+                                "lat",
+                                Double.NaN
+                            )
+
+                        val lng =
+                            item.optDouble(
+                                "lng",
+                                Double.NaN
+                            )
+
+                        if (
+                            name.isNotBlank() &&
+                            !lat.isNaN() &&
+                            !lng.isNaN()
+                        ) {
+
+                            places.add(
+                                Place(
+                                    name = name,
+                                    address = address,
+                                    lat = lat,
+                                    lng = lng
+                                )
+                            )
+                        }
+                    }
+
+                    savePlaces()
+
+                    scanning = false
+
+                    progress.visibility =
+                        ProgressBar.GONE
+
+                    scanButton.isEnabled =
+                        true
+
+                    showStatus(
+                        "${places.size} luoghi importati."
+                    )
+
+                    showPlaces()
+
+                    Toast.makeText(
+                        this@MainActivity,
+                        "${places.size} luoghi importati",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                } catch (e: Exception) {
+
+                    scanning = false
+
+                    progress.visibility =
+                        ProgressBar.GONE
+
+                    scanButton.isEnabled =
+                        true
+
+                    showStatus(
+                        "Errore importazione: ${e.message}"
+                    )
+
+                    addLog(
+                        "[IMPORT ERROR]\n" +
+                                e.stackTraceToString()
+                    )
+                }
+            }
         }
 
-        val match =
-            Regex(
-                """https?://\S+"""
-            ).find(
-                sharedText
-            )
-
-        if (
-            match == null
+        @JavascriptInterface
+        fun importError(
+            message: String
         ) {
 
-            Toast.makeText(
-                this,
-                "Nessun link Google Maps trovato.",
-                Toast.LENGTH_LONG
-            ).show()
+            runOnUiThread {
 
-            return
+                scanning = false
+
+                progress.visibility =
+                    ProgressBar.GONE
+
+                scanButton.isEnabled =
+                    true
+
+                showStatus(
+                    message
+                )
+
+                addLog(
+                    "[IMPORT ERROR]\n$message"
+                )
+            }
         }
-
-        var url =
-            match.value
-
-        url =
-            url.trimEnd(
-                '.',
-                ',',
-                ';',
-                ')',
-                ']',
-                '>'
-            )
-
-        currentSharedUrl =
-            url
-
-        showStatus(
-            "Apertura della lista Google Maps…"
-        )
-
-        progress.visibility =
-            ProgressBar.VISIBLE
-
-        webView.loadUrl(
-            url
-        )
     }
 
-    override fun onNewIntent(
-        intent: Intent
-    ) {
-
-        super.onNewIntent(
-            intent
-        )
-
-        setIntent(
-            intent
-        )
-
-        handleIntent(
-            intent
-        )
-    }
-
     // ============================================================
-    // SCANSIONE
+    // SCANSIONE GOOGLE MAPS
     // ============================================================
 
-    private fun scanCurrentList() {
+    private fun scanGoogleMapsPage() {
 
-        if (
-            importing
-        ) {
+        if (scanning) {
             return
         }
 
-        if (
-            currentSharedUrl.isBlank()
-        ) {
-
-            showStatus(
-                "Nessun link da scansionare."
-            )
-
-            return
-        }
-
-        importing =
-            true
+        scanning = true
 
         progress.visibility =
             ProgressBar.VISIBLE
@@ -553,761 +631,597 @@ class MainActivity : Activity() {
             false
 
         showStatus(
-            "🔎 Scansione della lista Google Maps…"
+            "Scansione della pagina Google Maps…"
         )
 
-        val url =
-            currentSharedUrl
+        addLog(
+            """
+            ==============================
+            SCANSIONE MANUALE
 
-        executor.execute {
+            URL:
+            ${webView.url}
 
-            try {
+            ==============================
+            """.trimIndent()
+        )
 
-                val result =
-                    fetchGoogleList(
+        val javascript = """
+            (function() {
+
+                try {
+
+                    TravelPins.log(
+                        "[SCAN] Avvio analisi DOM Google Maps"
+                    );
+
+                    var places = [];
+
+                    // =================================================
+                    // NORMALIZZA TESTO
+                    // =================================================
+
+                    function clean(value) {
+
+                        if (
+                            value === null ||
+                            value === undefined
+                        ) {
+                            return "";
+                        }
+
+                        return String(value)
+                            .replace(/\s+/g, " ")
+                            .trim();
+                    }
+
+                    // =================================================
+                    // NUMERO
+                    // =================================================
+
+                    function validNumber(value) {
+
+                        if (
+                            value === null ||
+                            value === undefined
+                        ) {
+                            return false;
+                        }
+
+                        var n =
+                            Number(value);
+
+                        return (
+                            isFinite(n)
+                        );
+                    }
+
+                    // =================================================
+                    // COORDINATE DA URL
+                    // =================================================
+
+                    function coordinatesFromUrl(
                         url
-                    )
-
-                runOnUiThread {
-
-                    importing =
-                        false
-
-                    scanButton.isEnabled =
-                        true
-
-                    progress.visibility =
-                        ProgressBar.GONE
-
-                    if (
-                        result.isEmpty()
                     ) {
 
-                        showStatus(
-                            "Google Maps non ha restituito luoghi."
-                        )
+                        if (!url) {
+                            return null;
+                        }
 
-                        Toast.makeText(
-                            this,
-                            "Nessun luogo trovato.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        var m =
+                            url.match(
+                                /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i
+                            );
 
-                    } else {
+                        if (m) {
 
-                        places.clear()
+                            return {
+                                lat:
+                                    Number(m[1]),
 
-                        places.addAll(
-                            result
-                        )
+                                lng:
+                                    Number(m[2])
+                            };
+                        }
 
-                        savePlaces()
-
-                        showStatus(
-                            "✅ ${places.size} luoghi importati."
-                        )
-
-                        showPlaces()
-
-                        Toast.makeText(
-                            this,
-                            "${places.size} luoghi importati.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        return null;
                     }
+
+                    // =================================================
+                    // AGGIUNGI LUOGO
+                    // =================================================
+
+                    function addPlace(
+                        name,
+                        address,
+                        lat,
+                        lng
+                    ) {
+
+                        name =
+                            clean(name);
+
+                        address =
+                            clean(address);
+
+                        lat =
+                            Number(lat);
+
+                        lng =
+                            Number(lng);
+
+                        if (
+                            !name ||
+                            name.length < 2
+                        ) {
+                            return;
+                        }
+
+                        if (
+                            !validNumber(lat) ||
+                            !validNumber(lng)
+                        ) {
+                            return;
+                        }
+
+                        if (
+                            Math.abs(lat) > 90 ||
+                            Math.abs(lng) > 180
+                        ) {
+                            return;
+                        }
+
+                        // Evita elementi che sono chiaramente
+                        // pulsanti/menu di Google Maps.
+
+                        var bad = [
+                            "condividi",
+                            "indicazioni",
+                            "salva",
+                            "modifica",
+                            "aggiungi luogo",
+                            "cerca qui",
+                            "google maps"
+                        ];
+
+                        var lower =
+                            name.toLowerCase();
+
+                        for (
+                            var b = 0;
+                            b < bad.length;
+                            b++
+                        ) {
+
+                            if (
+                                lower === bad[b]
+                            ) {
+                                return;
+                            }
+                        }
+
+                        places.push({
+
+                            name:
+                                name,
+
+                            address:
+                                address,
+
+                            lat:
+                                lat,
+
+                            lng:
+                                lng
+                        });
+                    }
+
+                    // =================================================
+                    // ESTRAZIONE DA LINK GOOGLE MAPS
+                    // =================================================
+
+                    var links =
+                        document.querySelectorAll(
+                            'a[href]'
+                        );
+
+                    TravelPins.log(
+                        "[SCAN] Link trovati: " +
+                        links.length
+                    );
+
+                    for (
+                        var i = 0;
+                        i < links.length;
+                        i++
+                    ) {
+
+                        try {
+
+                            var link =
+                                links[i];
+
+                            var href =
+                                link.href || "";
+
+                            if (
+                                href.indexOf(
+                                    "google.com/maps"
+                                ) === -1 &&
+                                href.indexOf(
+                                    "maps.google"
+                                ) === -1
+                            ) {
+                                continue;
+                            }
+
+                            var coord =
+                                coordinatesFromUrl(
+                                    href
+                                );
+
+                            if (!coord) {
+                                continue;
+                            }
+
+                            var text =
+                                clean(
+                                    link.innerText ||
+                                    link.textContent
+                                );
+
+                            if (
+                                !text
+                            ) {
+                                continue;
+                            }
+
+                            var lines =
+                                text
+                                    .split(
+                                        "\n"
+                                    )
+                                    .map(
+                                        clean
+                                    )
+                                    .filter(
+                                        function(x) {
+                                            return x;
+                                        }
+                                    );
+
+                            var name =
+                                lines.length > 0
+                                    ? lines[0]
+                                    : text;
+
+                            var address =
+                                lines.length > 1
+                                    ? lines
+                                        .slice(1)
+                                        .join(", ")
+                                    : "";
+
+                            addPlace(
+                                name,
+                                address,
+                                coord.lat,
+                                coord.lng
+                            );
+
+                        } catch(e) {
+
+                            TravelPins.log(
+                                "[SCAN LINK ERROR] " +
+                                e.message
+                            );
+                        }
+                    }
+
+                    // =================================================
+                    // ELEMENTI CON DATA ATTRIBUTES
+                    // =================================================
+
+                    var all =
+                        document.querySelectorAll(
+                            "*"
+                        );
+
+                    TravelPins.log(
+                        "[SCAN] Elementi DOM: " +
+                        all.length
+                    );
+
+                    for (
+                        var j = 0;
+                        j < all.length;
+                        j++
+                    ) {
+
+                        try {
+
+                            var el =
+                                all[j];
+
+                            var aria =
+                                clean(
+                                    el.getAttribute(
+                                        "aria-label"
+                                    )
+                                );
+
+                            var dataLat =
+                                el.getAttribute(
+                                    "data-lat"
+                                );
+
+                            var dataLng =
+                                el.getAttribute(
+                                    "data-lng"
+                                );
+
+                            if (
+                                aria &&
+                                validNumber(
+                                    dataLat
+                                ) &&
+                                validNumber(
+                                    dataLng
+                                )
+                            ) {
+
+                                addPlace(
+                                    aria,
+                                    "",
+                                    Number(dataLat),
+                                    Number(dataLng)
+                                );
+                            }
+
+                        } catch(e) {}
+                    }
+
+                    // =================================================
+                    // JSON PRESENTE NELLA PAGINA
+                    // =================================================
+
+                    var scripts =
+                        document.querySelectorAll(
+                            "script"
+                        );
+
+                    TravelPins.log(
+                        "[SCAN] Script trovati: " +
+                        scripts.length
+                    );
+
+                    function scanString(
+                        text
+                    ) {
+
+                        if (!text) {
+                            return;
+                        }
+
+                        // Cerca sequenze del tipo
+                        // latitude,longitude
+
+                        var regex =
+                            /(-?\d{1,3}\.\d{4,})\s*,\s*(-?\d{1,3}\.\d{4,})/g;
+
+                        var match;
+
+                        while (
+                            (match =
+                                regex.exec(text)) !==
+                            null
+                        ) {
+
+                            var lat =
+                                Number(match[1]);
+
+                            var lng =
+                                Number(match[2]);
+
+                            if (
+                                Math.abs(lat) <= 90 &&
+                                Math.abs(lng) <= 180
+                            ) {
+
+                                // Cerca il testo immediatamente
+                                // precedente alle coordinate.
+
+                                var start =
+                                    Math.max(
+                                        0,
+                                        match.index - 500
+                                    );
+
+                                var before =
+                                    text.substring(
+                                        start,
+                                        match.index
+                                    );
+
+                                var strings =
+                                    before.match(
+                                        /"([^"]{2,150})"/g
+                                    );
+
+                                var name = "";
+
+                                if (
+                                    strings &&
+                                    strings.length
+                                ) {
+
+                                    name =
+                                        strings[
+                                            strings.length - 1
+                                        ]
+                                            .replace(
+                                                /^"/,
+                                                ""
+                                            )
+                                            .replace(
+                                                /"$/,
+                                                ""
+                                            );
+                                }
+
+                                addPlace(
+                                    name,
+                                    "",
+                                    lat,
+                                    lng
+                                );
+                            }
+                        }
+                    }
+
+                    for (
+                        var s = 0;
+                        s < scripts.length;
+                        s++
+                    ) {
+
+                        try {
+
+                            scanString(
+                                scripts[s].textContent
+                            );
+
+                        } catch(e) {}
+                    }
+
+                    // =================================================
+                    // DEDUPLICAZIONE
+                    // =================================================
+
+                    var unique = [];
+
+                    var seen = {};
+
+                    for (
+                        var p = 0;
+                        p < places.length;
+                        p++
+                    ) {
+
+                        var item =
+                            places[p];
+
+                        var key =
+                            item.name.toLowerCase() +
+                            "|" +
+                            item.lat.toFixed(6) +
+                            "|" +
+                            item.lng.toFixed(6);
+
+                        if (
+                            !seen[key]
+                        ) {
+
+                            seen[key] = true;
+
+                            unique.push(
+                                item
+                            );
+                        }
+                    }
+
+                    places =
+                        unique;
+
+                    TravelPins.log(
+                        "[SCAN] Luoghi trovati: " +
+                        places.length
+                    );
+
+                    // =================================================
+                    // RISULTATO
+                    // =================================================
+
+                    if (
+                        places.length === 0
+                    ) {
+
+                        TravelPins.importError(
+                            "Nessun luogo trovato nella pagina. " +
+                            "Assicurati che la lista Google Maps sia completamente caricata e riprova."
+                        );
+
+                        return;
+                    }
+
+                    TravelPins.log(
+                        "[SCAN] Invio dati a TravelPins"
+                    );
+
+                    TravelPins.importPlaces(
+                        JSON.stringify(
+                            places
+                        )
+                    );
+
+                } catch(e) {
+
+                    TravelPins.importError(
+                        "Errore durante la scansione: " +
+                        e.message
+                    );
+
+                    TravelPins.log(
+                        "[SCAN GENERAL ERROR] " +
+                        e.stack
+                    );
                 }
 
-            } catch (
-                e: Exception
-            ) {
+            })();
+        """.trimIndent()
 
-                runOnUiThread {
+        webView.evaluateJavascript(
+            javascript
+        ) { result ->
 
-                    importing =
-                        false
+            addLog(
+                "[JAVASCRIPT CALLBACK]\n$result"
+            )
+        }
 
-                    scanButton.isEnabled =
-                        true
+        // --------------------------------------------------------
+        // TIMEOUT SOLO DELLA SCANSIONE
+        // --------------------------------------------------------
+
+        handler.postDelayed(
+            {
+
+                if (scanning) {
+
+                    scanning = false
 
                     progress.visibility =
                         ProgressBar.GONE
 
+                    scanButton.isEnabled =
+                        true
+
                     showStatus(
-                        "Errore: ${e.message}"
+                        "Scansione terminata senza risposta. Riprova dopo aver atteso il caricamento completo della lista."
                     )
 
-                    Toast.makeText(
-                        this,
-                        "Errore importazione: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    addLog(
+                        "[SCAN TIMEOUT]"
+                    )
                 }
-            }
-        }
-    }
 
-    // ============================================================
-    // DOWNLOAD PAGINA GOOGLE
-    // ============================================================
-
-    private fun fetchGoogleList(
-        sharedUrl: String
-    ): ArrayList<Place> {
-
-        /*
-         * Primo passaggio:
-         *
-         * maps.app.goo.gl/...
-         *
-         * viene seguito fino alla pagina Google Maps.
-         *
-         * Google normalmente inserisce nella pagina un
-         * preload link verso:
-         *
-         * /maps/preview/entitylist/getlist
-         *
-         * Questo è il punto importante:
-         * NON costruiamo più il pb da soli.
-         */
-
-        val html =
-            httpGet(
-                sharedUrl
-            )
-
-        // --------------------------------------------------------
-        // CERCA GETLIST NELL'HTML
-        // --------------------------------------------------------
-
-        val getListUrl =
-            extractGetListUrl(
-                html
-            )
-
-        if (
-            getListUrl.isNullOrBlank()
-        ) {
-
-            throw Exception(
-                "Non ho trovato il preload entitylist/getlist nella pagina Google Maps."
-            )
-        }
-
-        // --------------------------------------------------------
-        // RICHIESTA REALE
-        // --------------------------------------------------------
-
-        val raw =
-            httpGet(
-                getListUrl
-            )
-
-        if (
-            raw.isBlank()
-        ) {
-
-            throw Exception(
-                "Risposta getlist vuota."
-            )
-        }
-
-        // --------------------------------------------------------
-        // PARSING
-        // --------------------------------------------------------
-
-        return parseGoogleResponse(
-            raw
+            },
+            30000
         )
     }
 
     // ============================================================
-    // HTTP GET
-    // ============================================================
-
-    private fun httpGet(
-        requestUrl: String
-    ): String {
-
-        var connection:
-            HttpURLConnection? = null
-
-        try {
-
-            val url =
-                URL(
-                    requestUrl
-                )
-
-            connection =
-                url.openConnection()
-                        as HttpURLConnection
-
-            connection.connectTimeout =
-                15000
-
-            connection.readTimeout =
-                20000
-
-            connection.instanceFollowRedirects =
-                true
-
-            connection.requestMethod =
-                "GET"
-
-            connection.setRequestProperty(
-                "User-Agent",
-                "Mozilla/5.0 (Linux; Android 10) " +
-                    "AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) " +
-                    "Chrome/151.0.0.0 " +
-                    "Mobile Safari/537.36"
-            )
-
-            connection.setRequestProperty(
-                "Accept",
-                "text/html,application/xhtml+xml," +
-                    "application/json;q=0.9,*/*;q=0.8"
-            )
-
-            connection.setRequestProperty(
-                "Accept-Language",
-                "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
-            )
-
-            val status =
-                connection.responseCode
-
-            if (
-                status !in 200..399
-            ) {
-
-                throw Exception(
-                    "HTTP $status"
-                )
-            }
-
-            val input =
-                BufferedReader(
-                    InputStreamReader(
-                        connection.inputStream,
-                        Charsets.UTF_8
-                    )
-                )
-
-            val builder =
-                StringBuilder()
-
-            while (true) {
-
-                val line =
-                    input.readLine()
-                        ?: break
-
-                builder.append(
-                    line
-                )
-
-                builder.append(
-                    '\n'
-                )
-            }
-
-            input.close()
-
-            return builder.toString()
-
-        } finally {
-
-            connection?.disconnect()
-        }
-    }
-
-    // ============================================================
-    // ESTRAZIONE URL GETLIST
-    // ============================================================
-
-    private fun extractGetListUrl(
-        html: String
-    ): String? {
-
-        /*
-         * Google può rappresentare l'URL:
-         *
-         * https://www.google.com/maps/preview/
-         * entitylist/getlist?... 
-         *
-         * oppure inserirlo dentro un attributo HTML
-         * con escaping.
-         */
-
-        val decoded =
-            html
-                .replace(
-                    "\\u003d",
-                    "="
-                )
-                .replace(
-                    "\\u0026",
-                    "&"
-                )
-                .replace(
-                    "\\u002F",
-                    "/"
-                )
-                .replace(
-                    "\\/",
-                    "/"
-                )
-                .replace(
-                    "&amp;",
-                    "&"
-                )
-
-        // --------------------------------------------------------
-        // CASO 1 — URL COMPLETO
-        // --------------------------------------------------------
-
-        val fullRegex =
-            Regex(
-                """https?://[^"'<>\\\s]+/maps/preview/entitylist/getlist[^"'<>\\\s]*"""
-            )
-
-        val full =
-            fullRegex
-                .find(
-                    decoded
-                )
-                ?.value
-
-        if (
-            !full.isNullOrBlank()
-        ) {
-
-            return cleanExtractedUrl(
-                full
-            )
-        }
-
-        // --------------------------------------------------------
-        // CASO 2 — URL HTML-ESCAPED
-        // --------------------------------------------------------
-
-        val relativeRegex =
-            Regex(
-                """/maps/preview/entitylist/getlist[^"'<>\\\s]*"""
-            )
-
-        val relative =
-            relativeRegex
-                .find(
-                    decoded
-                )
-                ?.value
-
-        if (
-            !relative.isNullOrBlank()
-        ) {
-
-            return cleanExtractedUrl(
-                "https://www.google.com" +
-                    relative
-            )
-        }
-
-        // --------------------------------------------------------
-        // CASO 3 — GOOGLE MAPS DOMAIN
-        // --------------------------------------------------------
-
-        val mapsRegex =
-            Regex(
-                """https?://www\.google\.com/maps/preview/entitylist/getlist\?[^"'<>]+"""
-            )
-
-        val maps =
-            mapsRegex
-                .find(
-                    decoded
-                )
-                ?.value
-
-        if (
-            !maps.isNullOrBlank()
-        ) {
-
-            return cleanExtractedUrl(
-                maps
-            )
-        }
-
-        return null
-    }
-
-    private fun cleanExtractedUrl(
-        value: String
-    ): String {
-
-        return value
-            .replace(
-                "\\u003F",
-                "?"
-            )
-            .replace(
-                "\\u003f",
-                "?"
-            )
-            .replace(
-                "\\u0026",
-                "&"
-            )
-            .replace(
-                "\\u003D",
-                "="
-            )
-            .replace(
-                "\\u003d",
-                "="
-            )
-            .replace(
-                "&amp;",
-                "&"
-            )
-            .trimEnd(
-                '"',
-                '\'',
-                '>',
-                '<',
-                '\\'
-            )
-    }
-
-    // ============================================================
-    // PARSER GETLIST
-    // ============================================================
-
-    private fun parseGoogleResponse(
-        rawInput: String
-    ): ArrayList<Place> {
-
-        var raw =
-            rawInput.trim()
-
-        // --------------------------------------------------------
-        // RIMUOVE XSSI
-        // --------------------------------------------------------
-
-        if (
-            raw.startsWith(
-                ")]}'"
-            )
-        ) {
-
-            raw =
-                raw.substring(
-                    4
-                )
-
-            if (
-                raw.startsWith(
-                    "\n"
-                )
-            ) {
-
-                raw =
-                    raw.substring(
-                        1
-                    )
-            }
-        }
-
-        val root =
-            try {
-
-                JSONArray(
-                    raw
-                )
-
-            } catch (
-                e: Exception
-            ) {
-
-                throw Exception(
-                    "Risposta Google non è JSON valido."
-                )
-            }
-
-        val result =
-            ArrayList<Place>()
-
-        val seen =
-            HashSet<String>()
-
-        /*
-         * Struttura verificata del getlist:
-         *
-         * root[0][8]
-         *
-         * contiene gli elementi della lista.
-         *
-         * place[1][5][2] = latitude
-         * place[1][5][3] = longitude
-         * place[2]       = nome
-         * place[1][4]    = indirizzo
-         *
-         * Manteniamo comunque anche un walker di sicurezza.
-         */
-
-        parseKnownListStructure(
-            root,
-            result,
-            seen
-        )
-
-        /*
-         * Se la struttura cambia leggermente,
-         * proviamo comunque il parser generico.
-         */
-
-        if (
-            result.isEmpty()
-        ) {
-
-            walkJson(
-                root,
-                result,
-                seen
-            )
-        }
-
-        return result
-    }
-
-    // ============================================================
-    // PARSER STRUTTURA CONOSCIUTA
-    // ============================================================
-
-    private fun parseKnownListStructure(
-        root: JSONArray,
-        result: ArrayList<Place>,
-        seen: HashSet<String>
-    ) {
-
-        try {
-
-            val listBlock =
-                root.optJSONArray(
-                    0
-                )
-
-            if (
-                listBlock == null
-            ) {
-                return
-            }
-
-            val entries =
-                listBlock.optJSONArray(
-                    8
-                )
-
-            if (
-                entries == null
-            ) {
-                return
-            }
-
-            for (
-                i in 0 until entries.length()
-            ) {
-
-                val place =
-                    entries.optJSONArray(
-                        i
-                    )
-                        ?: continue
-
-                parsePlaceArray(
-                    place,
-                    result,
-                    seen
-                )
-            }
-
-        } catch (
-            _: Exception
-        ) {
-            // fallback generico
-        }
-    }
-
-    // ============================================================
-    // PARSER PLACE
-    // ============================================================
-
-    private fun parsePlaceArray(
-        place: JSONArray,
-        result: ArrayList<Place>,
-        seen: HashSet<String>
-    ) {
-
-        try {
-
-            val name =
-                place.optString(
-                    2,
-                    ""
-                ).trim()
-
-            if (
-                name.isBlank()
-            ) {
-                return
-            }
-
-            val core =
-                place.optJSONArray(
-                    1
-                )
-                    ?: return
-
-            val address =
-                core.optString(
-                    4,
-                    ""
-                ).trim()
-
-            val coords =
-                core.optJSONArray(
-                    5
-                )
-                    ?: return
-
-            val lat =
-                coords.optDouble(
-                    2,
-                    Double.NaN
-                )
-
-            val lng =
-                coords.optDouble(
-                    3,
-                    Double.NaN
-                )
-
-            if (
-                lat.isNaN() ||
-                lng.isNaN()
-            ) {
-                return
-            }
-
-            if (
-                lat < -90 ||
-                lat > 90 ||
-                lng < -180 ||
-                lng > 180
-            ) {
-                return
-            }
-
-            val key =
-                "$name|$lat|$lng"
-
-            if (
-                seen.contains(
-                    key
-                )
-            ) {
-                return
-            }
-
-            seen.add(
-                key
-            )
-
-            result.add(
-                Place(
-                    name =
-                        name,
-
-                    address =
-                        address,
-
-                    lat =
-                        lat,
-
-                    lng =
-                        lng
-                )
-            )
-
-        } catch (
-            _: Exception
-        ) {
-            // ignora elemento non valido
-        }
-    }
-
-    // ============================================================
-    // WALKER DI SICUREZZA
-    // ============================================================
-
-    private fun walkJson(
-        value: Any?,
-        result: ArrayList<Place>,
-        seen: HashSet<String>
-    ) {
-
-        when (value) {
-
-            is JSONArray -> {
-
-                /*
-                 * Proviamo a interpretare direttamente
-                 * questa array come un place.
-                 */
-
-                parsePlaceArray(
-                    value,
-                    result,
-                    seen
-                )
-
-                for (
-                    i in 0 until value.length()
-                ) {
-
-                    walkJson(
-                        value.opt(i),
-                        result,
-                        seen
-                    )
-                }
-            }
-
-            is JSONObject -> {
-
-                val keys =
-                    value.keys()
-
-                while (
-                    keys.hasNext()
-                ) {
-
-                    val key =
-                        keys.next()
-
-                    walkJson(
-                        value.opt(key),
-                        result,
-                        seen
-                    )
-                }
-            }
-        }
-    }
-
-    // ============================================================
-    // VISUALIZZAZIONE
+    // VISUALIZZAZIONE LUOGHI
     // ============================================================
 
     private fun showPlaces() {
@@ -1318,19 +1232,13 @@ class MainActivity : Activity() {
             TextView(this).apply {
 
                 text =
-                    if (
-                        places.isEmpty()
-                    ) {
-
+                    if (places.isEmpty()) {
                         "📍 TravelPins"
-
                     } else {
-
                         "📍 ${places.size} luoghi"
                     }
 
-                textSize =
-                    27f
+                textSize = 27f
 
                 setTextColor(
                     Color.BLACK
@@ -1344,23 +1252,17 @@ class MainActivity : Activity() {
                 )
             }
 
-        output.addView(
-            title
-        )
+        output.addView(title)
 
-        if (
-            places.isEmpty()
-        ) {
+        if (places.isEmpty()) {
 
             val empty =
                 TextView(this).apply {
 
                     text =
-                        "Condividi una lista Google Maps con TravelPins.\n\n" +
-                        "Dopo l'apertura puoi anche premere 🔎 SCANSIONA."
+                        "Condividi una lista di Google Maps con TravelPins, attendi che venga caricata e premi SCANSIONA LISTA."
 
-                    textSize =
-                        17f
+                    textSize = 17f
 
                     setTextColor(
                         Color.GRAY
@@ -1374,16 +1276,14 @@ class MainActivity : Activity() {
                     )
                 }
 
-            output.addView(
-                empty
-            )
+            output.addView(empty)
 
             return
         }
 
         places.forEachIndexed {
-            index,
-            place ->
+                index,
+                place ->
 
             addPlaceCard(
                 index,
@@ -1392,10 +1292,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // ============================================================
-    // CARD LUOGO
-    // ============================================================
-
     private fun addPlaceCard(
         index: Int,
         place: Place
@@ -1403,8 +1299,7 @@ class MainActivity : Activity() {
 
         val category =
             categories.find {
-                it.id ==
-                    place.categoryId
+                it.id == place.categoryId
             }
 
         val card =
@@ -1435,17 +1330,14 @@ class MainActivity : Activity() {
                 text =
                     "${index + 1}. ${place.name}"
 
-                textSize =
-                    18f
+                textSize = 18f
 
                 setTextColor(
                     Color.BLACK
                 )
             }
 
-        card.addView(
-            title
-        )
+        card.addView(title)
 
         if (
             place.address.isNotBlank()
@@ -1457,8 +1349,7 @@ class MainActivity : Activity() {
                     text =
                         place.address
 
-                    textSize =
-                        14f
+                    textSize = 14f
 
                     setTextColor(
                         Color.DKGRAY
@@ -1472,28 +1363,44 @@ class MainActivity : Activity() {
                     )
                 }
 
-            card.addView(
-                address
-            )
+            card.addView(address)
         }
+
+        val coordinates =
+            TextView(this).apply {
+
+                text =
+                    "📌 ${place.lat}, ${place.lng}"
+
+                textSize = 12f
+
+                setTextColor(
+                    Color.GRAY
+                )
+
+                setPadding(
+                    0,
+                    4,
+                    0,
+                    4
+                )
+            }
+
+        card.addView(
+            coordinates
+        )
 
         val categoryText =
             TextView(this).apply {
 
                 text =
-                    if (
-                        category == null
-                    ) {
-
+                    if (category == null) {
                         "⚪ Nessuna categoria"
-
                     } else {
-
                         "${category.icon} ${category.name}"
                     }
 
-                textSize =
-                    15f
+                textSize = 15f
 
                 setTextColor(
                     category?.color
@@ -1508,10 +1415,7 @@ class MainActivity : Activity() {
                 )
 
                 setOnClickListener {
-
-                    chooseCategory(
-                        place
-                    )
+                    chooseCategory(place)
                 }
             }
 
@@ -1520,10 +1424,7 @@ class MainActivity : Activity() {
         )
 
         card.setOnClickListener {
-
-            chooseCategory(
-                place
-            )
+            chooseCategory(place)
         }
 
         val params =
@@ -1553,9 +1454,7 @@ class MainActivity : Activity() {
         place: Place
     ) {
 
-        if (
-            categories.isEmpty()
-        ) {
+        if (categories.isEmpty()) {
 
             createCategory()
 
@@ -1564,47 +1463,39 @@ class MainActivity : Activity() {
 
         val names =
             categories.map {
-                "${it.icon} ${it.name}"
+                category ->
+                "${category.icon} ${category.name}"
             }.toTypedArray()
 
         AlertDialog.Builder(this)
-
-            .setTitle(
-                "Categoria"
-            )
-
-            .setItems(
-                names
-            ) {
-                _,
-                which ->
+            .setTitle("Categoria")
+            .setItems(names) {
+                    _: android.content.DialogInterface,
+                    which: Int ->
 
                 place.categoryId =
-                    categories[
-                        which
-                    ].id
+                    categories[which].id
 
                 savePlaces()
-
                 showPlaces()
             }
-
             .setNegativeButton(
                 "Nessuna categoria"
             ) {
-                _,
-                _ ->
+                    _: android.content.DialogInterface,
+                    _: Int ->
 
-                place.categoryId =
-                    ""
+                place.categoryId = ""
 
                 savePlaces()
-
                 showPlaces()
             }
-
             .show()
     }
+
+    // ============================================================
+    // MOSTRA CATEGORIE
+    // ============================================================
 
     private fun showCategories() {
 
@@ -1623,7 +1514,7 @@ class MainActivity : Activity() {
             }
 
         categories.forEach {
-            category ->
+                category ->
 
             val row =
                 LinearLayout(this).apply {
@@ -1648,8 +1539,7 @@ class MainActivity : Activity() {
                     text =
                         category.icon
 
-                    textSize =
-                        25f
+                    textSize = 25f
                 }
 
             val name =
@@ -1658,8 +1548,7 @@ class MainActivity : Activity() {
                     text =
                         category.name
 
-                    textSize =
-                        18f
+                    textSize = 18f
 
                     setTextColor(
                         category.color
@@ -1673,9 +1562,7 @@ class MainActivity : Activity() {
                     )
                 }
 
-            row.addView(
-                icon
-            )
+            row.addView(icon)
 
             row.addView(
                 name,
@@ -1686,9 +1573,7 @@ class MainActivity : Activity() {
                 )
             )
 
-            layout.addView(
-                row
-            )
+            layout.addView(row)
         }
 
         val addButton =
@@ -1702,27 +1587,21 @@ class MainActivity : Activity() {
                 }
             }
 
-        layout.addView(
-            addButton
-        )
+        layout.addView(addButton)
 
         AlertDialog.Builder(this)
-
-            .setTitle(
-                "Categorie"
-            )
-
-            .setView(
-                layout
-            )
-
-            .setPositiveButton(
-                "Chiudi",
-                null
-            )
-
+            .setTitle("Categorie")
+            .setView(layout)
+            .setPositiveButton("Chiudi") {
+                    _: android.content.DialogInterface,
+                    _: Int ->
+            }
             .show()
     }
+
+    // ============================================================
+    // CREAZIONE CATEGORIA
+    // ============================================================
 
     private fun createCategory() {
 
@@ -1746,9 +1625,7 @@ class MainActivity : Activity() {
                 hint =
                     "Nome categoria"
 
-                setSingleLine(
-                    true
-                )
+                setSingleLine(true)
             }
 
         val icons =
@@ -1777,29 +1654,22 @@ class MainActivity : Activity() {
                 icons
             )
 
-        layout.addView(
-            name
-        )
+        layout.addView(name)
 
         layout.addView(
-            iconSpinner
+            iconSpinner,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         )
 
         AlertDialog.Builder(this)
-
-            .setTitle(
-                "Nuova categoria"
-            )
-
-            .setView(
-                layout
-            )
-
-            .setPositiveButton(
-                "Crea"
-            ) {
-                _,
-                _ ->
+            .setTitle("Nuova categoria")
+            .setView(layout)
+            .setPositiveButton("Crea") {
+                    _: android.content.DialogInterface,
+                    _: Int ->
 
                 val categoryName =
                     name.text
@@ -1814,11 +1684,10 @@ class MainActivity : Activity() {
 
                 val icon =
                     icons[
-                        iconSpinner
-                            .selectedItemPosition
+                        iconSpinner.selectedItemPosition
                     ]
 
-                categories.add(
+                val category =
                     Category(
                         id =
                             System.currentTimeMillis()
@@ -1837,27 +1706,26 @@ class MainActivity : Activity() {
                         icon =
                             icon
                     )
-                )
+
+                categories.add(category)
 
                 saveCategories()
 
                 Toast.makeText(
                     this,
-                    "Categoria creata.",
+                    "Categoria creata",
                     Toast.LENGTH_SHORT
                 ).show()
             }
-
-            .setNegativeButton(
-                "Annulla",
-                null
-            )
-
+            .setNegativeButton("Annulla") {
+                    _: android.content.DialogInterface,
+                    _: Int ->
+            }
             .show()
     }
 
     // ============================================================
-    // STORAGE CATEGORIE
+    // SALVATAGGIO CATEGORIE
     // ============================================================
 
     private fun saveCategories() {
@@ -1866,7 +1734,7 @@ class MainActivity : Activity() {
             JSONArray()
 
         categories.forEach {
-            category ->
+                category ->
 
             val obj =
                 JSONObject()
@@ -1891,9 +1759,7 @@ class MainActivity : Activity() {
                 category.icon
             )
 
-            array.put(
-                obj
-            )
+            array.put(obj)
         }
 
         getPreferences(
@@ -1906,6 +1772,10 @@ class MainActivity : Activity() {
             )
             .apply()
     }
+
+    // ============================================================
+    // CARICAMENTO CATEGORIE
+    // ============================================================
 
     private fun loadCategories() {
 
@@ -1920,46 +1790,47 @@ class MainActivity : Activity() {
                     null
                 )
 
-        if (
-            raw.isNullOrBlank()
-        ) {
+        if (raw.isNullOrBlank()) {
 
             categories.add(
                 Category(
-                    "default_1",
-                    "Da vedere",
-                    Color.rgb(
-                        30,
-                        100,
-                        200
-                    ),
-                    "📍"
+                    id = "default_1",
+                    name = "Da vedere",
+                    color =
+                        Color.rgb(
+                            30,
+                            100,
+                            200
+                        ),
+                    icon = "📍"
                 )
             )
 
             categories.add(
                 Category(
-                    "default_2",
-                    "Ristoranti",
-                    Color.rgb(
-                        220,
-                        80,
-                        50
-                    ),
-                    "🍴"
+                    id = "default_2",
+                    name = "Ristoranti",
+                    color =
+                        Color.rgb(
+                            220,
+                            80,
+                            50
+                        ),
+                    icon = "🍴"
                 )
             )
 
             categories.add(
                 Category(
-                    "default_3",
-                    "Natura",
-                    Color.rgb(
-                        40,
-                        150,
-                        70
-                    ),
-                    "🌿"
+                    id = "default_3",
+                    name = "Natura",
+                    color =
+                        Color.rgb(
+                            40,
+                            150,
+                            70
+                        ),
+                    icon = "🌿"
                 )
             )
 
@@ -1971,33 +1842,28 @@ class MainActivity : Activity() {
         try {
 
             val array =
-                JSONArray(
-                    raw
-                )
+                JSONArray(raw)
 
             for (
                 i in 0 until array.length()
             ) {
 
                 val obj =
-                    array.getJSONObject(
-                        i
-                    )
+                    array.getJSONObject(i)
 
                 categories.add(
                     Category(
-                        obj.getString(
-                            "id"
-                        ),
-                        obj.getString(
-                            "name"
-                        ),
-                        obj.getInt(
-                            "color"
-                        ),
-                        obj.getString(
-                            "icon"
-                        )
+                        id =
+                            obj.getString("id"),
+
+                        name =
+                            obj.getString("name"),
+
+                        color =
+                            obj.getInt("color"),
+
+                        icon =
+                            obj.getString("icon")
                     )
                 )
             }
@@ -2011,7 +1877,7 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // STORAGE PLACES
+    // SALVATAGGIO LUOGHI
     // ============================================================
 
     private fun savePlaces() {
@@ -2020,7 +1886,7 @@ class MainActivity : Activity() {
             JSONArray()
 
         places.forEach {
-            place ->
+                place ->
 
             val obj =
                 JSONObject()
@@ -2050,9 +1916,7 @@ class MainActivity : Activity() {
                 place.categoryId
             )
 
-            array.put(
-                obj
-            )
+            array.put(obj)
         }
 
         getPreferences(
@@ -2065,6 +1929,10 @@ class MainActivity : Activity() {
             )
             .apply()
     }
+
+    // ============================================================
+    // CARICAMENTO LUOGHI
+    // ============================================================
 
     private fun loadPlaces() {
 
@@ -2079,27 +1947,21 @@ class MainActivity : Activity() {
                     null
                 )
 
-        if (
-            raw.isNullOrBlank()
-        ) {
+        if (raw.isNullOrBlank()) {
             return
         }
 
         try {
 
             val array =
-                JSONArray(
-                    raw
-                )
+                JSONArray(raw)
 
             for (
                 i in 0 until array.length()
             ) {
 
                 val obj =
-                    array.getJSONObject(
-                        i
-                    )
+                    array.getJSONObject(i)
 
                 places.add(
                     Place(
@@ -2140,17 +2002,202 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
+    // GOOGLE INTENT
+    // ============================================================
+
+    private fun handleGoogleIntent(
+        intentUrl: String
+    ) {
+
+        try {
+
+            val uri =
+                Uri.parse(intentUrl)
+
+            val fallback =
+                uri.getQueryParameter(
+                    "S.browser_fallback_url"
+                )
+
+            if (
+                !fallback.isNullOrBlank()
+            ) {
+
+                webView.loadUrl(fallback)
+
+                return
+            }
+
+            val marker =
+                "S.browser_fallback_url="
+
+            val index =
+                intentUrl.indexOf(marker)
+
+            if (index >= 0) {
+
+                var fallbackText =
+                    intentUrl.substring(
+                        index +
+                                marker.length
+                    )
+
+                val end =
+                    fallbackText.indexOf(
+                        "#Intent"
+                    )
+
+                if (end >= 0) {
+
+                    fallbackText =
+                        fallbackText.substring(
+                            0,
+                            end
+                        )
+                }
+
+                fallbackText =
+                    Uri.decode(
+                        fallbackText
+                    )
+
+                webView.loadUrl(
+                    fallbackText
+                )
+            }
+
+        } catch (
+            _: Exception
+        ) {
+
+            addLog(
+                "[INTENT ERROR]"
+            )
+        }
+    }
+
+    // ============================================================
+    // CONDIVISIONE DA GOOGLE MAPS
+    // ============================================================
+
+    private fun handleIntent(
+        intent: Intent?
+    ) {
+
+        if (
+            intent?.action !=
+            Intent.ACTION_SEND
+        ) {
+            return
+        }
+
+        val sharedText =
+            intent.getStringExtra(
+                Intent.EXTRA_TEXT
+            )
+
+        if (
+            sharedText.isNullOrBlank()
+        ) {
+            return
+        }
+
+        val match =
+            Regex(
+                """https?://\S+"""
+            ).find(sharedText)
+
+        if (match == null) {
+
+            Toast.makeText(
+                this,
+                "Nessun link Google Maps trovato",
+                Toast.LENGTH_LONG
+            ).show()
+
+            return
+        }
+
+        var url =
+            match.value
+
+        url =
+            url.trimEnd(
+                '.',
+                ',',
+                ';',
+                ')',
+                ']'
+            )
+
+        addLog(
+            """
+            ==============================
+            LINK RICEVUTO
+
+            $url
+
+            ==============================
+            AVVIO GOOGLE MAPS...
+            """.trimIndent()
+        )
+
+        pageReady = false
+        scanning = false
+
+        progress.visibility =
+            ProgressBar.VISIBLE
+
+        showStatus(
+            "Apertura della lista Google Maps…"
+        )
+
+        webView.loadUrl(url)
+    }
+
+    // ============================================================
+    // NUOVO INTENT
+    // ============================================================
+
+    override fun onNewIntent(
+        intent: Intent
+    ) {
+
+        super.onNewIntent(intent)
+
+        setIntent(intent)
+
+        handleIntent(intent)
+    }
+
+    // ============================================================
+    // LOG
+    // ============================================================
+
+    private fun addLog(
+        message: String
+    ) {
+
+        log.add(
+            message.take(15000)
+        )
+
+        while (
+            log.size > 50
+        ) {
+
+            log.poll()
+        }
+    }
+
+    // ============================================================
     // BACK
     // ============================================================
 
-    @Suppress(
-        "DEPRECATION"
-    )
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
-        if (
-            webView.canGoBack()
-        ) {
+        if (webView.canGoBack()) {
 
             webView.goBack()
 
@@ -2170,9 +2217,12 @@ class MainActivity : Activity() {
             null
         )
 
-        executor.shutdownNow()
-
         webView.stopLoading()
+
+        webView.removeJavascriptInterface(
+            "TravelPins"
+        )
+
         webView.destroy()
 
         super.onDestroy()
