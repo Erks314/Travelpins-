@@ -190,22 +190,16 @@ class MainActivity : Activity() {
         webView.settings.apply {
 
             javaScriptEnabled = true
-
             domStorageEnabled = true
-
             databaseEnabled = true
-
             loadsImagesAutomatically = true
-
             javaScriptCanOpenWindowsAutomatically = true
-
             setSupportMultipleWindows(false)
 
             userAgentString =
                 "Mozilla/5.0 (Linux; Android 10) " +
                 "AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) " +
-                "Chrome/131.0.0.0 " +
+                "(KHTML, like Gecko) Chrome/131.0.0.0 " +
                 "Mobile Safari/537.36"
         }
 
@@ -244,9 +238,7 @@ class MainActivity : Activity() {
                     )
 
                     if (
-                        url.startsWith(
-                            "intent://"
-                        )
+                        url.startsWith("intent://")
                     ) {
 
                         handleGoogleIntent(url)
@@ -275,8 +267,8 @@ class MainActivity : Activity() {
 
                         addLog(
                             "[GOOGLE REQUEST]\n" +
-                            "${request.method}\n" +
-                            url
+                                "${request.method}\n" +
+                                url
                         )
                     }
 
@@ -299,16 +291,6 @@ class MainActivity : Activity() {
 
                     injectNetworkHook()
 
-                    /*
-                     * NON aspettiamo esclusivamente che l'URL
-                     * corrisponda perfettamente a una forma.
-                     *
-                     * Google Maps può fare diversi redirect.
-                     *
-                     * Dopo il caricamento proviamo comunque
-                     * a individuare la lista.
-                     */
-
                     if (!scanStarted) {
 
                         handler.postDelayed(
@@ -322,7 +304,6 @@ class MainActivity : Activity() {
                                     scanStarted = true
 
                                     scanGoogleList()
-
                                 }
 
                             },
@@ -343,7 +324,7 @@ class MainActivity : Activity() {
 
                         addLog(
                             "[WEBVIEW ERROR]\n" +
-                            error.description
+                                error.description
                         )
 
                         showStatus(
@@ -369,10 +350,7 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun log(message: String?) {
 
-            if (
-                !message.isNullOrBlank()
-            ) {
-
+            if (!message.isNullOrBlank()) {
                 addLog(message)
             }
         }
@@ -416,14 +394,10 @@ class MainActivity : Activity() {
                             array.getJSONObject(i)
 
                         val name =
-                            item.optString(
-                                "name"
-                            )
+                            item.optString("name")
 
                         val address =
-                            item.optString(
-                                "address"
-                            )
+                            item.optString("address")
 
                         val lat =
                             item.optDouble(
@@ -477,9 +451,7 @@ class MainActivity : Activity() {
                         Toast.LENGTH_SHORT
                     ).show()
 
-                } catch (
-                    e: Exception
-                ) {
+                } catch (e: Exception) {
 
                     importing = false
                     scanStarted = false
@@ -511,9 +483,7 @@ class MainActivity : Activity() {
                 progress.visibility =
                     ProgressBar.GONE
 
-                showStatus(
-                    message
-                )
+                showStatus(message)
 
                 addLog(
                     "[IMPORT ERROR]\n$message"
@@ -530,8 +500,7 @@ class MainActivity : Activity() {
         text: String
     ) {
 
-        statusText.text =
-            text
+        statusText.text = text
 
         statusText.visibility =
             if (text.isBlank()) {
@@ -557,21 +526,17 @@ class MainActivity : Activity() {
                 "/local/userlists/list/"
             ) ||
             (
+                lower.contains("/maps/") &&
+                    lower.contains("!11m2!2s")
+                ) ||
                 lower.contains(
-                    "/maps/"
-                ) &&
-                lower.contains(
-                    "!11m2!2s"
+                    "maps.app.goo.gl"
                 )
-            ) ||
-            lower.contains(
-                "maps.app.goo.gl"
             )
-        )
     }
 
     // ============================================================
-    // IMPORTAZIONE LISTA
+    // IMPORTAZIONE LISTA GOOGLE MAPS
     // ============================================================
 
     private fun scanGoogleList() {
@@ -611,7 +576,7 @@ class MainActivity : Activity() {
                 try {
 
                     // =================================================
-                    // URL
+                    // URL ATTUALE
                     // =================================================
 
                     var currentUrl =
@@ -639,7 +604,6 @@ class MainActivity : Activity() {
                             decodeURIComponent(
                                 match[1]
                             );
-
                     }
 
                     // -------------------------------------------------
@@ -663,7 +627,7 @@ class MainActivity : Activity() {
                     }
 
                     // -------------------------------------------------
-                    // Cerca genericamente 2s...
+                    // Cerca genericamente !2s...
                     // -------------------------------------------------
 
                     if (!listId) {
@@ -720,7 +684,7 @@ class MainActivity : Activity() {
                     }
 
                     // =================================================
-                    // ENDPOINT
+                    // PARAMETRI PB
                     // =================================================
 
                     var pb =
@@ -737,8 +701,22 @@ class MainActivity : Activity() {
                         '!8i3' +
                         '!16b1';
 
+                    /*
+                     * IMPORTANTE:
+                     *
+                     * Non utilizziamo:
+                     *
+                     * https://www.google.com/maps/...
+                     *
+                     * perché la richiesta deve rimanere
+                     * nella stessa origine della WebView.
+                     *
+                     * In questo modo fetch utilizza la sessione
+                     * Google Maps già aperta nella WebView.
+                     */
+
                     var endpoint =
-                        'https://www.google.com/maps/preview/entitylist/getlist' +
+                        '/maps/preview/entitylist/getlist' +
                         '?authuser=0' +
                         '&hl=it' +
                         '&gl=it' +
@@ -746,12 +724,12 @@ class MainActivity : Activity() {
                         pb;
 
                     TravelPins.log(
-                        'GETLIST URL:\n' +
+                        'GETLIST ENDPOINT RELATIVO:\\n' +
                         endpoint
                     );
 
                     // =================================================
-                    // FETCH CON TIMEOUT
+                    // FETCH
                     // =================================================
 
                     var controller =
@@ -820,9 +798,7 @@ class MainActivity : Activity() {
                         response.status
                     );
 
-                    if (
-                        !response.ok
-                    ) {
+                    if (!response.ok) {
 
                         TravelPins.importError(
                             'Google Maps ha restituito HTTP ' +
@@ -833,7 +809,7 @@ class MainActivity : Activity() {
                     }
 
                     // =================================================
-                    // RAW
+                    // RAW RESPONSE
                     // =================================================
 
                     var raw =
@@ -857,7 +833,7 @@ class MainActivity : Activity() {
                     }
 
                     TravelPins.log(
-                        'GETLIST RAW START:\n' +
+                        'GETLIST RAW START:\\n' +
                         raw.substring(
                             0,
                             3000
@@ -865,7 +841,7 @@ class MainActivity : Activity() {
                     );
 
                     // =================================================
-                    // XSSI
+                    // RIMOZIONE XSSI
                     // =================================================
 
                     var cleaned =
@@ -878,9 +854,7 @@ class MainActivity : Activity() {
                     ) {
 
                         cleaned =
-                            cleaned.substring(
-                                4
-                            );
+                            cleaned.substring(4);
 
                         if (
                             cleaned.charAt(0) ===
@@ -888,14 +862,12 @@ class MainActivity : Activity() {
                         ) {
 
                             cleaned =
-                                cleaned.substring(
-                                    1
-                                );
+                                cleaned.substring(1);
                         }
                     }
 
                     // =================================================
-                    // JSON
+                    // PARSING JSON
                     // =================================================
 
                     var data;
@@ -935,7 +907,7 @@ class MainActivity : Activity() {
 
                         return (
                             typeof v ===
-                            'number' &&
+                                'number' &&
                             isFinite(v)
                         );
                     }
@@ -1007,7 +979,7 @@ class MainActivity : Activity() {
                     }
 
                     // =================================================
-                    // PARSER GOOGLE
+                    // PARSER PLACE
                     // =================================================
 
                     function tryKnownPlace(
@@ -1084,8 +1056,7 @@ class MainActivity : Activity() {
                                 return;
                             }
 
-                            var address =
-                                '';
+                            var address = '';
 
                             if (
                                 typeof x[3] ===
@@ -1115,13 +1086,13 @@ class MainActivity : Activity() {
 
                         } catch(e) {
 
-                            // Ignora strutture
-                            // che non sono place
+                            // Struttura non compatibile:
+                            // ignoriamo.
                         }
                     }
 
                     // =================================================
-                    // WALK
+                    // WALK RICORSIVO
                     // =================================================
 
                     function walk(
@@ -1137,9 +1108,7 @@ class MainActivity : Activity() {
                         }
 
                         if (
-                            Array.isArray(
-                                node
-                            )
+                            Array.isArray(node)
                         ) {
 
                             tryKnownPlace(
@@ -1180,7 +1149,7 @@ class MainActivity : Activity() {
                     walk(data);
 
                     // =================================================
-                    // DUPLICATI
+                    // ELIMINA DUPLICATI
                     // =================================================
 
                     var unique = [];
@@ -1207,12 +1176,9 @@ class MainActivity : Activity() {
                             !seen[key]
                         ) {
 
-                            seen[key] =
-                                true;
+                            seen[key] = true;
 
-                            unique.push(
-                                p
-                            );
+                            unique.push(p);
                         }
                     }
 
@@ -1321,12 +1287,9 @@ class MainActivity : Activity() {
             )
         }
 
-        /*
-         * SICUREZZA:
-         * se per qualsiasi motivo JavaScript non chiama
-         * mai importPlaces/importError, dopo 20 secondi
-         * sblocchiamo comunque l'app.
-         */
+        // ============================================================
+        // TIMEOUT DI SICUREZZA
+        // ============================================================
 
         handler.postDelayed(
             {
@@ -1402,9 +1365,7 @@ class MainActivity : Activity() {
             TextView(this).apply {
 
                 text =
-                    if (
-                        places.isEmpty()
-                    ) {
+                    if (places.isEmpty()) {
                         "📍 TravelPins"
                     } else {
                         "📍 ${places.size} luoghi"
@@ -1426,9 +1387,7 @@ class MainActivity : Activity() {
 
         output.addView(title)
 
-        if (
-            places.isEmpty()
-        ) {
+        if (places.isEmpty()) {
 
             val empty =
                 TextView(this).apply {
@@ -1466,6 +1425,10 @@ class MainActivity : Activity() {
         }
     }
 
+    // ============================================================
+    // PLACE CARD
+    // ============================================================
+
     private fun addPlaceCard(
         index: Int,
         place: Place
@@ -1473,8 +1436,7 @@ class MainActivity : Activity() {
 
         val category =
             categories.find {
-                it.id ==
-                place.categoryId
+                it.id == place.categoryId
             }
 
         val card =
@@ -1514,9 +1476,7 @@ class MainActivity : Activity() {
 
         card.addView(title)
 
-        if (
-            place.address.isNotBlank()
-        ) {
+        if (place.address.isNotBlank()) {
 
             val address =
                 TextView(this).apply {
@@ -1545,14 +1505,9 @@ class MainActivity : Activity() {
             TextView(this).apply {
 
                 text =
-                    if (
-                        category == null
-                    ) {
-
+                    if (category == null) {
                         "⚪ Nessuna categoria"
-
                     } else {
-
                         "${category.icon} ${category.name}"
                     }
 
@@ -1571,22 +1526,14 @@ class MainActivity : Activity() {
                 )
 
                 setOnClickListener {
-
-                    chooseCategory(
-                        place
-                    )
+                    chooseCategory(place)
                 }
             }
 
-        card.addView(
-            categoryText
-        )
+        card.addView(categoryText)
 
         card.setOnClickListener {
-
-            chooseCategory(
-                place
-            )
+            chooseCategory(place)
         }
 
         val params =
@@ -1609,16 +1556,14 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // CATEGORIE
+    // SCELTA CATEGORIA
     // ============================================================
 
     private fun chooseCategory(
         place: Place
     ) {
 
-        if (
-            categories.isEmpty()
-        ) {
+        if (categories.isEmpty()) {
 
             createCategory()
 
@@ -1628,47 +1573,32 @@ class MainActivity : Activity() {
         val names =
             categories.map {
                 category ->
-
                 "${category.icon} ${category.name}"
-
             }.toTypedArray()
 
         AlertDialog.Builder(this)
-
-            .setTitle(
-                "Categoria"
-            )
-
-            .setItems(
-                names
-            ) {
+            .setTitle("Categoria")
+            .setItems(names) {
                     _: android.content.DialogInterface,
                     which: Int ->
 
                 place.categoryId =
-                    categories[
-                        which
-                    ].id
+                    categories[which].id
 
                 savePlaces()
-
                 showPlaces()
             }
-
             .setNegativeButton(
                 "Nessuna categoria"
             ) {
                     _: android.content.DialogInterface,
                     _: Int ->
 
-                place.categoryId =
-                    ""
+                place.categoryId = ""
 
                 savePlaces()
-
                 showPlaces()
             }
-
             .show()
     }
 
@@ -1741,9 +1671,7 @@ class MainActivity : Activity() {
                     )
                 }
 
-            row.addView(
-                icon
-            )
+            row.addView(icon)
 
             row.addView(
                 name,
@@ -1754,9 +1682,7 @@ class MainActivity : Activity() {
                 )
             )
 
-            layout.addView(
-                row
-            )
+            layout.addView(row)
         }
 
         val addButton =
@@ -1766,32 +1692,19 @@ class MainActivity : Activity() {
                     "＋ Nuova categoria"
 
                 setOnClickListener {
-
                     createCategory()
                 }
             }
 
-        layout.addView(
-            addButton
-        )
+        layout.addView(addButton)
 
         AlertDialog.Builder(this)
-
-            .setTitle(
-                "Categorie"
-            )
-
-            .setView(
-                layout
-            )
-
-            .setPositiveButton(
-                "Chiudi"
-            ) {
+            .setTitle("Categorie")
+            .setView(layout)
+            .setPositiveButton("Chiudi") {
                     _: android.content.DialogInterface,
                     _: Int ->
             }
-
             .show()
     }
 
@@ -1821,9 +1734,7 @@ class MainActivity : Activity() {
                 hint =
                     "Nome categoria"
 
-                setSingleLine(
-                    true
-                )
+                setSingleLine(true)
             }
 
         val icons =
@@ -1852,9 +1763,7 @@ class MainActivity : Activity() {
                 icons
             )
 
-        layout.addView(
-            name
-        )
+        layout.addView(name)
 
         layout.addView(
             iconSpinner,
@@ -1865,18 +1774,9 @@ class MainActivity : Activity() {
         )
 
         AlertDialog.Builder(this)
-
-            .setTitle(
-                "Nuova categoria"
-            )
-
-            .setView(
-                layout
-            )
-
-            .setPositiveButton(
-                "Crea"
-            ) {
+            .setTitle("Nuova categoria")
+            .setView(layout)
+            .setPositiveButton("Crea") {
                     _: android.content.DialogInterface,
                     _: Int ->
 
@@ -1888,7 +1788,6 @@ class MainActivity : Activity() {
                 if (
                     categoryName.isBlank()
                 ) {
-
                     return@setPositiveButton
                 }
 
@@ -1918,9 +1817,7 @@ class MainActivity : Activity() {
                             icon
                     )
 
-                categories.add(
-                    category
-                )
+                categories.add(category)
 
                 saveCategories()
 
@@ -1930,14 +1827,10 @@ class MainActivity : Activity() {
                     Toast.LENGTH_SHORT
                 ).show()
             }
-
-            .setNegativeButton(
-                "Annulla"
-            ) {
+            .setNegativeButton("Annulla") {
                     _: android.content.DialogInterface,
                     _: Int ->
             }
-
             .show()
     }
 
@@ -1956,29 +1849,12 @@ class MainActivity : Activity() {
             val obj =
                 JSONObject()
 
-            obj.put(
-                "id",
-                category.id
-            )
+            obj.put("id", category.id)
+            obj.put("name", category.name)
+            obj.put("color", category.color)
+            obj.put("icon", category.icon)
 
-            obj.put(
-                "name",
-                category.name
-            )
-
-            obj.put(
-                "color",
-                category.color
-            )
-
-            obj.put(
-                "icon",
-                category.icon
-            )
-
-            array.put(
-                obj
-            )
+            array.put(obj)
         }
 
         getPreferences(
@@ -2009,9 +1885,7 @@ class MainActivity : Activity() {
                     null
                 )
 
-        if (
-            raw.isNullOrBlank()
-        ) {
+        if (raw.isNullOrBlank()) {
 
             categories.add(
                 Category(
@@ -2063,47 +1937,33 @@ class MainActivity : Activity() {
         try {
 
             val array =
-                JSONArray(
-                    raw
-                )
+                JSONArray(raw)
 
             for (
                 i in 0 until array.length()
             ) {
 
                 val obj =
-                    array.getJSONObject(
-                        i
-                    )
+                    array.getJSONObject(i)
 
                 categories.add(
                     Category(
                         id =
-                            obj.getString(
-                                "id"
-                            ),
+                            obj.getString("id"),
 
                         name =
-                            obj.getString(
-                                "name"
-                            ),
+                            obj.getString("name"),
 
                         color =
-                            obj.getInt(
-                                "color"
-                            ),
+                            obj.getInt("color"),
 
                         icon =
-                            obj.getString(
-                                "icon"
-                            )
+                            obj.getString("icon")
                     )
                 )
             }
 
-        } catch (
-            _: Exception
-        ) {
+        } catch (_: Exception) {
 
             categories.clear()
         }
@@ -2149,9 +2009,7 @@ class MainActivity : Activity() {
                 place.categoryId
             )
 
-            array.put(
-                obj
-            )
+            array.put(obj)
         }
 
         getPreferences(
@@ -2182,62 +2040,43 @@ class MainActivity : Activity() {
                     null
                 )
 
-        if (
-            raw.isNullOrBlank()
-        ) {
-
+        if (raw.isNullOrBlank()) {
             return
         }
 
         try {
 
             val array =
-                JSONArray(
-                    raw
-                )
+                JSONArray(raw)
 
             for (
                 i in 0 until array.length()
             ) {
 
                 val obj =
-                    array.getJSONObject(
-                        i
-                    )
+                    array.getJSONObject(i)
 
                 places.add(
                     Place(
                         name =
-                            obj.optString(
-                                "name"
-                            ),
+                            obj.optString("name"),
 
                         address =
-                            obj.optString(
-                                "address"
-                            ),
+                            obj.optString("address"),
 
                         lat =
-                            obj.optDouble(
-                                "lat"
-                            ),
+                            obj.optDouble("lat"),
 
                         lng =
-                            obj.optDouble(
-                                "lng"
-                            ),
+                            obj.optDouble("lng"),
 
                         categoryId =
-                            obj.optString(
-                                "category"
-                            )
+                            obj.optString("category")
                     )
                 )
             }
 
-        } catch (
-            _: Exception
-        ) {
+        } catch (_: Exception) {
 
             places.clear()
         }
@@ -2254,9 +2093,7 @@ class MainActivity : Activity() {
         try {
 
             val uri =
-                Uri.parse(
-                    intentUrl
-                )
+                Uri.parse(intentUrl)
 
             val fallback =
                 uri.getQueryParameter(
@@ -2278,13 +2115,9 @@ class MainActivity : Activity() {
                 "S.browser_fallback_url="
 
             val index =
-                intentUrl.indexOf(
-                    marker
-                )
+                intentUrl.indexOf(marker)
 
-            if (
-                index >= 0
-            ) {
+            if (index >= 0) {
 
                 var fallbackText =
                     intentUrl.substring(
@@ -2297,9 +2130,7 @@ class MainActivity : Activity() {
                         "#Intent"
                     )
 
-                if (
-                    end >= 0
-                ) {
+                if (end >= 0) {
 
                     fallbackText =
                         fallbackText.substring(
@@ -2318,9 +2149,7 @@ class MainActivity : Activity() {
                 )
             }
 
-        } catch (
-            _: Exception
-        ) {
+        } catch (_: Exception) {
 
             addLog(
                 "[INTENT ERROR]"
@@ -2359,13 +2188,9 @@ class MainActivity : Activity() {
         val match =
             Regex(
                 """https?://\S+"""
-            ).find(
-                sharedText
-            )
+            ).find(sharedText)
 
-        if (
-            match == null
-        ) {
+        if (match == null) {
 
             Toast.makeText(
                 this,
@@ -2378,11 +2203,6 @@ class MainActivity : Activity() {
 
         var url =
             match.value
-
-        /*
-         * Alcune app inseriscono punteggiatura
-         * dopo il link.
-         */
 
         url =
             url.trimEnd(
@@ -2418,9 +2238,7 @@ class MainActivity : Activity() {
             "Apertura della lista Google Maps…"
         )
 
-        webView.loadUrl(
-            url
-        )
+        webView.loadUrl(url)
     }
 
     // ============================================================
@@ -2431,17 +2249,11 @@ class MainActivity : Activity() {
         intent: Intent
     ) {
 
-        super.onNewIntent(
-            intent
-        )
+        super.onNewIntent(intent)
 
-        setIntent(
-            intent
-        )
+        setIntent(intent)
 
-        handleIntent(
-            intent
-        )
+        handleIntent(intent)
     }
 
     // ============================================================
@@ -2453,15 +2265,10 @@ class MainActivity : Activity() {
     ) {
 
         log.add(
-            message.take(
-                15000
-            )
+            message.take(15000)
         )
 
-        while (
-            log.size > 50
-        ) {
-
+        while (log.size > 50) {
             log.poll()
         }
     }
@@ -2470,9 +2277,7 @@ class MainActivity : Activity() {
     // BACK
     // ============================================================
 
-    @Suppress(
-        "DEPRECATION"
-    )
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
         if (
@@ -2493,9 +2298,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
 
-        handler.removeCallbacksAndMessages(
-            null
-        )
+        handler.removeCallbacksAndMessages(null)
 
         webView.stopLoading()
 
