@@ -6,49 +6,29 @@ import kotlinx.coroutines.flow.Flow
 class TravelPinsRepository(context: Context) {
 
     private val db = AppDatabase.getInstance(context)
-
     private val placeDao = db.placeDao()
     private val categoryDao = db.categoryDao()
 
     val places: Flow<List<Place>> = placeDao.observeAll()
     val categories: Flow<List<Category>> = categoryDao.observeAll()
 
+    fun placesInCategory(categoryId: Long): Flow<List<Place>> =
+        placeDao.observeByCategory(categoryId)
+
+    val uncategorizedPlaces: Flow<List<Place>> = placeDao.observeUncategorized()
+
     suspend fun saveImportedPlaces(places: List<Place>): Int {
-        if (places.isEmpty()) return 0
-
-        placeDao.insertAll(places)
-        return places.size
+        val inserted = placeDao.insertAll(places)
+        return inserted.size
     }
 
-    suspend fun insertPlace(place: Place): Long {
-        return placeDao.insert(place)
-    }
+    suspend fun createCategory(name: String, colorArgb: Int, iconKey: String): Long =
+        categoryDao.insert(Category(name = name, colorArgb = colorArgb, iconKey = iconKey))
 
-    suspend fun updatePlace(place: Place) {
-        placeDao.update(place)
-    }
+    suspend fun assignPlaceToCategory(placeId: Long, categoryId: Long?) =
+        placeDao.assignCategory(placeId, categoryId)
 
-    suspend fun deletePlace(place: Place) {
-        placeDao.delete(place)
-    }
+    suspend fun deletePlace(place: Place) = placeDao.delete(place)
 
-    suspend fun deleteAllPlaces() {
-        placeDao.deleteAll()
-    }
-
-    suspend fun insertCategory(category: Category): Long {
-        return categoryDao.insert(category)
-    }
-
-    suspend fun updateCategory(category: Category) {
-        categoryDao.update(category)
-    }
-
-    suspend fun deleteCategory(category: Category) {
-        categoryDao.delete(category)
-    }
-
-    suspend fun getPlacesBySourceListId(sourceListId: String): List<Place> {
-        return placeDao.getBySourceListId(sourceListId)
-    }
+    suspend fun deleteCategory(category: Category) = categoryDao.delete(category)
 }
