@@ -29,6 +29,7 @@ class MainActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var output: TextView
     private lateinit var consentButton: Button
+    private lateinit var scanButton: Button
 
     private val log = ConcurrentLinkedQueue<String>()
     private val handler = Handler(Looper.getMainLooper())
@@ -64,16 +65,7 @@ class MainActivity : Activity() {
             data: String?
         ) {
 
-            val currentUrl =
-                url ?: ""
-
-            // ====================================================
-            // FILTRO NETWORK
-            //
-            // NON registriamo più tutto il traffico di Google.
-            // Le risposte JavaScript possono essere enormi e
-            // mandare in crisi la TextView.
-            // ====================================================
+            val currentUrl = url ?: ""
 
             val interesting =
                 currentUrl.contains(
@@ -97,7 +89,6 @@ class MainActivity : Activity() {
                 return
             }
 
-            // Limitiamo comunque il contenuto.
             val limitedData =
                 (data ?: "").take(3000)
 
@@ -166,6 +157,10 @@ class MainActivity : Activity() {
                     LinearLayout.HORIZONTAL
             }
 
+        // ========================================================
+        // COPIA
+        // ========================================================
+
         val copyButton =
             Button(this).apply {
 
@@ -194,6 +189,10 @@ class MainActivity : Activity() {
                 }
             }
 
+        // ========================================================
+        // PULISCI
+        // ========================================================
+
         val clearButton =
             Button(this).apply {
 
@@ -213,6 +212,10 @@ class MainActivity : Activity() {
                 }
             }
 
+        // ========================================================
+        // CONSENSO GOOGLE
+        // ========================================================
+
         consentButton =
             Button(this).apply {
 
@@ -227,6 +230,32 @@ class MainActivity : Activity() {
                     acceptGoogleConsent()
                 }
             }
+
+        // ========================================================
+        // SCANSIONA
+        // ========================================================
+
+        scanButton =
+            Button(this).apply {
+
+                text =
+                    "SCANSIONA"
+
+                visibility =
+                    Button.GONE
+
+                isEnabled =
+                    false
+
+                setOnClickListener {
+
+                    scanGoogleList()
+                }
+            }
+
+        // ========================================================
+        // AGGIUNTA PULSANTI
+        // ========================================================
 
         toolbar.addView(
             copyButton,
@@ -254,6 +283,19 @@ class MainActivity : Activity() {
                 1f
             )
         )
+
+        toolbar.addView(
+            scanButton,
+            LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+
+        // ========================================================
+        // OUTPUT
+        // ========================================================
 
         output =
             TextView(this).apply {
@@ -432,6 +474,10 @@ class MainActivity : Activity() {
 
                     injectNetworkHook()
 
+                    // =================================================
+                    // CONSENSO
+                    // =================================================
+
                     if (
                         url.contains(
                             "consent.google.com"
@@ -440,6 +486,12 @@ class MainActivity : Activity() {
 
                         consentButton.visibility =
                             Button.VISIBLE
+
+                        scanButton.visibility =
+                            Button.GONE
+
+                        scanButton.isEnabled =
+                            false
 
                         addLog(
                             """
@@ -461,6 +513,9 @@ class MainActivity : Activity() {
 
                     // =================================================
                     // LISTA GOOGLE MAPS
+                    //
+                    // NON SCANSIONIAMO AUTOMATICAMENTE.
+                    // Rendiamo disponibile il pulsante.
                     // =================================================
 
                     if (
@@ -469,7 +524,23 @@ class MainActivity : Activity() {
                         )
                     ) {
 
-                        inspectGoogleListPage()
+                        addLog(
+                            """
+                            ==============================
+                            LISTA GOOGLE MAPS RILEVATA
+
+                            Premi SCANSIONA per leggere
+                            i luoghi della lista.
+
+                            ==============================
+                            """.trimIndent()
+                        )
+
+                        scanButton.visibility =
+                            Button.VISIBLE
+
+                        scanButton.isEnabled =
+                            true
                     }
                 }
 
@@ -500,21 +571,39 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // LETTURA LISTA GOOGLE MAPS
+    // SCANSIONE MANUALE
     // ============================================================
 
-    private fun inspectGoogleListPage() {
+    private fun scanGoogleList() {
+
+        if (
+            !scanButton.isEnabled
+        ) {
+            return
+        }
+
+        scanButton.isEnabled =
+            false
 
         addLog(
             """
             ==============================
-            LISTA GOOGLE MAPS RILEVATA
+            SCANSIONE AVVIATA
 
-            Attendo il caricamento del contenuto...
+            Attendo il caricamento della lista...
 
             ==============================
             """.trimIndent()
         )
+
+        inspectGoogleListPage()
+    }
+
+    // ============================================================
+    // LETTURA LISTA GOOGLE MAPS
+    // ============================================================
+
+    private fun inspectGoogleListPage() {
 
         handler.postDelayed({
 
@@ -523,11 +612,6 @@ class MainActivity : Activity() {
                 (function() {
 
                     try {
-
-                        var text =
-                            document.body
-                                ? document.body.innerText
-                                : '';
 
                         var title =
                             document.title || '';
@@ -543,14 +627,17 @@ class MainActivity : Activity() {
                             i++
                         ) {
 
+                            var element =
+                                elements[i];
+
                             var href =
-                                elements[i].href || '';
+                                element.href || '';
 
-                            var linkText =
-                                elements[i].innerText || '';
+                            var text =
+                                element.innerText || '';
 
-                            linkText =
-                                linkText.trim();
+                            text =
+                                text.trim();
 
                             if (
                                 href &&
@@ -565,33 +652,44 @@ class MainActivity : Activity() {
                             ) {
 
                                 links.push(
-                                    linkText +
+                                    text +
                                     ' -> ' +
                                     href
                                 );
                             }
                         }
 
-                        if (
-                            text.length > 30000
+                        // Rimuove duplicati
+
+                        var uniqueLinks =
+                            [];
+
+                        for (
+                            var j = 0;
+                            j < links.length;
+                            j++
                         ) {
 
-                            text =
-                                text.substring(
-                                    0,
-                                    30000
+                            if (
+                                uniqueLinks.indexOf(
+                                    links[j]
+                                ) === -1
+                            ) {
+
+                                uniqueLinks.push(
+                                    links[j]
                                 );
+                            }
                         }
 
                         var result =
                             'TITLE:\\n' +
                             title +
                             '\\n\\n' +
-                            'PAGE TEXT:\\n' +
-                            text +
-                            '\\n\\n' +
-                            'MAP LINKS:\\n' +
-                            links.join('\\n');
+                            'MAP LINKS (' +
+                            uniqueLinks.length +
+                            '):\\n' +
+                            uniqueLinks.join('\\n');
 
                         return result;
 
@@ -614,27 +712,30 @@ class MainActivity : Activity() {
                         result
                     )
 
-                // Anche il risultato della scansione
-                // viene limitato per sicurezza.
-
                 val limited =
                     decoded.take(
-                        30000
+                        15000
                     )
 
                 addLog(
                     """
                     ==============================
-                    CONTENUTO LISTA GOOGLE MAPS
+                    RISULTATO SCANSIONE
 
                     $limited
 
                     ==============================
                     """.trimIndent()
                 )
+
+                runOnUiThread {
+
+                    scanButton.isEnabled =
+                        true
+                }
             }
 
-        }, 4000)
+        }, 1500)
     }
 
     // ============================================================
@@ -748,10 +849,8 @@ class MainActivity : Activity() {
                     """
                     [FALLBACK URL TROVATO]
 
-                    $fallback
+                    Carico versione web...
 
-                    ==============================
-                    CARICO FALLBACK NELLA WEBVIEW...
                     ==============================
                     """.trimIndent()
                 )
@@ -801,10 +900,8 @@ class MainActivity : Activity() {
                     """
                     [FALLBACK MANUALE]
 
-                    $fallbackText
+                    Carico versione web...
 
-                    ==============================
-                    CARICO FALLBACK...
                     ==============================
                     """.trimIndent()
                 )
@@ -946,6 +1043,9 @@ class MainActivity : Activity() {
                 ==============================
                 """.trimIndent()
             )
+
+            // Il pulsante SCANSIONA apparirà quando
+            // la navigazione successiva porterà alla lista.
         }
     }
 
@@ -968,10 +1068,6 @@ class MainActivity : Activity() {
 
                 window.__travelpins_hooked =
                     true;
-
-                // ==================================================
-                // FETCH
-                // ==================================================
 
                 var originalFetch =
                     window.fetch;
@@ -1021,53 +1117,13 @@ class MainActivity : Activity() {
                                     arguments
                                 );
 
-                            try {
-
-                                var clone =
-                                    response.clone();
-
-                                var text =
-                                    await clone.text();
-
-                                TravelPins.network(
-                                    'FETCH_RESPONSE',
-                                    method,
-                                    url,
-                                    text
-                                );
-
-                            } catch(e) {
-
-                                TravelPins.network(
-                                    'FETCH_RESPONSE_ERROR',
-                                    method,
-                                    url,
-                                    e.message
-                                );
-                            }
-
                             return response;
 
                         } catch(error) {
 
-                            try {
-
-                                TravelPins.network(
-                                    'FETCH_ERROR',
-                                    method,
-                                    url,
-                                    error.message
-                                );
-
-                            } catch(e) {}
-
                             throw error;
                         }
                     };
-
-                // ==================================================
-                // XHR
-                // ==================================================
 
                 var originalOpen =
                     XMLHttpRequest.prototype.open;
@@ -1086,17 +1142,6 @@ class MainActivity : Activity() {
 
                         this.__tp_url =
                             url;
-
-                        try {
-
-                            TravelPins.network(
-                                'XHR_OPEN',
-                                method,
-                                url,
-                                ''
-                            );
-
-                        } catch(e) {}
 
                         return originalOpen.apply(
                             this,
@@ -1122,36 +1167,6 @@ class MainActivity : Activity() {
                             );
 
                         } catch(e) {}
-
-                        xhr.addEventListener(
-                            'load',
-                            function() {
-
-                                try {
-
-                                    TravelPins.network(
-                                        'XHR_RESPONSE',
-                                        xhr.__tp_method ||
-                                        'GET',
-                                        xhr.__tp_url ||
-                                        '',
-                                        xhr.responseText ||
-                                        ''
-                                    );
-
-                                } catch(e) {
-
-                                    TravelPins.network(
-                                        'XHR_RESPONSE_ERROR',
-                                        xhr.__tp_method ||
-                                        'GET',
-                                        xhr.__tp_url ||
-                                        '',
-                                        e.message
-                                    );
-                                }
-                            }
-                        );
 
                         return originalSend.apply(
                             this,
@@ -1325,12 +1340,6 @@ class MainActivity : Activity() {
     private fun addLog(
         text: String
     ) {
-
-        // ========================================================
-        // LIMITE DI SICUREZZA
-        //
-        // Non permettiamo al log di crescere all'infinito.
-        // ========================================================
 
         log.add(
             text.take(5000)
