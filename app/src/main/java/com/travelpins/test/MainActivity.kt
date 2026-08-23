@@ -1,9 +1,18 @@
 package com.travelpins.test
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
+import android.view.Gravity
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
@@ -17,13 +26,99 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        output = TextView(this).apply {
-            textSize = 15f
-            setPadding(30, 50, 30, 30)
-            text = "TravelPins TEST\n\nIn attesa del link..."
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 20, 20, 20)
         }
 
-        setContentView(output)
+        val buttons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        val copyButton = Button(this).apply {
+            text = "COPIA TUTTO"
+
+            setOnClickListener {
+                val clipboard =
+                    getSystemService(Context.CLIPBOARD_SERVICE)
+                            as ClipboardManager
+
+                clipboard.setPrimaryClip(
+                    ClipData.newPlainText(
+                        "TravelPins",
+                        output.text.toString()
+                    )
+                )
+
+                Toast.makeText(
+                    this@MainActivity,
+                    "Testo copiato!",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+
+        val clearButton = Button(this).apply {
+            text = "PULISCI"
+
+            setOnClickListener {
+                output.text = ""
+            }
+        }
+
+        buttons.addView(
+            copyButton,
+            LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+
+        buttons.addView(
+            clearButton,
+            LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+
+        output = TextView(this).apply {
+            textSize = 15f
+            textIsSelectable = true
+            setTextIsSelectable(true)
+            setTextColor(Color.BLACK)
+            setPadding(20, 20, 20, 40)
+
+            text =
+                "TravelPins TEST\n\n" +
+                "In attesa del link..."
+        }
+
+        val scrollView = ScrollView(this).apply {
+            addView(output)
+        }
+
+        root.addView(
+            buttons,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        root.addView(
+            scrollView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        setContentView(root)
 
         processIntent(intent)
     }
@@ -73,9 +168,9 @@ class MainActivity : Activity() {
 
             try {
 
-                // --------------------------------------------------
-                // 1. RISOLVIAMO IL LINK
-                // --------------------------------------------------
+                // ============================================
+                // 1. RISOLUZIONE DEL LINK GOOGLE
+                // ============================================
 
                 val connection =
                     URL(sharedUrl)
@@ -100,9 +195,9 @@ class MainActivity : Activity() {
 
                 connection.disconnect()
 
-                // --------------------------------------------------
-                // 2. PROVIAMO A DECODIFICARE L'URL
-                // --------------------------------------------------
+                // ============================================
+                // 2. DECODIFICA URL
+                // ============================================
 
                 val decodedUrl =
                     try {
@@ -114,9 +209,9 @@ class MainActivity : Activity() {
                         finalUrl
                     }
 
-                // --------------------------------------------------
-                // 3. CERCHIAMO IL LIST ID IN TUTTE LE VARIANTI
-                // --------------------------------------------------
+                // ============================================
+                // 3. CERCA LIST ID
+                // ============================================
 
                 val listId =
                     findListId(finalUrl)
@@ -152,11 +247,8 @@ class MainActivity : Activity() {
 
                         ========================
 
-                        Il link è arrivato correttamente,
-                        ma Google ha cambiato il formato
-                        dell'URL.
-
                         DIMENSIONE HTML:
+
                         ${html.length}
                         """.trimIndent()
                     )
@@ -164,26 +256,26 @@ class MainActivity : Activity() {
                     return@thread
                 }
 
-                // --------------------------------------------------
+                // ============================================
                 // 4. LIST ID TROVATO
-                // --------------------------------------------------
+                // ============================================
 
                 show(
                     """
-                    ✅ LIST ID TROVATO!
+                    ✅ LIST ID TROVATO
 
                     $listId
 
                     ========================
 
-                    Ora provo direttamente
-                    la richiesta Google getlist...
+                    Invio richiesta
+                    Google getlist...
                     """.trimIndent()
                 )
 
-                // --------------------------------------------------
-                // 5. COSTRUIAMO LA RICHIESTA
-                // --------------------------------------------------
+                // ============================================
+                // 5. COSTRUZIONE PB
+                // ============================================
 
                 val pb =
                     buildPb(listId)
@@ -196,31 +288,32 @@ class MainActivity : Activity() {
 
                 val apiUrl =
                     "https://www.google.com/maps/preview/" +
-                            "entitylist/getlist" +
-                            "?authuser=0" +
-                            "&hl=it" +
-                            "&gl=it" +
-                            "&pb=$encodedPb"
+                    "entitylist/getlist" +
+                    "?authuser=0" +
+                    "&hl=it" +
+                    "&gl=it" +
+                    "&pb=$encodedPb"
 
-                // --------------------------------------------------
-                // 6. INVIO RICHIESTA
-                // --------------------------------------------------
+                // ============================================
+                // 6. RICHIESTA GOOGLE
+                // ============================================
 
                 val apiConnection =
                     URL(apiUrl)
                         .openConnection() as HttpURLConnection
 
                 apiConnection.requestMethod = "GET"
+
                 apiConnection.connectTimeout = 20000
                 apiConnection.readTimeout = 20000
 
                 apiConnection.setRequestProperty(
                     "User-Agent",
                     "Mozilla/5.0 (Linux; Android 10) " +
-                            "AppleWebKit/537.36 " +
-                            "(KHTML, like Gecko) " +
-                            "Chrome/131.0.0.0 " +
-                            "Mobile Safari/537.36"
+                    "AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) " +
+                    "Chrome/131.0.0.0 " +
+                    "Mobile Safari/537.36"
                 )
 
                 apiConnection.setRequestProperty(
@@ -238,10 +331,13 @@ class MainActivity : Activity() {
 
                 val response =
                     try {
+
                         apiConnection.inputStream
                             .bufferedReader()
                             .use { it.readText() }
+
                     } catch (e: Exception) {
+
                         apiConnection.errorStream
                             ?.bufferedReader()
                             ?.use { it.readText() }
@@ -250,9 +346,9 @@ class MainActivity : Activity() {
 
                 apiConnection.disconnect()
 
-                // --------------------------------------------------
-                // 7. MOSTRIAMO IL RISULTATO
-                // --------------------------------------------------
+                // ============================================
+                // 7. RISPOSTA
+                // ============================================
 
                 val cleanResponse =
                     response
@@ -274,6 +370,8 @@ class MainActivity : Activity() {
 
                     ========================
 
+                    RISPOSTA COMPLETA:
+
                     $cleanResponse
                     """.trimIndent()
                 )
@@ -293,98 +391,49 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun findListId(
-        text: String
-    ): String? {
+    // ================================================
+    // CERCA LIST ID IN DIVERSI FORMATI
+    // ================================================
+
+    private fun findListId(text: String): String? {
 
         if (text.isBlank()) {
             return null
         }
 
-        // --------------------------------------------------
-        // FORMATO CHE ABBIAMO VISTO NEL TUO LINK:
-        //
-        // !11m2!2sEoi6FS...
-        // --------------------------------------------------
+        val patterns =
+            listOf(
 
-        val pattern1 =
-            Regex(
-                """!11m2!2s([A-Za-z0-9_-]{15,})"""
+                Regex(
+                    """!11m2!2s([A-Za-z0-9_-]{15,})"""
+                ),
+
+                Regex(
+                    """!2s([A-Za-z0-9_-]{15,})"""
+                ),
+
+                Regex(
+                    """(?:%21|!)11m2(?:%21|!)2s([A-Za-z0-9_-]{15,})""",
+                    RegexOption.IGNORE_CASE
+                )
             )
 
-        val match1 =
-            pattern1.find(text)
+        for (pattern in patterns) {
 
-        if (match1 != null) {
-            return match1.groupValues[1]
-        }
+            val match =
+                pattern.find(text)
 
-        // --------------------------------------------------
-        // FORMATO GENERICO !2sID
-        // --------------------------------------------------
-
-        val pattern2 =
-            Regex(
-                """!2s([A-Za-z0-9_-]{15,})"""
-            )
-
-        val match2 =
-            pattern2.find(text)
-
-        if (match2 != null) {
-            return match2.groupValues[1]
-        }
-
-        // --------------------------------------------------
-        // FORMATO URL ENCODED
-        // %21 = !
-        // %32 = 2
-        // %73 = s
-        // --------------------------------------------------
-
-        val pattern3 =
-            Regex(
-                """(?:%21|!)11m2(?:%21|!)2s([A-Za-z0-9_-]{15,})""",
-                RegexOption.IGNORE_CASE
-            )
-
-        val match3 =
-            pattern3.find(text)
-
-        if (match3 != null) {
-            return match3.groupValues[1]
-        }
-
-        // --------------------------------------------------
-        // ULTIMO TENTATIVO:
-        // cerchiamo una stringa che assomigli
-        // al List ID che abbiamo già visto
-        // --------------------------------------------------
-
-        val pattern4 =
-            Regex(
-                """[A-Za-z0-9_-]{20,60}"""
-            )
-
-        val candidates =
-            pattern4
-                .findAll(text)
-                .map { it.value }
-                .toList()
-
-        for (candidate in candidates) {
-
-            if (
-                candidate.length >= 20 &&
-                candidate.any { it.isLetter() } &&
-                candidate.any { it.isDigit() }
-            ) {
-                return candidate
+            if (match != null) {
+                return match.groupValues[1]
             }
         }
 
         return null
     }
+
+    // ================================================
+    // COSTRUZIONE RICHIESTA GOOGLE
+    // ================================================
 
     private fun buildPb(
         listId: String
@@ -400,6 +449,10 @@ class MainActivity : Activity() {
                 "!8i3" +
                 "!16b1"
     }
+
+    // ================================================
+    // AGGIORNA SCHERMATA
+    // ================================================
 
     private fun show(
         message: String
