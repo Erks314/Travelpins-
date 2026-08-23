@@ -3,9 +3,12 @@ package com.travelpins.test
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.webkit.CookieManager
+import android.webkit.WebView
 import android.widget.TextView
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
@@ -63,9 +66,7 @@ class MainActivity : Activity() {
 
             Link ricevuto!
 
-            Analizzo Google Maps...
-
-            $sharedUrl
+            Recupero il List ID...
             """.trimIndent()
         )
 
@@ -73,220 +74,186 @@ class MainActivity : Activity() {
 
             try {
 
-                val connection =
+                // -------------------------------------------------
+                // 1. RISOLVIAMO IL LINK BREVE
+                // -------------------------------------------------
+
+                val redirectConnection =
                     URL(sharedUrl)
                         .openConnection() as HttpURLConnection
 
-                connection.requestMethod = "GET"
-                connection.instanceFollowRedirects = true
-                connection.connectTimeout = 20000
-                connection.readTimeout = 20000
-
-                connection.setRequestProperty(
-                    "Accept-Language",
-                    "it-IT,it;q=0.9,en;q=0.8"
-                )
-
-                val responseCode =
-                    connection.responseCode
+                redirectConnection.requestMethod = "GET"
+                redirectConnection.instanceFollowRedirects = true
+                redirectConnection.connectTimeout = 20000
+                redirectConnection.readTimeout = 20000
 
                 val finalUrl =
-                    connection.url.toString()
+                    redirectConnection.url.toString()
 
-                val html =
-                    connection.inputStream
-                        .bufferedReader()
-                        .use { it.readText() }
+                redirectConnection.inputStream
+                    .bufferedReader()
+                    .use { it.readText() }
 
-                connection.disconnect()
+                redirectConnection.disconnect()
 
-                // -----------------------------------------------------
-                // CERCHIAMO LE STRUTTURE INTERESSANTI
-                // -----------------------------------------------------
-
-                val appStateIndex =
-                    html.indexOf(
-                        "APP_INITIALIZATION_STATE",
-                        ignoreCase = true
-                    )
-
-                val entityListIndex =
-                    html.indexOf(
-                        "entitylist",
-                        ignoreCase = true
-                    )
-
-                val getListIndex =
-                    html.indexOf(
-                        "getlist",
-                        ignoreCase = true
-                    )
+                // -------------------------------------------------
+                // 2. ESTRAIAMO IL LIST ID
+                // -------------------------------------------------
 
                 val listId =
                     extractListId(finalUrl)
 
-                // -----------------------------------------------------
-                // CERCHIAMO COORDINATE NELLA PAGINA
-                // -----------------------------------------------------
+                if (listId == null) {
 
-                val coordinateMatches =
-                    Regex(
-                        """-?\d{1,3}\.\d{4,}[^0-9]{1,20}-?\d{1,3}\.\d{4,}"""
-                    )
-                        .findAll(html)
-                        .take(20)
-                        .map { it.value }
-                        .toList()
+                    show(
+                        """
+                        ❌ LIST ID NON TROVATO
 
-                // -----------------------------------------------------
-                // CREIAMO UNA DIAGNOSTICA MOLTO PIÙ UTILE
-                // -----------------------------------------------------
+                        URL:
 
-                val result =
-                    StringBuilder()
-
-                result.append(
-                    "TravelPins TEST\n\n"
-                )
-
-                result.append(
-                    "HTTP: $responseCode\n\n"
-                )
-
-                result.append(
-                    "URL FINALE:\n$finalUrl\n\n"
-                )
-
-                result.append(
-                    "LIST ID:\n${listId ?: "NON TROVATO"}\n\n"
-                )
-
-                result.append(
-                    "APP_INITIALIZATION_STATE:\n"
-                )
-
-                result.append(
-                    if (appStateIndex >= 0)
-                        "✅ TROVATO"
-                    else
-                        "❌ NON TROVATO"
-                )
-
-                result.append("\n\n")
-
-                result.append(
-                    "ENTITYLIST:\n"
-                )
-
-                result.append(
-                    if (entityListIndex >= 0)
-                        "✅ TROVATO"
-                    else
-                        "❌ NON TROVATO"
-                )
-
-                result.append("\n\n")
-
-                result.append(
-                    "GETLIST:\n"
-                )
-
-                result.append(
-                    if (getListIndex >= 0)
-                        "✅ TROVATO"
-                    else
-                        "❌ NON TROVATO"
-                )
-
-                result.append("\n\n")
-
-                result.append(
-                    "COORDINATE INDIVIDUATE:\n"
-                )
-
-                if (coordinateMatches.isEmpty()) {
-
-                    result.append(
-                        "Nessuna coppia trovata."
+                        $finalUrl
+                        """.trimIndent()
                     )
 
-                } else {
+                    return@thread
+                }
 
-                    coordinateMatches.forEach {
-                        result.append(
-                            "$it\n"
-                        )
+                show(
+                    """
+                    TravelPins TEST
+
+                    ✅ LIST ID TROVATO
+
+                    $listId
+
+                    Costruisco la richiesta
+                    Google getlist...
+                    """.trimIndent()
+                )
+
+                // -------------------------------------------------
+                // 3. COSTRUIAMO IL PB
+                // -------------------------------------------------
+
+                val pb = buildPb(listId)
+
+                val encodedPb =
+                    URLEncoder.encode(
+                        pb,
+                        "UTF-8"
+                    )
+
+                val apiUrl =
+                    "https://www.google.com/maps/preview/" +
+                            "entitylist/getlist" +
+                            "?authuser=0" +
+                            "&hl=it" +
+                            "&gl=it" +
+                            "&pb=$encodedPb"
+
+                // -------------------------------------------------
+                // 4. PROVIAMO LA RICHIESTA
+                // -------------------------------------------------
+
+                show(
+                    """
+                    TravelPins TEST
+
+                    List ID:
+                    $listId
+
+                    Invio richiesta Google...
+
+                    Attendo risposta...
+                    """.trimIndent()
+                )
+
+                val apiConnection =
+                    URL(apiUrl)
+                        .openConnection() as HttpURLConnection
+
+                apiConnection.requestMethod = "GET"
+
+                apiConnection.connectTimeout = 20000
+                apiConnection.readTimeout = 20000
+
+                apiConnection.setRequestProperty(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 10) " +
+                            "AppleWebKit/537.36 " +
+                            "(KHTML, like Gecko) " +
+                            "Chrome/131.0.0.0 " +
+                            "Mobile Safari/537.36"
+                )
+
+                apiConnection.setRequestProperty(
+                    "Accept",
+                    "*/*"
+                )
+
+                apiConnection.setRequestProperty(
+                    "Referer",
+                    "https://www.google.com/maps/"
+                )
+
+                val responseCode =
+                    apiConnection.responseCode
+
+                val response =
+                    try {
+
+                        apiConnection.inputStream
+                            .bufferedReader()
+                            .use { it.readText() }
+
+                    } catch (e: Exception) {
+
+                        apiConnection.errorStream
+                            ?.bufferedReader()
+                            ?.use { it.readText() }
+                            ?: ""
                     }
-                }
 
-                // -----------------------------------------------------
-                // SE TROVIAMO APP_INITIALIZATION_STATE,
-                // MOSTRIAMO UNA FINESTRA ATTORNO AL PUNTO
-                // -----------------------------------------------------
+                apiConnection.disconnect()
 
-                if (appStateIndex >= 0) {
+                // -------------------------------------------------
+                // 5. ANALIZZIAMO LA RISPOSTA
+                // -------------------------------------------------
 
-                    val start =
-                        maxOf(
-                            0,
-                            appStateIndex - 1000
-                        )
+                val cleanResponse =
+                    response
+                        .removePrefix(")]}'")
+                        .trim()
 
-                    val end =
-                        minOf(
-                            html.length,
-                            appStateIndex + 8000
-                        )
+                val placeCount =
+                    countLikelyPlaces(cleanResponse)
 
-                    result.append(
-                        "\n\n========================\n"
-                    )
+                val preview =
+                    cleanResponse.take(12000)
 
-                    result.append(
-                        "ESTRATTO APP_INITIALIZATION_STATE:\n"
-                    )
+                show(
+                    """
+                    🎯 RISPOSTA GOOGLE
 
-                    result.append(
-                        "========================\n\n"
-                    )
+                    HTTP:
+                    $responseCode
 
-                    result.append(
-                        html.substring(
-                            start,
-                            end
-                        )
-                    )
-                }
+                    LIST ID:
+                    $listId
 
-                // -----------------------------------------------------
-                // SE NON TROVIAMO QUELLO,
-                // MOSTRIAMO UN ESTRATTO DELL'HTML
-                // -----------------------------------------------------
+                    DIMENSIONE RISPOSTA:
+                    ${cleanResponse.length} caratteri
 
-                if (
-                    appStateIndex < 0 &&
-                    entityListIndex < 0 &&
-                    getListIndex < 0
-                ) {
+                    POSSIBILI LUOGHI:
+                    $placeCount
 
-                    result.append(
-                        "\n\n========================\n"
-                    )
+                    ========================
 
-                    result.append(
-                        "ESTRATTO HTML:\n"
-                    )
+                    RISPOSTA:
 
-                    result.append(
-                        "========================\n\n"
-                    )
-
-                    result.append(
-                        html.take(10000)
-                    )
-                }
-
-                show(result.toString())
+                    $preview
+                    """.trimIndent()
+                )
 
             } catch (e: Exception) {
 
@@ -311,11 +278,15 @@ class MainActivity : Activity() {
             listOf(
 
                 Regex(
-                    """!2s([A-Za-z0-9_-]{10,})"""
+                    """!2s([A-Za-z0-9_-]{15,})"""
                 ),
 
                 Regex(
-                    """!1s([A-Za-z0-9_-]{10,})"""
+                    """!1s([A-Za-z0-9_-]{15,})"""
+                ),
+
+                Regex(
+                    """2s([A-Za-z0-9_-]{15,})"""
                 )
             )
 
@@ -332,7 +303,54 @@ class MainActivity : Activity() {
         return null
     }
 
-    private fun show(message: String) {
+    private fun buildPb(
+        listId: String
+    ): String {
+
+        return "!1m4" +
+                "!1s$listId" +
+                "!2e1" +
+                "!3m1!1e1" +
+                "!2e2" +
+                "!3e3" +
+                "!4i500" +
+                "!8i3" +
+                "!16b1"
+    }
+
+    private fun countLikelyPlaces(
+        response: String
+    ): Int {
+
+        var count = 0
+
+        val occurrences =
+            listOf(
+                "\"GPS\"",
+                "\"google_place_id\"",
+                "maps.google.com",
+                "maps/preview"
+            )
+
+        for (term in occurrences) {
+
+            count +=
+                response
+                    .windowed(
+                        term.length,
+                        1
+                    )
+                    .count {
+                        it == term
+                    }
+        }
+
+        return count
+    }
+
+    private fun show(
+        message: String
+    ) {
 
         runOnUiThread {
             output.text = message
