@@ -35,6 +35,12 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
 
     // ============================================================
+    // RISULTATO COMPLETO
+    // ============================================================
+
+    private var completeResult: String = ""
+
+    // ============================================================
     // JAVASCRIPT -> KOTLIN
     // ============================================================
 
@@ -84,7 +90,7 @@ class MainActivity : Activity() {
             addLog(
                 """
                 ==============================
-                NETWORK $type
+                NETWORK ${type ?: ""}
 
                 METHOD:
                 ${method ?: ""}
@@ -108,7 +114,6 @@ class MainActivity : Activity() {
     override fun onCreate(
         savedInstanceState: Bundle?
     ) {
-
         super.onCreate(savedInstanceState)
 
         createInterface()
@@ -134,12 +139,23 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
             }
 
+        // --------------------------------------------------------
+        // COPIA TUTTO
+        // --------------------------------------------------------
+
         val copyButton =
             Button(this).apply {
 
                 text = "COPIA TUTTO"
 
                 setOnClickListener {
+
+                    val textToCopy =
+                        if (completeResult.isNotBlank()) {
+                            completeResult
+                        } else {
+                            output.text.toString()
+                        }
 
                     val clipboard =
                         getSystemService(
@@ -149,17 +165,21 @@ class MainActivity : Activity() {
                     clipboard.setPrimaryClip(
                         ClipData.newPlainText(
                             "TravelPins",
-                            output.text.toString()
+                            textToCopy
                         )
                     )
 
                     Toast.makeText(
                         this@MainActivity,
-                        "Copiato!",
+                        "Lista completa copiata!",
                         Toast.LENGTH_SHORT
                     ).show()
                 }
             }
+
+        // --------------------------------------------------------
+        // PULISCI
+        // --------------------------------------------------------
 
         val clearButton =
             Button(this).apply {
@@ -169,6 +189,7 @@ class MainActivity : Activity() {
                 setOnClickListener {
 
                     log.clear()
+                    completeResult = ""
 
                     output.text =
                         """
@@ -178,6 +199,10 @@ class MainActivity : Activity() {
                         """.trimIndent()
                 }
             }
+
+        // --------------------------------------------------------
+        // CONSENSO
+        // --------------------------------------------------------
 
         consentButton =
             Button(this).apply {
@@ -190,6 +215,10 @@ class MainActivity : Activity() {
                     acceptGoogleConsent()
                 }
             }
+
+        // --------------------------------------------------------
+        // SCANSIONA
+        // --------------------------------------------------------
 
         scanButton =
             Button(this).apply {
@@ -293,15 +322,10 @@ class MainActivity : Activity() {
         webView.settings.apply {
 
             javaScriptEnabled = true
-
             domStorageEnabled = true
-
             databaseEnabled = true
-
             loadsImagesAutomatically = true
-
             javaScriptCanOpenWindowsAutomatically = true
-
             setSupportMultipleWindows(false)
 
             userAgentString =
@@ -418,10 +442,6 @@ class MainActivity : Activity() {
                             Button.GONE
                     }
 
-                    // ------------------------------------------------
-                    // RICONOSCIMENTO LISTA
-                    // ------------------------------------------------
-
                     if (
                         isGoogleListUrl(url)
                     ) {
@@ -436,7 +456,7 @@ class MainActivity : Activity() {
                             $url
 
                             ==============================
-                            Premere SCANSIONA.
+                            Premi SCANSIONA.
 
                             """.trimIndent()
                         )
@@ -479,17 +499,21 @@ class MainActivity : Activity() {
         url: String
     ): Boolean {
 
-        return url.contains(
-            "/local/userlists/list/",
-            true
+        return (
+            url.contains(
+                "/local/userlists/list/",
+                true
+            )
         ) ||
-        url.contains(
-            "/maps/@/data=",
-            true
-        ) &&
-        url.contains(
-            "!11m2!2s",
-            true
+        (
+            url.contains(
+                "/maps/@/data=",
+                true
+            ) &&
+            url.contains(
+                "!11m2!2s",
+                true
+            )
         )
     }
 
@@ -504,6 +528,8 @@ class MainActivity : Activity() {
         }
 
         scanButton.isEnabled = false
+
+        completeResult = ""
 
         addLog(
             """
@@ -523,7 +549,7 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // LETTURA DIRETTA ENTITYLIST
+    // LETTURA ENTITYLIST
     // ============================================================
 
     private fun inspectGoogleListPage() {
@@ -537,7 +563,7 @@ class MainActivity : Activity() {
                     try {
 
                         // =================================================
-                        // 1. URL CORRENTE
+                        // URL
                         // =================================================
 
                         var currentUrl =
@@ -549,13 +575,10 @@ class MainActivity : Activity() {
                         );
 
                         // =================================================
-                        // 2. ESTRAZIONE LIST ID
+                        // LIST ID
                         // =================================================
 
                         var listId = '';
-
-                        // Caso:
-                        // !11m2!2sLIST_ID
 
                         var match =
                             currentUrl.match(
@@ -563,14 +586,8 @@ class MainActivity : Activity() {
                             );
 
                         if (match) {
-
-                            listId =
-                                match[1];
-
+                            listId = match[1];
                         }
-
-                        // Fallback:
-                        // /local/userlists/list/LIST_ID
 
                         if (!listId) {
 
@@ -580,14 +597,9 @@ class MainActivity : Activity() {
                                 );
 
                             if (match) {
-
-                                listId =
-                                    match[1];
-
+                                listId = match[1];
                             }
                         }
-
-                        // Fallback generico 2s
 
                         if (!listId) {
 
@@ -597,10 +609,7 @@ class MainActivity : Activity() {
                                 );
 
                             if (match) {
-
-                                listId =
-                                    match[1];
-
+                                listId = match[1];
                             }
                         }
 
@@ -622,7 +631,7 @@ class MainActivity : Activity() {
                         }
 
                         // =================================================
-                        // 3. COSTRUZIONE GETLIST
+                        // GETLIST
                         // =================================================
 
                         var pb =
@@ -649,10 +658,6 @@ class MainActivity : Activity() {
                             'GETLIST URL: ' +
                             endpoint
                         );
-
-                        // =================================================
-                        // 4. FETCH GOOGLE
-                        // =================================================
 
                         var response =
                             await fetch(
@@ -690,19 +695,7 @@ class MainActivity : Activity() {
                         }
 
                         // =================================================
-                        // 5. MOSTRA INIZIO RISPOSTA
-                        // =================================================
-
-                        TravelPins.log(
-                            'GETLIST RAW START:\\n' +
-                            raw.substring(
-                                0,
-                                3500
-                            )
-                        );
-
-                        // =================================================
-                        // 6. RIMOZIONE XSSI
+                        // PARSE
                         // =================================================
 
                         var cleaned =
@@ -715,33 +708,23 @@ class MainActivity : Activity() {
                         ) {
 
                             cleaned =
-                                cleaned.substring(
-                                    4
-                                );
+                                cleaned.substring(4);
 
                             if (
                                 cleaned.charAt(0) === '\\n'
                             ) {
 
                                 cleaned =
-                                    cleaned.substring(
-                                        1
-                                    );
+                                    cleaned.substring(1);
                             }
                         }
-
-                        // =================================================
-                        // 7. PARSE JSON
-                        // =================================================
 
                         var data;
 
                         try {
 
                             data =
-                                JSON.parse(
-                                    cleaned
-                                );
+                                JSON.parse(cleaned);
 
                             TravelPins.log(
                                 'JSON PARSATO CORRETTAMENTE'
@@ -758,15 +741,14 @@ class MainActivity : Activity() {
                         }
 
                         // =================================================
-                        // 8. UTILITIES
+                        // UTILITIES
                         // =================================================
 
                         var places = [];
 
                         function isNumber(v) {
 
-                            return typeof v ===
-                                   'number' &&
+                            return typeof v === 'number' &&
                                    isFinite(v);
                         }
 
@@ -788,17 +770,13 @@ class MainActivity : Activity() {
                         ) {
 
                             if (
-                                typeof value !==
-                                'string'
+                                typeof value !== 'string'
                             ) {
                                 return '';
                             }
 
                             return value
-                                .replace(
-                                    /\\s+/g,
-                                    ' '
-                                )
+                                .replace(/\\s+/g, ' ')
                                 .trim();
                         }
 
@@ -807,28 +785,20 @@ class MainActivity : Activity() {
                         ) {
 
                             var s =
-                                cleanString(
-                                    value
-                                );
+                                cleanString(value);
 
                             if (
                                 !s ||
                                 s.length < 2 ||
                                 s.length > 250
                             ) {
-
                                 return false;
                             }
 
                             if (
-                                s.indexOf(
-                                    'http://'
-                                ) === 0 ||
-                                s.indexOf(
-                                    'https://'
-                                ) === 0
+                                s.indexOf('http://') === 0 ||
+                                s.indexOf('https://') === 0
                             ) {
-
                                 return false;
                             }
 
@@ -836,54 +806,25 @@ class MainActivity : Activity() {
                         }
 
                         // =================================================
-                        // 9. PARSER PRINCIPALE CONOSCIUTO
-                        //
-                        // Google usa una struttura del tipo:
-                        //
-                        // [ ...,
-                        //   [
-                        //      ...,
-                        //      [PLACE, PLACE, ...]
-                        //   ]
-                        // ]
-                        //
-                        // Il record contiene coordinate in:
-                        //
-                        // x[1][5][2]
-                        // x[1][5][3]
-                        //
-                        // e nome in:
-                        //
-                        // x[2]
+                        // PARSER
                         // =================================================
 
-                        function tryKnownPlace(
-                            x
-                        ) {
+                        function tryKnownPlace(x) {
 
                             try {
 
                                 if (
-                                    !Array.isArray(x)
-                                ) {
-                                    return;
-                                }
-
-                                if (
+                                    !Array.isArray(x) ||
                                     x.length < 3
                                 ) {
                                     return;
                                 }
 
                                 var name =
-                                    cleanString(
-                                        x[2]
-                                    );
+                                    cleanString(x[2]);
 
                                 if (
-                                    !isUsefulName(
-                                        name
-                                    )
+                                    !isUsefulName(name)
                                 ) {
                                     return;
                                 }
@@ -892,9 +833,7 @@ class MainActivity : Activity() {
                                     x[1];
 
                                 if (
-                                    !Array.isArray(
-                                        envelope
-                                    )
+                                    !Array.isArray(envelope)
                                 ) {
                                     return;
                                 }
@@ -903,9 +842,7 @@ class MainActivity : Activity() {
                                     envelope[5];
 
                                 if (
-                                    !Array.isArray(
-                                        coordBlock
-                                    )
+                                    !Array.isArray(coordBlock)
                                 ) {
                                     return;
                                 }
@@ -925,30 +862,19 @@ class MainActivity : Activity() {
                                     return;
                                 }
 
-                                var address =
-                                    '';
+                                var address = '';
 
                                 if (
-                                    typeof x[3] ===
-                                    'string'
+                                    typeof x[3] === 'string'
                                 ) {
 
                                     address =
-                                        cleanString(
-                                            x[3]
-                                        );
+                                        cleanString(x[3]);
                                 }
 
-                                var placeId =
-                                    '';
+                                var placeId = '';
 
-                                // Cerca un eventuale
-                                // place ID nelle strutture
-                                // vicine.
-
-                                function findId(
-                                    node
-                                ) {
+                                function findId(node) {
 
                                     if (
                                         placeId ||
@@ -958,36 +884,26 @@ class MainActivity : Activity() {
                                     }
 
                                     if (
-                                        typeof node ===
-                                        'string'
+                                        typeof node === 'string'
                                     ) {
 
                                         if (
-                                            node.length >
-                                            15 &&
-                                            node.length <
-                                            200 &&
+                                            node.length > 15 &&
+                                            node.length < 200 &&
                                             (
-                                                node.indexOf(
-                                                    'ChIJ'
-                                                ) === 0 ||
-                                                node.indexOf(
-                                                    '0x'
-                                                ) === 0
+                                                node.indexOf('ChIJ') === 0 ||
+                                                node.indexOf('0x') === 0
                                             )
                                         ) {
 
-                                            placeId =
-                                                node;
+                                            placeId = node;
                                         }
 
                                         return;
                                     }
 
                                     if (
-                                        Array.isArray(
-                                            node
-                                        )
+                                        Array.isArray(node)
                                     ) {
 
                                         for (
@@ -996,9 +912,7 @@ class MainActivity : Activity() {
                                             i++
                                         ) {
 
-                                            findId(
-                                                node[i]
-                                            );
+                                            findId(node[i]);
 
                                             if (
                                                 placeId
@@ -1009,55 +923,32 @@ class MainActivity : Activity() {
                                     }
                                 }
 
-                                findId(
-                                    envelope
-                                );
+                                findId(envelope);
 
                                 places.push({
 
-                                    name:
-                                        name,
-
-                                    address:
-                                        address,
-
-                                    lat:
-                                        lat,
-
-                                    lng:
-                                        lng,
-
-                                    placeId:
-                                        placeId
+                                    name: name,
+                                    address: address,
+                                    lat: lat,
+                                    lng: lng,
+                                    placeId: placeId
 
                                 });
 
                             } catch(e) {}
                         }
 
-                        // =================================================
-                        // 10. RICERCA NEL JSON
-                        // =================================================
+                        function walk(node) {
 
-                        function walk(
-                            node
-                        ) {
-
-                            if (
-                                !node
-                            ) {
+                            if (!node) {
                                 return;
                             }
 
                             if (
-                                Array.isArray(
-                                    node
-                                )
+                                Array.isArray(node)
                             ) {
 
-                                tryKnownPlace(
-                                    node
-                                );
+                                tryKnownPlace(node);
 
                                 for (
                                     var i = 0;
@@ -1065,14 +956,11 @@ class MainActivity : Activity() {
                                     i++
                                 ) {
 
-                                    walk(
-                                        node[i]
-                                    );
+                                    walk(node[i]);
                                 }
 
                             } else if (
-                                typeof node ===
-                                'object'
+                                typeof node === 'object'
                             ) {
 
                                 for (
@@ -1080,11 +968,7 @@ class MainActivity : Activity() {
                                 ) {
 
                                     try {
-
-                                        walk(
-                                            node[key]
-                                        );
-
+                                        walk(node[key]);
                                     } catch(e) {}
                                 }
                             }
@@ -1093,11 +977,10 @@ class MainActivity : Activity() {
                         walk(data);
 
                         // =================================================
-                        // 11. RIMOZIONE DUPLICATI
+                        // DEDUPLICA
                         // =================================================
 
                         var unique = [];
-
                         var seen = {};
 
                         for (
@@ -1120,20 +1003,15 @@ class MainActivity : Activity() {
                                 !seen[key]
                             ) {
 
-                                seen[key] =
-                                    true;
-
-                                unique.push(
-                                    p
-                                );
+                                seen[key] = true;
+                                unique.push(p);
                             }
                         }
 
-                        places =
-                            unique;
+                        places = unique;
 
                         // =================================================
-                        // 12. RISULTATO
+                        // CONTEGGIO
                         // =================================================
 
                         TravelPins.log(
@@ -1146,68 +1024,17 @@ class MainActivity : Activity() {
                         ) {
 
                             TravelPins.log(
-                                'NESSUN PLACE TROVATO CON IL PARSER PRINCIPALE.'
+                                'NESSUN PLACE TROVATO.'
                             );
-
-                            // --------------------------------------------
-                            // DIAGNOSTICA STRUTTURA
-                            // --------------------------------------------
-
-                            if (
-                                Array.isArray(data)
-                            ) {
-
-                                TravelPins.log(
-                                    'TOP LEVEL ARRAY LENGTH: ' +
-                                    data.length
-                                );
-
-                                for (
-                                    var z = 0;
-                                    z < Math.min(
-                                        data.length,
-                                        15
-                                    );
-                                    z++
-                                ) {
-
-                                    var item =
-                                        data[z];
-
-                                    var preview =
-                                        '';
-
-                                    try {
-
-                                        preview =
-                                            JSON.stringify(
-                                                item
-                                            )
-                                            .substring(
-                                                0,
-                                                1000
-                                            );
-
-                                    } catch(e) {}
-
-                                    TravelPins.log(
-                                        'TOP[' +
-                                        z +
-                                        ']: ' +
-                                        preview
-                                    );
-                                }
-                            }
 
                             return;
                         }
 
                         // =================================================
-                        // 13. GENERA OUTPUT
+                        // OUTPUT COMPLETO
                         // =================================================
 
-                        var output =
-                            '';
+                        var output = '';
 
                         output +=
                             'TITLE: Google Maps List\\n\\n';
@@ -1278,22 +1105,26 @@ class MainActivity : Activity() {
                         }
 
                         // =================================================
-                        // 14. INVIO RISULTATO
+                        // INVIO COMPLETO
                         // =================================================
 
                         TravelPins.log(
-                            '===== RISULTATO LISTA =====\\n' +
-                            output.substring(
-                                0,
-                                14000
-                            )
+                            '===== RISULTATO LISTA ====='
                         );
 
-                        // Salviamo anche il risultato
-                        // globale per eventuali funzioni future.
+                        TravelPins.log(
+                            output
+                        );
+
+                        // =================================================
+                        // SALVA NELLA WEBVIEW
+                        // =================================================
 
                         window.__travelpins_places =
                             places;
+
+                        window.__travelpins_output =
+                            output;
 
                     } catch(e) {
 
@@ -1316,20 +1147,161 @@ class MainActivity : Activity() {
                     ==============================
                     CALLBACK GETLIST
 
-                    $result
+                    SCANSIONE TERMINATA.
 
                     ==============================
                     """.trimIndent()
                 )
 
-                runOnUiThread {
+                // Recuperiamo direttamente il risultato
+                // completo dalla WebView.
 
-                    scanButton.isEnabled =
-                        true
+                val retrieveJavascript = """
+                    (function() {
+                        return window.__travelpins_output || '';
+                    })();
+                """.trimIndent()
+
+                webView.evaluateJavascript(
+                    retrieveJavascript
+                ) { encodedResult ->
+
+                    val decoded =
+                        decodeJavascriptString(
+                            encodedResult
+                        )
+
+                    if (
+                        decoded.isNotBlank()
+                    ) {
+
+                        completeResult =
+                            decoded
+
+                        // Il TextView può contenere
+                        // tranquillamente l'intero risultato.
+
+                        output.text =
+                            buildFullScreenOutput(
+                                decoded
+                            )
+
+                        addLog(
+                            """
+                            ==============================
+                            RISULTATO COMPLETO ACQUISITO
+
+                            CARATTERI:
+                            ${decoded.length}
+
+                            ==============================
+                            """.trimIndent()
+                        )
+
+                    } else {
+
+                        addLog(
+                            "ATTENZIONE: risultato completo non recuperato."
+                        )
+                    }
+
+                    runOnUiThread {
+
+                        scanButton.isEnabled =
+                            true
+                    }
                 }
             }
 
         }, 1000)
+    }
+
+    // ============================================================
+    // DECODIFICA RISULTATO JAVASCRIPT
+    // ============================================================
+
+    private fun decodeJavascriptString(
+        value: String?
+    ): String {
+
+        if (
+            value.isNullOrBlank()
+        ) {
+            return ""
+        }
+
+        var text =
+            value.trim()
+
+        if (
+            text == "null" ||
+            text == "\"\""
+        ) {
+            return ""
+        }
+
+        try {
+
+            if (
+                text.startsWith("\"") &&
+                text.endsWith("\"")
+            ) {
+
+                text =
+                    text.substring(
+                        1,
+                        text.length - 1
+                    )
+            }
+
+            text =
+                text.replace(
+                    "\\n",
+                    "\n"
+                )
+
+            text =
+                text.replace(
+                    "\\r",
+                    "\r"
+                )
+
+            text =
+                text.replace(
+                    "\\t",
+                    "\t"
+                )
+
+            text =
+                text.replace(
+                    "\\\"",
+                    "\""
+                )
+
+            text =
+                text.replace(
+                    "\\\\",
+                    "\\"
+                )
+
+        } catch(e: Exception) {
+        }
+
+        return text
+    }
+
+    // ============================================================
+    // OUTPUT SCHERMATA
+    // ============================================================
+
+    private fun buildFullScreenOutput(
+        result: String
+    ): String {
+
+        return (
+            "TRAVELPINS — RISULTATO SCANSIONE\n\n" +
+            result
+        )
     }
 
     // ============================================================
@@ -1620,7 +1592,7 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // NAVIGATION
+    // NAVIGAZIONE
     // ============================================================
 
     private fun inspectNavigation(
@@ -1744,7 +1716,6 @@ class MainActivity : Activity() {
             intent?.action !=
             Intent.ACTION_SEND
         ) {
-
             return
         }
 
@@ -1806,14 +1777,11 @@ class MainActivity : Activity() {
         text: String
     ) {
 
-        log.add(
-            text.take(15000)
-        )
+        log.add(text)
 
         while (
             log.size > 100
         ) {
-
             log.poll()
         }
 
