@@ -3,15 +3,14 @@ name: Build TravelPins TEST
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -22,9 +21,10 @@ jobs:
           java-version: '17'
 
       - name: Setup Gradle
-  uses: gradle/actions/setup-gradle@v4
-  with:
-    gradle-version: '9.5'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5'
+
       - name: Build APK
         run: gradle assembleDebug
 
