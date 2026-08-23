@@ -5,12 +5,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
-import android.view.Gravity
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -25,7 +25,7 @@ class MainActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var output: TextView
 
-    private val requests =
+    private val log =
         ConcurrentLinkedQueue<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,7 +33,7 @@ class MainActivity : Activity() {
 
         createInterface()
 
-        configureWebView()
+        createWebView()
 
         handleIntent(intent)
     }
@@ -42,263 +42,19 @@ class MainActivity : Activity() {
 
         val root =
             LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.VERTICAL
-
-                setPadding(
-                    12,
-                    12,
-                    12,
-                    12
-                )
+                orientation = LinearLayout.VERTICAL
+                setPadding(12, 12, 12, 12)
             }
 
-        val buttons =
+        val toolbar =
             LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.HORIZONTAL
-
-                gravity =
-                    Gravity.CENTER
+                orientation = LinearLayout.HORIZONTAL
             }
 
         val copyButton =
             Button(this).apply {
 
                 text = "COPIA TUTTO"
-
-                setOnClickListener {
-
-                    val text =
-                        output.text.toString()
-
-                    val clipboard =
-                        getSystemService(
-                            Context.CLIPBOARD_SERVICE
-                        ) as ClipboardManager
-
-                    clipboard.setPrimaryClip(
-                        ClipData.newPlainText(
-                            "TravelPins",
-                            text
-                        )
-                    )
-
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Copiato!",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
-
-        val clearButton =
-            Button(this).apply {
-
-                text = "PULISCI"
-
-                setOnClickListener {
-
-                    requests.clear()
-
-                    output.text =
-                        "Monitor pulito.\n\n"
-                }
-            }
-
-        buttons.addView(
-            copyButton,
-            LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-
-        buttons.addView(
-            clearButton,
-            LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-
-        output =
-            TextView(this).apply {
-
-                textSize = 13f
-
-                setTextIsSelectable(true)
-
-                setTextColor(Color.BLACK)
-
-                setPadding(
-                    10,
-                    10,
-                    10,
-                    30
-                )
-
-                text =
-                    """
-                    TravelPins NETWORK TEST
-
-                    In attesa del link...
-
-                    """.trimIndent()
-            }
-
-        val scroll =
-            ScrollView(this).apply {
-                addView(output)
-            }
-
-        root.addView(
-            buttons,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        root.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        setContentView(root)
-    }
-
-    private fun configureWebView() {
-
-        webView =
-            WebView(this)
-
-        webView.settings.apply {
-
-            javaScriptEnabled = true
-
-            domStorageEnabled = true
-
-            databaseEnabled = true
-
-            loadsImagesAutomatically = true
-
-            javaScriptCanOpenWindowsAutomatically =
-                true
-
-            setSupportMultipleWindows(false)
-
-            userAgentString =
-                "Mozilla/5.0 (Linux; Android 10) " +
-                "AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) " +
-                "Chrome/131.0.0.0 Mobile Safari/537.36"
-        }
-
-        CookieManager
-            .getInstance()
-            .setAcceptCookie(true)
-
-        CookieManager
-            .getInstance()
-            .setAcceptThirdPartyCookies(
-                webView,
-                true
-            )
-
-        webView.webChromeClient =
-            WebChromeClient()
-
-        webView.webViewClient =
-            object : WebViewClient() {
-
-                override fun shouldOverrideUrlLoading(
-                    view: WebView,
-                    request: WebResourceRequest
-                ): Boolean {
-
-                    addNavigation(
-                        request.url.toString()
-                    )
-
-                    return false
-                }
-
-                override fun shouldInterceptRequest(
-                    view: WebView,
-                    request: WebResourceRequest
-                ): android.webkit.WebResourceResponse? {
-
-                    val url =
-                        request.url.toString()
-
-                    inspectRequest(
-                        url,
-                        request.method
-                    )
-
-                    return null
-                }
-
-                override fun onPageFinished(
-                    view: WebView,
-                    url: String
-                ) {
-
-                    addEvent(
-                        """
-                        ================================
-                        PAGINA COMPLETATA
-
-                        $url
-
-                        ================================
-                        """.trimIndent()
-                    )
-                }
-            }
-
-        setContentView(
-            buildMainLayout()
-        )
-    }
-
-    private fun buildMainLayout():
-            LinearLayout {
-
-        val root =
-            LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.VERTICAL
-
-                setPadding(
-                    12,
-                    12,
-                    12,
-                    12
-                )
-            }
-
-        val buttons =
-            LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.HORIZONTAL
-
-                gravity =
-                    Gravity.CENTER
-            }
-
-        val copy =
-            Button(this).apply {
-
-                text =
-                    "COPIA TUTTO"
 
                 setOnClickListener {
 
@@ -322,23 +78,23 @@ class MainActivity : Activity() {
                 }
             }
 
-        val clear =
+        val clearButton =
             Button(this).apply {
 
-                text =
-                    "PULISCI"
+                text = "PULISCI"
 
                 setOnClickListener {
 
-                    requests.clear()
+                    log.clear()
 
-                    output.text =
-                        "Monitor pulito.\n"
+                    updateScreen(
+                        "Monitor pulito."
+                    )
                 }
             }
 
-        buttons.addView(
-            copy,
+        toolbar.addView(
+            copyButton,
             LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -346,8 +102,8 @@ class MainActivity : Activity() {
             )
         )
 
-        buttons.addView(
-            clear,
+        toolbar.addView(
+            clearButton,
             LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -355,16 +111,40 @@ class MainActivity : Activity() {
             )
         )
 
-        root.addView(buttons)
+        output =
+            TextView(this).apply {
 
-        val scroll =
+                textSize = 13f
+
+                setTextIsSelectable(true)
+
+                setPadding(
+                    12,
+                    12,
+                    12,
+                    30
+                )
+
+                text =
+                    "TravelPins NETWORK TEST\n\n" +
+                    "In attesa del link..."
+            }
+
+        val logScroll =
             ScrollView(this).apply {
-
                 addView(output)
             }
 
         root.addView(
-            scroll,
+            toolbar,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        root.addView(
+            logScroll,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
@@ -372,7 +152,118 @@ class MainActivity : Activity() {
             )
         )
 
-        return root
+        setContentView(root)
+    }
+
+    private fun createWebView() {
+
+        webView =
+            WebView(this)
+
+        webView.settings.apply {
+
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+
+            loadsImagesAutomatically = true
+
+            javaScriptCanOpenWindowsAutomatically =
+                true
+
+            setSupportMultipleWindows(false)
+
+            userAgentString =
+                "Mozilla/5.0 (Linux; Android 10) " +
+                "AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) " +
+                "Chrome/131.0.0.0 " +
+                "Mobile Safari/537.36"
+        }
+
+        CookieManager
+            .getInstance()
+            .setAcceptCookie(true)
+
+        CookieManager
+            .getInstance()
+            .setAcceptThirdPartyCookies(
+                webView,
+                true
+            )
+
+        webView.webChromeClient =
+            WebChromeClient()
+
+        webView.webViewClient =
+            object : WebViewClient() {
+
+                override fun shouldInterceptRequest(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): WebResourceResponse? {
+
+                    inspectRequest(
+                        request
+                    )
+
+                    return null
+                }
+
+                override fun shouldOverrideUrlLoading(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): Boolean {
+
+                    addLog(
+                        """
+                        [NAVIGAZIONE]
+
+                        ${request.url}
+
+                        """.trimIndent()
+                    )
+
+                    return false
+                }
+
+                override fun onPageFinished(
+                    view: WebView,
+                    url: String
+                ) {
+
+                    addLog(
+                        """
+                        ==============================
+                        PAGINA CARICATA
+
+                        $url
+
+                        ==============================
+                        """.trimIndent()
+                    )
+                }
+
+                override fun onRenderProcessGone(
+                    view: WebView,
+                    detail: RenderProcessGoneDetail
+                ): Boolean {
+
+                    addLog(
+                        """
+                        ==============================
+                        ⚠️ WEBVIEW RENDERER TERMINATO
+
+                        DID CRASH:
+                        ${detail.didCrash()}
+
+                        ==============================
+                        """.trimIndent()
+                    )
+
+                    return true
+                }
+            }
     }
 
     private fun handleIntent(
@@ -386,14 +277,14 @@ class MainActivity : Activity() {
             return
         }
 
-        val text =
+        val sharedText =
             intent.getStringExtra(
                 Intent.EXTRA_TEXT
             )
 
-        if (text.isNullOrBlank()) {
+        if (sharedText.isNullOrBlank()) {
 
-            addEvent(
+            addLog(
                 "Nessun testo ricevuto."
             )
 
@@ -402,11 +293,11 @@ class MainActivity : Activity() {
 
         val match =
             Regex("""https?://\S+""")
-                .find(text)
+                .find(sharedText)
 
         if (match == null) {
 
-            addEvent(
+            addLog(
                 "Nessun URL trovato."
             )
 
@@ -416,15 +307,15 @@ class MainActivity : Activity() {
         val url =
             match.value
 
-        addEvent(
+        addLog(
             """
-            ================================
+            ==============================
             LINK RICEVUTO
 
             $url
 
-            ================================
-            AVVIO WEBVIEW...
+            ==============================
+            AVVIO GOOGLE MAPS...
             """.trimIndent()
         )
 
@@ -432,24 +323,28 @@ class MainActivity : Activity() {
     }
 
     private fun inspectRequest(
-        url: String,
-        method: String
+        request: WebResourceRequest
     ) {
+
+        val url =
+            request.url.toString()
 
         val lower =
             url.lowercase()
 
         val interesting =
-            lower.contains("maps") ||
-            lower.contains("list") ||
+            lower.contains("google.com/maps") ||
+            lower.contains("maps.google") ||
+            lower.contains("/maps/preview") ||
+            lower.contains("entitylist") ||
+            lower.contains("placelist") ||
             lower.contains("place") ||
-            lower.contains("entity") ||
-            lower.contains("preview") ||
-            lower.contains("rpc") ||
+            lower.contains("saved") ||
+            lower.contains("list") ||
             lower.contains("batchexecute") ||
+            lower.contains("rpc") ||
             lower.contains("pb=") ||
-            lower.contains("data=") ||
-            lower.contains("saved")
+            lower.contains("data=")
 
         if (!interesting) {
             return
@@ -457,73 +352,54 @@ class MainActivity : Activity() {
 
         val entry =
             """
-            
-            [REQUEST]
+            [GOOGLE REQUEST]
 
             METHOD:
-            $method
+            ${request.method}
 
             URL:
             $url
 
-            """.trimIndent()
-
-        requests.add(entry)
-
-        updateOutput()
-    }
-
-    private fun addNavigation(
-        url: String
-    ) {
-
-        val entry =
-            """
-
-            [NAVIGATION]
-
-            $url
+            MAIN FRAME:
+            ${request.isForMainFrame}
 
             """.trimIndent()
 
-        requests.add(entry)
-
-        updateOutput()
+        addLog(entry)
     }
 
-    private fun addEvent(
+    private fun addLog(
         text: String
     ) {
 
-        requests.add(
-            "\n$text\n"
-        )
+        log.add(text)
 
-        updateOutput()
+        updateScreen()
     }
 
-    private fun updateOutput() {
+    private fun updateScreen() {
 
         runOnUiThread {
 
             val text =
-                requests.joinToString(
+                log.joinToString(
                     separator = "\n"
                 )
 
             output.text =
                 "TRAVELPINS NETWORK MONITOR\n\n" +
                 text
+        }
+    }
 
-            output.post {
-                val scroll =
-                    output.parent
-                        as? ScrollView
+    private fun updateScreen(
+        text: String
+    ) {
 
-                scroll?.fullScroll(
-                    ScrollView.FOCUS_DOWN
-                )
-            }
+        runOnUiThread {
+            output.text =
+                "TRAVELPINS NETWORK MONITOR\n\n" +
+                text
         }
     }
 
@@ -542,11 +418,8 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
 
         if (webView.canGoBack()) {
-
             webView.goBack()
-
         } else {
-
             super.onBackPressed()
         }
     }
@@ -554,7 +427,6 @@ class MainActivity : Activity() {
     override fun onDestroy() {
 
         webView.stopLoading()
-
         webView.destroy()
 
         super.onDestroy()
