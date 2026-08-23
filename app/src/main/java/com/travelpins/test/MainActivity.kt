@@ -43,7 +43,9 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun log(message: String?) {
 
-            if (message.isNullOrBlank()) return
+            if (message.isNullOrBlank()) {
+                return
+            }
 
             addLog(
                 """
@@ -66,16 +68,18 @@ class MainActivity : Activity() {
             val currentUrl = url ?: ""
 
             val interesting =
-                currentUrl.contains("entitylist", true) ||
-                currentUrl.contains("getlist", true) ||
                 currentUrl.contains("userlists", true) ||
                 currentUrl.contains("listview", true) ||
-                currentUrl.contains("batchexecute", true)
+                currentUrl.contains("batchexecute", true) ||
+                currentUrl.contains("entitylist", true) ||
+                currentUrl.contains("rpc", true)
 
-            if (!interesting) return
+            if (!interesting) {
+                return
+            }
 
             val limitedData =
-                (data ?: "").take(4000)
+                (data ?: "").take(5000)
 
             addLog(
                 """
@@ -289,8 +293,11 @@ class MainActivity : Activity() {
         webView.settings.apply {
 
             javaScriptEnabled = true
+
             domStorageEnabled = true
+
             databaseEnabled = true
+
             loadsImagesAutomatically = true
 
             javaScriptCanOpenWindowsAutomatically = true
@@ -377,10 +384,6 @@ class MainActivity : Activity() {
 
                     injectNetworkHook()
 
-                    // ------------------------------------------------
-                    // CONSENSO
-                    // ------------------------------------------------
-
                     if (
                         url.contains(
                             "consent.google.com",
@@ -390,6 +393,12 @@ class MainActivity : Activity() {
 
                         consentButton.visibility =
                             Button.VISIBLE
+
+                        scanButton.visibility =
+                            Button.GONE
+
+                        scanButton.isEnabled =
+                            false
 
                         addLog(
                             """
@@ -410,36 +419,33 @@ class MainActivity : Activity() {
                     }
 
                     // ------------------------------------------------
-                    // LISTA GOOGLE MAPS
-                    //
-                    // IMPORTANTE:
-                    // ora riconosciamo anche:
-                    //
-                    // /maps/@/data=...
-                    //
-                    // che è esattamente il formato del tuo link.
+                    // RICONOSCIMENTO LISTA
                     // ------------------------------------------------
 
                     if (
                         isGoogleListUrl(url)
                     ) {
 
-                        scanButton.visibility =
-                            Button.VISIBLE
-
-                        scanButton.isEnabled =
-                            true
-
                         addLog(
                             """
                             ==============================
                             LISTA GOOGLE MAPS RILEVATA
 
-                            SCANSIONE DISPONIBILE.
+                            URL LISTA:
+
+                            $url
 
                             ==============================
+                            Premere SCANSIONA.
+
                             """.trimIndent()
                         )
+
+                        scanButton.visibility =
+                            Button.VISIBLE
+
+                        scanButton.isEnabled =
+                            true
                     }
                 }
 
@@ -473,21 +479,17 @@ class MainActivity : Activity() {
         url: String
     ): Boolean {
 
-        return (
-            url.contains(
-                "/local/userlists/list/",
-                true
-            )
-            ||
-            url.contains(
-                "/maps/@/data=",
-                true
-            )
-            ||
-            url.contains(
-                "11m2!2s",
-                true
-            )
+        return url.contains(
+            "/local/userlists/list/",
+            true
+        ) ||
+        url.contains(
+            "/maps/@/data=",
+            true
+        ) &&
+        url.contains(
+            "!11m2!2s",
+            true
         )
     }
 
@@ -496,6 +498,10 @@ class MainActivity : Activity() {
     // ============================================================
 
     private fun scanGoogleList() {
+
+        if (!scanButton.isEnabled) {
+            return
+        }
 
         scanButton.isEnabled = false
 
@@ -513,989 +519,841 @@ class MainActivity : Activity() {
             """.trimIndent()
         )
 
-        extractListIdFromCurrentUrl()
+        inspectGoogleListPage()
     }
 
     // ============================================================
-    // ESTRAZIONE LIST ID
+    // LETTURA DIRETTA ENTITYLIST
     // ============================================================
 
-    private fun extractListIdFromCurrentUrl() {
+    private fun inspectGoogleListPage() {
 
-        val javascript = """
+        handler.postDelayed({
 
-            (function() {
+            val javascript = """
 
-                try {
+                (async function() {
 
-                    var url =
-                        window.location.href;
+                    try {
 
-                    TravelPins.log(
-                        'URL ANALIZZATO: ' + url
-                    );
+                        // =================================================
+                        // 1. URL CORRENTE
+                        // =================================================
 
-                    // ------------------------------------------------
-                    // FORMATO:
-                    //
-                    // !11m2!2sLIST_ID!3e3
-                    // ------------------------------------------------
+                        var currentUrl =
+                            window.location.href;
 
-                    var marker =
-                        '!11m2!2s';
-
-                    var index =
-                        url.indexOf(marker);
-
-                    if (index >= 0) {
-
-                        var start =
-                            index + marker.length;
-
-                        var rest =
-                            url.substring(start);
-
-                        var end =
-                            rest.indexOf('!');
-
-                        if (end >= 0) {
-                            rest =
-                                rest.substring(0, end);
-                        }
-
-                        if (rest.length > 0) {
-
-                            TravelPins.log(
-                                'LIST ID TROVATO: ' + rest
-                            );
-
-                            window.__travelpins_list_id =
-                                rest;
-
-                            return rest;
-                        }
-                    }
-
-                    // ------------------------------------------------
-                    // Fallback:
-                    // local/userlists/list/ID
-                    // ------------------------------------------------
-
-                    var marker2 =
-                        '/local/userlists/list/';
-
-                    var index2 =
-                        url.indexOf(marker2);
-
-                    if (index2 >= 0) {
-
-                        var rest2 =
-                            url.substring(
-                                index2 + marker2.length
-                            );
-
-                        var end2 =
-                            rest2.indexOf(
-                                '?'
-                            );
-
-                        if (end2 >= 0) {
-
-                            rest2 =
-                                rest2.substring(
-                                    0,
-                                    end2
-                                );
-                        }
-
-                        if (rest2.length > 0) {
-
-                            TravelPins.log(
-                                'LIST ID FALLBACK: ' +
-                                rest2
-                            );
-
-                            window.__travelpins_list_id =
-                                rest2;
-
-                            return rest2;
-                        }
-                    }
-
-                    return '';
-
-                } catch(e) {
-
-                    TravelPins.log(
-                        'ERRORE LIST ID: ' +
-                        e.message
-                    );
-
-                    return '';
-                }
-
-            })();
-
-        """.trimIndent()
-
-        webView.evaluateJavascript(
-            javascript
-        ) { result ->
-
-            val listId =
-                decodeJavascriptResult(result)
-
-            if (
-                listId.isBlank()
-            ) {
-
-                addLog(
-                    """
-                    ❌ LIST ID NON TROVATO
-
-                    URL:
-                    ${webView.url}
-
-                    ==============================
-                    """.trimIndent()
-                )
-
-                scanButton.isEnabled = true
-
-                return@evaluateJavascript
-            }
-
-            addLog(
-                """
-                ==============================
-                LIST ID
-
-                $listId
-
-                ==============================
-                CHIAMATA GOOGLE
-                entitylist/getlist
-
-                ==============================
-                """.trimIndent()
-            )
-
-            fetchGoogleEntityList(listId)
-        }
-    }
-
-    // ============================================================
-    // GETLIST
-    // ============================================================
-
-    private fun fetchGoogleEntityList(
-        listId: String
-    ) {
-
-        val safeListId =
-            listId
-                .replace("\\", "\\\\")
-                .replace("'", "\\'")
-
-        val javascript = """
-
-            (async function() {
-
-                try {
-
-                    var listId =
-                        '$safeListId';
-
-                    // =================================================
-                    // URL GETLIST
-                    //
-                    // Struttura confermata da implementazioni
-                    // funzionanti di Google Maps list export.
-                    // =================================================
-
-                    var pb =
-                        '!1m4' +
-                        '!1s' + listId +
-                        '!2e1' +
-                        '!3m1!1e1' +
-                        '!2e2' +
-                        '!3e3' +
-                        '!4i500' +
-                        '!8i3' +
-                        '!16b1';
-
-                    var url =
-                        '/maps/preview/entitylist/getlist' +
-                        '?authuser=0' +
-                        '&hl=it' +
-                        '&gl=it' +
-                        '&pb=' +
-                        encodeURIComponent(pb);
-
-                    TravelPins.log(
-                        'GETLIST URL: ' + url
-                    );
-
-                    var response =
-                        await fetch(
-                            url,
-                            {
-                                method: 'GET',
-                                credentials: 'include',
-                                headers: {
-                                    'Accept':
-                                        '*/*'
-                                }
-                            }
+                        TravelPins.log(
+                            'URL ANALIZZATO: ' +
+                            currentUrl
                         );
 
-                    var text =
-                        await response.text();
+                        // =================================================
+                        // 2. ESTRAZIONE LIST ID
+                        // =================================================
 
-                    TravelPins.log(
-                        'GETLIST HTTP: ' +
-                        response.status
-                    );
+                        var listId = '';
 
-                    TravelPins.log(
-                        'GETLIST LENGTH: ' +
-                        text.length
-                    );
+                        // Caso:
+                        // !11m2!2sLIST_ID
 
-                    if (
-                        !response.ok
-                    ) {
+                        var match =
+                            currentUrl.match(
+                                /!11m2!2s([^!&]+)/i
+                            );
 
-                        return 'HTTP_ERROR:' +
-                               response.status;
-                    }
+                        if (match) {
 
-                    // -------------------------------------------------
-                    // Non inviamo tutta la risposta attraverso
-                    // JavascriptInterface.
-                    //
-                    // Salviamo temporaneamente il dato.
-                    // -------------------------------------------------
+                            listId =
+                                match[1];
 
-                    window.__travelpins_getlist =
-                        text;
+                        }
 
-                    return 'GETLIST_OK';
+                        // Fallback:
+                        // /local/userlists/list/LIST_ID
 
-                } catch(e) {
+                        if (!listId) {
 
-                    return 'GETLIST_ERROR:' +
-                           e.message;
-                }
+                            match =
+                                currentUrl.match(
+                                    /\/local\/userlists\/list\/([^?\/]+)/i
+                                );
 
-            })();
+                            if (match) {
 
-        """.trimIndent()
+                                listId =
+                                    match[1];
 
-        webView.evaluateJavascript(
-            javascript
-        ) { result ->
+                            }
+                        }
 
-            val status =
-                decodeJavascriptResult(result)
+                        // Fallback generico 2s
 
-            addLog(
-                """
-                [GETLIST]
+                        if (!listId) {
 
-                $status
+                            match =
+                                currentUrl.match(
+                                    /2s([A-Za-z0-9_-]{20,})/
+                                );
 
-                ==============================
-                """.trimIndent()
-            )
+                            if (match) {
 
-            if (
-                status == "GETLIST_OK"
-            ) {
+                                listId =
+                                    match[1];
 
-                parseGetListResult()
+                            }
+                        }
 
-            } else {
+                        TravelPins.log(
+                            'LIST ID: ' +
+                            (
+                                listId ||
+                                'NON TROVATO'
+                            )
+                        );
 
-                addLog(
-                    """
-                    ❌ GETLIST FALLITA
+                        if (!listId) {
 
-                    $status
+                            TravelPins.log(
+                                'ERRORE: LIST ID NON TROVATO'
+                            );
 
-                    ==============================
-                    """.trimIndent()
-                )
-
-                scanButton.isEnabled = true
-            }
-        }
-    }
-
-    // ============================================================
-    // LETTURA RISPOSTA GETLIST
-    // ============================================================
-
-    private fun parseGetListResult() {
-
-        val javascript = """
-
-            (function() {
-
-                try {
-
-                    var raw =
-                        window.__travelpins_getlist;
-
-                    if (!raw) {
-
-                        return 'NO_RESPONSE';
-                    }
-
-                    // =================================================
-                    // Rimuoviamo protezione XSSI
-                    //
-                    // )]}'
-                    // =================================================
-
-                    if (
-                        raw.indexOf(")]}'") === 0
-                    ) {
-
-                        raw =
-                            raw.substring(4);
-                    }
-
-                    raw =
-                        raw.trim();
-
-                    var data =
-                        JSON.parse(raw);
-
-                    TravelPins.log(
-                        'JSON PARSATO'
-                    );
-
-                    // =================================================
-                    // Cerchiamo ricorsivamente gli elementi della lista
-                    //
-                    // Le implementazioni pubbliche confermano che
-                    // il payload contiene una struttura annidata
-                    // con nome, coordinate e indirizzo.
-                    // =================================================
-
-                    var results = [];
-
-                    function walk(
-                        value,
-                        depth
-                    ) {
-
-                        if (
-                            depth > 20
-                        ) {
                             return;
                         }
 
+                        // =================================================
+                        // 3. COSTRUZIONE GETLIST
+                        // =================================================
+
+                        var pb =
+                            '!1m4' +
+                            '!1s' +
+                            encodeURIComponent(listId) +
+                            '!2e1' +
+                            '!3m1!1e1' +
+                            '!2e2' +
+                            '!3e3' +
+                            '!4i500' +
+                            '!8i3' +
+                            '!16b1';
+
+                        var endpoint =
+                            '/maps/preview/entitylist/getlist' +
+                            '?authuser=0' +
+                            '&hl=it' +
+                            '&gl=it' +
+                            '&pb=' +
+                            pb;
+
+                        TravelPins.log(
+                            'GETLIST URL: ' +
+                            endpoint
+                        );
+
+                        // =================================================
+                        // 4. FETCH GOOGLE
+                        // =================================================
+
+                        var response =
+                            await fetch(
+                                endpoint,
+                                {
+                                    method: 'GET',
+                                    credentials: 'include',
+                                    cache: 'no-store'
+                                }
+                            );
+
+                        TravelPins.log(
+                            'GETLIST HTTP: ' +
+                            response.status
+                        );
+
+                        var raw =
+                            await response.text();
+
+                        TravelPins.log(
+                            'GETLIST LENGTH: ' +
+                            raw.length
+                        );
+
                         if (
-                            !Array.isArray(value)
+                            !raw ||
+                            raw.length < 10
                         ) {
+
+                            TravelPins.log(
+                                'RISPOSTA GETLIST VUOTA'
+                            );
+
                             return;
                         }
 
-                        // ---------------------------------------------
-                        // Pattern tipico di un elemento:
-                        //
-                        // [
-                        //   null,
-                        //   [...coordinate...],
-                        //   "NOME",
-                        //   ...
-                        // ]
-                        // ---------------------------------------------
+                        // =================================================
+                        // 5. MOSTRA INIZIO RISPOSTA
+                        // =================================================
+
+                        TravelPins.log(
+                            'GETLIST RAW START:\\n' +
+                            raw.substring(
+                                0,
+                                3500
+                            )
+                        );
+
+                        // =================================================
+                        // 6. RIMOZIONE XSSI
+                        // =================================================
+
+                        var cleaned =
+                            raw;
 
                         if (
-                            value.length >= 3 &&
-                            typeof value[2] === 'string' &&
-                            value[2].trim().length > 0
+                            cleaned.indexOf(
+                                ")]}'"
+                            ) === 0
                         ) {
 
-                            var name =
-                                value[2].trim();
+                            cleaned =
+                                cleaned.substring(
+                                    4
+                                );
 
-                            var lat = '';
-                            var lng = '';
-                            var address = '';
-
-                            // Cerca coordinate numeriche
-                            // nella struttura dell'elemento.
-
-                            function findNumbers(
-                                v,
-                                d
+                            if (
+                                cleaned.charAt(0) === '\\n'
                             ) {
 
+                                cleaned =
+                                    cleaned.substring(
+                                        1
+                                    );
+                            }
+                        }
+
+                        // =================================================
+                        // 7. PARSE JSON
+                        // =================================================
+
+                        var data;
+
+                        try {
+
+                            data =
+                                JSON.parse(
+                                    cleaned
+                                );
+
+                            TravelPins.log(
+                                'JSON PARSATO CORRETTAMENTE'
+                            );
+
+                        } catch(e) {
+
+                            TravelPins.log(
+                                'JSON PARSE FALLITO: ' +
+                                e.message
+                            );
+
+                            return;
+                        }
+
+                        // =================================================
+                        // 8. UTILITIES
+                        // =================================================
+
+                        var places = [];
+
+                        function isNumber(v) {
+
+                            return typeof v ===
+                                   'number' &&
+                                   isFinite(v);
+                        }
+
+                        function looksLikeLatLng(
+                            a,
+                            b
+                        ) {
+
+                            return (
+                                isNumber(a) &&
+                                isNumber(b) &&
+                                Math.abs(a) <= 90 &&
+                                Math.abs(b) <= 180
+                            );
+                        }
+
+                        function cleanString(
+                            value
+                        ) {
+
+                            if (
+                                typeof value !==
+                                'string'
+                            ) {
+                                return '';
+                            }
+
+                            return value
+                                .replace(
+                                    /\\s+/g,
+                                    ' '
+                                )
+                                .trim();
+                        }
+
+                        function isUsefulName(
+                            value
+                        ) {
+
+                            var s =
+                                cleanString(
+                                    value
+                                );
+
+                            if (
+                                !s ||
+                                s.length < 2 ||
+                                s.length > 250
+                            ) {
+
+                                return false;
+                            }
+
+                            if (
+                                s.indexOf(
+                                    'http://'
+                                ) === 0 ||
+                                s.indexOf(
+                                    'https://'
+                                ) === 0
+                            ) {
+
+                                return false;
+                            }
+
+                            return true;
+                        }
+
+                        // =================================================
+                        // 9. PARSER PRINCIPALE CONOSCIUTO
+                        //
+                        // Google usa una struttura del tipo:
+                        //
+                        // [ ...,
+                        //   [
+                        //      ...,
+                        //      [PLACE, PLACE, ...]
+                        //   ]
+                        // ]
+                        //
+                        // Il record contiene coordinate in:
+                        //
+                        // x[1][5][2]
+                        // x[1][5][3]
+                        //
+                        // e nome in:
+                        //
+                        // x[2]
+                        // =================================================
+
+                        function tryKnownPlace(
+                            x
+                        ) {
+
+                            try {
+
                                 if (
-                                    d > 8
+                                    !Array.isArray(x)
                                 ) {
                                     return;
                                 }
 
                                 if (
-                                    Array.isArray(v)
+                                    x.length < 3
+                                ) {
+                                    return;
+                                }
+
+                                var name =
+                                    cleanString(
+                                        x[2]
+                                    );
+
+                                if (
+                                    !isUsefulName(
+                                        name
+                                    )
+                                ) {
+                                    return;
+                                }
+
+                                var envelope =
+                                    x[1];
+
+                                if (
+                                    !Array.isArray(
+                                        envelope
+                                    )
+                                ) {
+                                    return;
+                                }
+
+                                var coordBlock =
+                                    envelope[5];
+
+                                if (
+                                    !Array.isArray(
+                                        coordBlock
+                                    )
+                                ) {
+                                    return;
+                                }
+
+                                var lat =
+                                    coordBlock[2];
+
+                                var lng =
+                                    coordBlock[3];
+
+                                if (
+                                    !looksLikeLatLng(
+                                        lat,
+                                        lng
+                                    )
+                                ) {
+                                    return;
+                                }
+
+                                var address =
+                                    '';
+
+                                if (
+                                    typeof x[3] ===
+                                    'string'
                                 ) {
 
-                                    for (
-                                        var k = 0;
-                                        k < v.length;
-                                        k++
+                                    address =
+                                        cleanString(
+                                            x[3]
+                                        );
+                                }
+
+                                var placeId =
+                                    '';
+
+                                // Cerca un eventuale
+                                // place ID nelle strutture
+                                // vicine.
+
+                                function findId(
+                                    node
+                                ) {
+
+                                    if (
+                                        placeId ||
+                                        !node
+                                    ) {
+                                        return;
+                                    }
+
+                                    if (
+                                        typeof node ===
+                                        'string'
                                     ) {
 
-                                        var item =
-                                            v[k];
-
                                         if (
-                                            typeof item === 'number'
+                                            node.length >
+                                            15 &&
+                                            node.length <
+                                            200 &&
+                                            (
+                                                node.indexOf(
+                                                    'ChIJ'
+                                                ) === 0 ||
+                                                node.indexOf(
+                                                    '0x'
+                                                ) === 0
+                                            )
                                         ) {
 
-                                            if (
-                                                lat === '' &&
-                                                item >= -90 &&
-                                                item <= 90
-                                            ) {
-
-                                                lat =
-                                                    String(item);
-
-                                            } else if (
-                                                lng === '' &&
-                                                item >= -180 &&
-                                                item <= 180
-                                            ) {
-
-                                                lng =
-                                                    String(item);
-                                            }
+                                            placeId =
+                                                node;
                                         }
 
-                                        if (
-                                            typeof item === 'string' &&
-                                            item.length > 8 &&
-                                            address === ''
+                                        return;
+                                    }
+
+                                    if (
+                                        Array.isArray(
+                                            node
+                                        )
+                                    ) {
+
+                                        for (
+                                            var i = 0;
+                                            i < node.length;
+                                            i++
                                         ) {
 
-                                            if (
-                                                item.indexOf(' ') >= 0
-                                            ) {
-
-                                                address =
-                                                    item;
-                                            }
-                                        }
-
-                                        if (
-                                            Array.isArray(item)
-                                        ) {
-
-                                            findNumbers(
-                                                item,
-                                                d + 1
+                                            findId(
+                                                node[i]
                                             );
+
+                                            if (
+                                                placeId
+                                            ) {
+                                                return;
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            findNumbers(
-                                value,
-                                0
-                            );
+                                findId(
+                                    envelope
+                                );
 
-                            // Evita falsi positivi evidenti.
-                            if (
-                                name.length < 300
-                            ) {
+                                places.push({
 
-                                results.push({
-                                    name: name,
-                                    address: address,
-                                    lat: lat,
-                                    lng: lng
+                                    name:
+                                        name,
+
+                                    address:
+                                        address,
+
+                                    lat:
+                                        lat,
+
+                                    lng:
+                                        lng,
+
+                                    placeId:
+                                        placeId
+
                                 });
-                            }
+
+                            } catch(e) {}
                         }
 
-                        for (
-                            var i = 0;
-                            i < value.length;
-                            i++
+                        // =================================================
+                        // 10. RICERCA NEL JSON
+                        // =================================================
+
+                        function walk(
+                            node
                         ) {
+
+                            if (
+                                !node
+                            ) {
+                                return;
+                            }
 
                             if (
                                 Array.isArray(
-                                    value[i]
+                                    node
                                 )
                             ) {
 
-                                walk(
-                                    value[i],
-                                    depth + 1
+                                tryKnownPlace(
+                                    node
+                                );
+
+                                for (
+                                    var i = 0;
+                                    i < node.length;
+                                    i++
+                                ) {
+
+                                    walk(
+                                        node[i]
+                                    );
+                                }
+
+                            } else if (
+                                typeof node ===
+                                'object'
+                            ) {
+
+                                for (
+                                    var key in node
+                                ) {
+
+                                    try {
+
+                                        walk(
+                                            node[key]
+                                        );
+
+                                    } catch(e) {}
+                                }
+                            }
+                        }
+
+                        walk(data);
+
+                        // =================================================
+                        // 11. RIMOZIONE DUPLICATI
+                        // =================================================
+
+                        var unique = [];
+
+                        var seen = {};
+
+                        for (
+                            var i = 0;
+                            i < places.length;
+                            i++
+                        ) {
+
+                            var p =
+                                places[i];
+
+                            var key =
+                                p.name +
+                                '|' +
+                                p.lat +
+                                '|' +
+                                p.lng;
+
+                            if (
+                                !seen[key]
+                            ) {
+
+                                seen[key] =
+                                    true;
+
+                                unique.push(
+                                    p
                                 );
                             }
                         }
-                    }
 
-                    walk(data, 0);
+                        places =
+                            unique;
 
-                    // =================================================
-                    // Rimuove duplicati per nome + coordinate
-                    // =================================================
+                        // =================================================
+                        // 12. RISULTATO
+                        // =================================================
 
-                    var unique = [];
-                    var seen = {};
-
-                    for (
-                        var i = 0;
-                        i < results.length;
-                        i++
-                    ) {
-
-                        var r =
-                            results[i];
-
-                        var key =
-                            r.name +
-                            '|' +
-                            r.lat +
-                            '|' +
-                            r.lng;
+                        TravelPins.log(
+                            'PLACE TROVATI: ' +
+                            places.length
+                        );
 
                         if (
-                            !seen[key]
+                            places.length === 0
                         ) {
 
-                            seen[key] = true;
+                            TravelPins.log(
+                                'NESSUN PLACE TROVATO CON IL PARSER PRINCIPALE.'
+                            );
 
-                            unique.push(r);
+                            // --------------------------------------------
+                            // DIAGNOSTICA STRUTTURA
+                            // --------------------------------------------
+
+                            if (
+                                Array.isArray(data)
+                            ) {
+
+                                TravelPins.log(
+                                    'TOP LEVEL ARRAY LENGTH: ' +
+                                    data.length
+                                );
+
+                                for (
+                                    var z = 0;
+                                    z < Math.min(
+                                        data.length,
+                                        15
+                                    );
+                                    z++
+                                ) {
+
+                                    var item =
+                                        data[z];
+
+                                    var preview =
+                                        '';
+
+                                    try {
+
+                                        preview =
+                                            JSON.stringify(
+                                                item
+                                            )
+                                            .substring(
+                                                0,
+                                                1000
+                                            );
+
+                                    } catch(e) {}
+
+                                    TravelPins.log(
+                                        'TOP[' +
+                                        z +
+                                        ']: ' +
+                                        preview
+                                    );
+                                }
+                            }
+
+                            return;
                         }
+
+                        // =================================================
+                        // 13. GENERA OUTPUT
+                        // =================================================
+
+                        var output =
+                            '';
+
+                        output +=
+                            'TITLE: Google Maps List\\n\\n';
+
+                        output +=
+                            'PLACES (' +
+                            places.length +
+                            ')\\n';
+
+                        output +=
+                            '==============================\\n';
+
+                        for (
+                            var j = 0;
+                            j < places.length;
+                            j++
+                        ) {
+
+                            var place =
+                                places[j];
+
+                            output +=
+                                '\\n' +
+                                (j + 1) +
+                                '. ' +
+                                place.name +
+                                '\\n';
+
+                            if (
+                                place.address
+                            ) {
+
+                                output +=
+                                    '   ' +
+                                    place.address +
+                                    '\\n';
+                            }
+
+                            output +=
+                                '   COORD: ' +
+                                place.lat +
+                                ', ' +
+                                place.lng +
+                                '\\n';
+
+                            if (
+                                place.placeId
+                            ) {
+
+                                output +=
+                                    '   PLACE ID: ' +
+                                    place.placeId +
+                                    '\\n';
+                            }
+
+                            output +=
+                                '   MAPS: ' +
+                                'https://www.google.com/maps/search/?api=1&query=' +
+                                encodeURIComponent(
+                                    place.lat +
+                                    ',' +
+                                    place.lng
+                                ) +
+                                '\\n';
+
+                            output +=
+                                '------------------------------\\n';
+                        }
+
+                        // =================================================
+                        // 14. INVIO RISULTATO
+                        // =================================================
+
+                        TravelPins.log(
+                            '===== RISULTATO LISTA =====\\n' +
+                            output.substring(
+                                0,
+                                14000
+                            )
+                        );
+
+                        // Salviamo anche il risultato
+                        // globale per eventuali funzioni future.
+
+                        window.__travelpins_places =
+                            places;
+
+                    } catch(e) {
+
+                        TravelPins.log(
+                            'ERRORE GENERALE GETLIST: ' +
+                            e.message
+                        );
                     }
 
-                    TravelPins.log(
-                        'ELEMENTI TROVATI: ' +
-                        unique.length
-                    );
+                })();
 
-                    window.__travelpins_results =
-                        JSON.stringify(unique);
+            """.trimIndent()
 
-                    return 'RESULTS:' +
-                           unique.length;
-
-                } catch(e) {
-
-                    return 'PARSE_ERROR:' +
-                           e.message;
-                }
-
-            })();
-
-        """.trimIndent()
-
-        webView.evaluateJavascript(
-            javascript
-        ) { result ->
-
-            val status =
-                decodeJavascriptResult(result)
-
-            addLog(
-                """
-                ==============================
-                PARSER GETLIST
-
-                $status
-
-                ==============================
-                """.trimIndent()
-            )
-
-            readResultsFromWebView()
-        }
-    }
-
-    // ============================================================
-    // RISULTATI
-    // ============================================================
-
-    private fun readResultsFromWebView() {
-
-        val javascript = """
-
-            (function() {
-
-                return (
-                    window.__travelpins_results ||
-                    '[]'
-                );
-
-            })();
-
-        """.trimIndent()
-
-        webView.evaluateJavascript(
-            javascript
-        ) { result ->
-
-            val decoded =
-                decodeJavascriptResult(result)
-
-            if (
-                decoded.isBlank() ||
-                decoded == "[]"
-            ) {
+            webView.evaluateJavascript(
+                javascript
+            ) { result ->
 
                 addLog(
                     """
-                    ❌ NESSUN LUOGO ESTRATTO
+                    ==============================
+                    CALLBACK GETLIST
 
-                    La risposta getlist è arrivata,
-                    ma il parser non ha riconosciuto
-                    gli elementi.
+                    $result
 
                     ==============================
                     """.trimIndent()
                 )
 
-                // In questo caso stampiamo anche
-                // la risposta grezza iniziale per
-                // permetterci di adattare il parser
-                // al formato preciso della tua lista.
+                runOnUiThread {
 
-                readRawResponseForDiagnostics()
-
-                scanButton.isEnabled = true
-
-                return@evaluateJavascript
-            }
-
-            try {
-
-                val json =
-                    org.json.JSONArray(
-                        decoded
-                    )
-
-                val sb =
-                    StringBuilder()
-
-                sb.append(
-                    "\n==============================\n"
-                )
-
-                sb.append(
-                    "RISULTATO FINALE\n"
-                )
-
-                sb.append(
-                    "LUOGHI TROVATI: "
-                )
-
-                sb.append(
-                    json.length()
-                )
-
-                sb.append(
-                    "\n==============================\n\n"
-                )
-
-                for (
-                    i in 0 until json.length()
-                ) {
-
-                    val item =
-                        json.getJSONObject(i)
-
-                    sb.append(
-                        "${i + 1}. "
-                    )
-
-                    sb.append(
-                        item.optString(
-                            "name"
-                        )
-                    )
-
-                    sb.append("\n")
-
-                    val address =
-                        item.optString(
-                            "address"
-                        )
-
-                    if (
-                        address.isNotBlank()
-                    ) {
-
-                        sb.append(
-                            "   $address\n"
-                        )
-                    }
-
-                    val lat =
-                        item.optString(
-                            "lat"
-                        )
-
-                    val lng =
-                        item.optString(
-                            "lng"
-                        )
-
-                    if (
-                        lat.isNotBlank() &&
-                        lng.isNotBlank()
-                    ) {
-
-                        sb.append(
-                            "   $lat, $lng\n"
-                        )
-                    }
-
-                    sb.append("\n")
+                    scanButton.isEnabled =
+                        true
                 }
-
-                addLog(
-                    sb.toString()
-                )
-
-            } catch (
-                e: Exception
-            ) {
-
-                addLog(
-                    """
-                    ❌ ERRORE RISULTATI
-
-                    ${e.message}
-
-                    ==============================
-                    """.trimIndent()
-                )
             }
 
-            scanButton.isEnabled = true
-        }
+        }, 1000)
     }
 
     // ============================================================
-    // RISPOSTA GREZZA DIAGNOSTICA
+    // CONSENSO GOOGLE
     // ============================================================
 
-    private fun readRawResponseForDiagnostics() {
-
-        val javascript = """
-
-            (function() {
-
-                var raw =
-                    window.__travelpins_getlist ||
-                    '';
-
-                return raw.substring(
-                    0,
-                    12000
-                );
-
-            })();
-
-        """.trimIndent()
-
-        webView.evaluateJavascript(
-            javascript
-        ) { result ->
-
-            val raw =
-                decodeJavascriptResult(result)
-
-            addLog(
-                """
-                ==============================
-                GETLIST RAW RESPONSE
-                PRIMI 12000 CARATTERI
-
-                $raw
-
-                ==============================
-                """.trimIndent()
-            )
-        }
-    }
-
-    // ============================================================
-    // DECODIFICA JS
-    // ============================================================
-
-    private fun decodeJavascriptResult(
-        value: String?
-    ): String {
-
-        if (
-            value.isNullOrBlank()
-        ) {
-            return ""
-        }
-
-        var result = value
-
-        if (
-            result.startsWith("\"") &&
-            result.endsWith("\"")
-        ) {
-
-            result =
-                result.substring(
-                    1,
-                    result.length - 1
-                )
-        }
-
-        result =
-            result.replace(
-                "\\n",
-                "\n"
-            )
-
-        result =
-            result.replace(
-                "\\r",
-                "\r"
-            )
-
-        result =
-            result.replace(
-                "\\t",
-                "\t"
-            )
-
-        result =
-            result.replace(
-                "\\\"",
-                "\""
-            )
-
-        result =
-            result.replace(
-                "\\/",
-                "/"
-            )
-
-        result =
-            result.replace(
-                "\\\\",
-                "\\"
-            )
-
-        return result
-    }
-
-    // ============================================================
-    // GOOGLE INTENT
-    // ============================================================
-
-    private fun handleGoogleIntent(
-        intentUrl: String
-    ) {
+    private fun acceptGoogleConsent() {
 
         addLog(
             """
             ==============================
-            GOOGLE INTENT INTERCETTATO
+            AVVIO ACCETTAZIONE GOOGLE
 
             ==============================
             """.trimIndent()
         )
-
-        try {
-
-            val uri =
-                Uri.parse(intentUrl)
-
-            val fallback =
-                uri.getQueryParameter(
-                    "S.browser_fallback_url"
-                )
-
-            if (
-                !fallback.isNullOrBlank()
-            ) {
-
-                webView.loadUrl(fallback)
-
-                return
-            }
-
-            val marker =
-                "S.browser_fallback_url="
-
-            val index =
-                intentUrl.indexOf(marker)
-
-            if (
-                index >= 0
-            ) {
-
-                var fallbackText =
-                    intentUrl.substring(
-                        index + marker.length
-                    )
-
-                val end =
-                    fallbackText.indexOf(
-                        "#Intent"
-                    )
-
-                if (
-                    end >= 0
-                ) {
-
-                    fallbackText =
-                        fallbackText.substring(
-                            0,
-                            end
-                        )
-                }
-
-                fallbackText =
-                    Uri.decode(
-                        fallbackText
-                    )
-
-                webView.loadUrl(
-                    fallbackText
-                )
-            }
-
-        } catch (
-            e: Exception
-        ) {
-
-            addLog(
-                "ERRORE INTENT: ${e.message}"
-            )
-        }
-    }
-
-    // ============================================================
-    // CONSENSO
-    // ============================================================
-
-    private fun acceptGoogleConsent() {
 
         val javascript = """
 
             (function() {
 
                 try {
+
+                    var result = [];
 
                     var elements =
                         document.querySelectorAll(
@@ -1530,18 +1388,36 @@ class MainActivity : Activity() {
                             text === 'accept'
                         ) {
 
-                            e.click();
+                            result.push(
+                                'BUTTON_FOUND: ' +
+                                text
+                            );
 
-                            return 'CLICK_OK: ' +
-                                   text;
+                            try {
+
+                                e.click();
+
+                                result.push(
+                                    'CLICK_OK'
+                                );
+
+                            } catch(err) {
+
+                                result.push(
+                                    'CLICK_ERROR: ' +
+                                    err.message
+                                );
+                            }
+
+                            break;
                         }
                     }
 
-                    return 'BUTTON_NOT_FOUND';
+                    return result.join('|');
 
                 } catch(e) {
 
-                    return 'ERROR:' +
+                    return 'ERROR: ' +
                            e.message;
                 }
 
@@ -1555,8 +1431,7 @@ class MainActivity : Activity() {
 
             addLog(
                 """
-                ==============================
-                CONSENSO
+                [CONSENSO RISULTATO]
 
                 $result
 
@@ -1579,10 +1454,12 @@ class MainActivity : Activity() {
                 if (
                     window.__travelpins_hooked
                 ) {
+
                     return 'ALREADY_INSTALLED';
                 }
 
-                window.__travelpins_hooked = true;
+                window.__travelpins_hooked =
+                    true;
 
                 var originalFetch =
                     window.fetch;
@@ -1624,7 +1501,7 @@ class MainActivity : Activity() {
 
                         } catch(e) {}
 
-                        return await originalFetch.apply(
+                        return originalFetch.apply(
                             this,
                             arguments
                         );
@@ -1657,13 +1534,16 @@ class MainActivity : Activity() {
                 XMLHttpRequest.prototype.send =
                     function(body) {
 
+                        var xhr =
+                            this;
+
                         try {
 
                             TravelPins.network(
                                 'XHR_REQUEST',
-                                this.__tp_method ||
+                                xhr.__tp_method ||
                                 'GET',
-                                this.__tp_url ||
+                                xhr.__tp_url ||
                                 '',
                                 body || ''
                             );
@@ -1714,11 +1594,14 @@ class MainActivity : Activity() {
         val lower =
             url.lowercase()
 
-        if (
-            !lower.contains("entitylist") &&
-            !lower.contains("getlist") &&
-            !lower.contains("userlists")
-        ) {
+        val interesting =
+            lower.contains("userlists") ||
+            lower.contains("listview") ||
+            lower.contains("entitylist") ||
+            lower.contains("batchexecute") ||
+            lower.contains("rpc")
+
+        if (!interesting) {
             return
         }
 
@@ -1755,6 +1638,101 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
+    // GOOGLE INTENT
+    // ============================================================
+
+    private fun handleGoogleIntent(
+        intentUrl: String
+    ) {
+
+        addLog(
+            """
+            ==============================
+            GOOGLE INTENT INTERCETTATO
+
+            CERCO FALLBACK WEB...
+
+            ==============================
+            """.trimIndent()
+        )
+
+        try {
+
+            val uri =
+                Uri.parse(intentUrl)
+
+            val fallback =
+                uri.getQueryParameter(
+                    "S.browser_fallback_url"
+                )
+
+            if (
+                !fallback.isNullOrBlank()
+            ) {
+
+                webView.loadUrl(
+                    fallback
+                )
+
+                return
+            }
+
+            val marker =
+                "S.browser_fallback_url="
+
+            val index =
+                intentUrl.indexOf(marker)
+
+            if (index >= 0) {
+
+                var fallbackText =
+                    intentUrl.substring(
+                        index + marker.length
+                    )
+
+                val end =
+                    fallbackText.indexOf(
+                        "#Intent"
+                    )
+
+                if (end >= 0) {
+
+                    fallbackText =
+                        fallbackText.substring(
+                            0,
+                            end
+                        )
+                }
+
+                fallbackText =
+                    Uri.decode(
+                        fallbackText
+                    )
+
+                webView.loadUrl(
+                    fallbackText
+                )
+
+                return
+            }
+
+            addLog(
+                "FALLBACK URL NON TROVATO"
+            )
+
+        } catch(e: Exception) {
+
+            addLog(
+                """
+                ERRORE PARSING INTENT:
+
+                ${e.message}
+                """.trimIndent()
+            )
+        }
+    }
+
+    // ============================================================
     // SHARE INTENT
     // ============================================================
 
@@ -1766,6 +1744,7 @@ class MainActivity : Activity() {
             intent?.action !=
             Intent.ACTION_SEND
         ) {
+
             return
         }
 
@@ -1788,11 +1767,11 @@ class MainActivity : Activity() {
         val match =
             Regex(
                 """https?://\S+"""
-            ).find(sharedText)
+            ).find(
+                sharedText
+            )
 
-        if (
-            match == null
-        ) {
+        if (match == null) {
 
             addLog(
                 "Nessun URL trovato."
@@ -1812,7 +1791,7 @@ class MainActivity : Activity() {
             $url
 
             ==============================
-            AVVIO GOOGLE MAPS...
+            AVVIO GOOGLE MAPS WEB...
             """.trimIndent()
         )
 
@@ -1834,6 +1813,7 @@ class MainActivity : Activity() {
         while (
             log.size > 100
         ) {
+
             log.poll()
         }
 
