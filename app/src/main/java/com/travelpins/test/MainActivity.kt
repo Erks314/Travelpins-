@@ -6,6 +6,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
@@ -24,17 +26,19 @@ class MainActivity : Activity() {
 
     private lateinit var webView: WebView
     private lateinit var output: TextView
+    private lateinit var consentButton: Button
 
     private val log =
         ConcurrentLinkedQueue<String>()
+
+    private val handler =
+        Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         createInterface()
-
         createWebView()
-
         handleIntent(intent)
     }
 
@@ -87,9 +91,24 @@ class MainActivity : Activity() {
 
                     log.clear()
 
-                    updateScreen(
+                    output.text =
+                        "TRAVELPINS NETWORK MONITOR\n\n" +
                         "Monitor pulito."
-                    )
+                }
+            }
+
+        consentButton =
+            Button(this).apply {
+
+                text =
+                    "ACCETTA GOOGLE"
+
+                visibility =
+                    Button.GONE
+
+                setOnClickListener {
+
+                    acceptGoogleConsent()
                 }
             }
 
@@ -104,6 +123,15 @@ class MainActivity : Activity() {
 
         toolbar.addView(
             clearButton,
+            LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+
+        toolbar.addView(
+            consentButton,
             LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -126,25 +154,21 @@ class MainActivity : Activity() {
                 )
 
                 text =
-                    "TravelPins NETWORK TEST\n\n" +
+                    "TRAVELPINS NETWORK MONITOR\n\n" +
                     "In attesa del link..."
             }
 
-        val logScroll =
+        val scroll =
             ScrollView(this).apply {
                 addView(output)
             }
 
         root.addView(
-            toolbar,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
+            toolbar
         )
 
         root.addView(
-            logScroll,
+            scroll,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
@@ -203,9 +227,7 @@ class MainActivity : Activity() {
                     request: WebResourceRequest
                 ): WebResourceResponse? {
 
-                    inspectRequest(
-                        request
-                    )
+                    inspectRequest(request)
 
                     return null
                 }
@@ -215,13 +237,8 @@ class MainActivity : Activity() {
                     request: WebResourceRequest
                 ): Boolean {
 
-                    addLog(
-                        """
-                        [NAVIGAZIONE]
-
-                        ${request.url}
-
-                        """.trimIndent()
+                    inspectNavigation(
+                        request.url.toString()
                     )
 
                     return false
@@ -242,6 +259,17 @@ class MainActivity : Activity() {
                         ==============================
                         """.trimIndent()
                     )
+
+                    checkForConsent(url)
+
+                    injectNetworkHook()
+
+                    handler.postDelayed(
+                        {
+                            checkForConsent(url)
+                        },
+                        1200
+                    )
                 }
 
                 override fun onRenderProcessGone(
@@ -252,9 +280,9 @@ class MainActivity : Activity() {
                     addLog(
                         """
                         ==============================
-                        ⚠️ WEBVIEW RENDERER TERMINATO
+                        WEBVIEW RENDERER TERMINATO
 
-                        DID CRASH:
+                        CRASH:
                         ${detail.didCrash()}
 
                         ==============================
@@ -264,6 +292,257 @@ class MainActivity : Activity() {
                     return true
                 }
             }
+    }
+
+    private fun checkForConsent(
+        url: String
+    ) {
+
+        if (
+            !url.contains(
+                "consent.google.com"
+            )
+        ) {
+
+            consentButton.visibility =
+                Button.GONE
+
+            return
+        }
+
+        consentButton.visibility =
+            Button.VISIBLE
+
+        addLog(
+            """
+            ==============================
+            CONSENSO GOOGLE RILEVATO
+
+            Premi:
+            ACCETTA GOOGLE
+
+            ==============================
+            """.trimIndent()
+        )
+    }
+
+    private fun acceptGoogleConsent() {
+
+        addLog(
+            """
+            [CONSENSO]
+            Tentativo di accettazione
+            del consenso Google...
+            """.trimIndent()
+        )
+
+        val javascript = """
+            (function() {
+
+                function clickConsent() {
+
+                    var elements =
+                        document.querySelectorAll(
+                            'button, input, div, span'
+                        );
+
+                    for (
+                        var i = 0;
+                        i < elements.length;
+                        i++
+                    ) {
+
+                        var e = elements[i];
+
+                        var text =
+                            (e.innerText ||
+                             e.value ||
+                             e.getAttribute('aria-label') ||
+                             '')
+                            .trim()
+                            .toLowerCase();
+
+                        if (
+                            text === 'accetta tutto' ||
+                            text === 'accetta' ||
+                            text === 'accept all' ||
+                            text === 'accept'
+                        ) {
+
+                            e.click();
+
+                            return 'CLICK_OK:' + text;
+                        }
+                    }
+
+                    return 'BUTTON_NOT_FOUND';
+                }
+
+                return clickConsent();
+
+            })();
+        """.trimIndent()
+
+        webView.evaluateJavascript(
+            javascript
+        ) { result ->
+
+            addLog(
+                """
+                [CONSENSO RISULTATO]
+
+                $result
+
+                """.trimIndent()
+            )
+        }
+    }
+
+    private fun injectNetworkHook() {
+
+        val javascript = """
+            (function() {
+
+                if (
+                    window.__travelpins_hooked
+                ) {
+                    return;
+                }
+
+                window.__travelpins_hooked =
+                    true;
+
+                console.log(
+                    'TRAVELPINS NETWORK HOOK ACTIVE'
+                );
+
+                var originalFetch =
+                    window.fetch;
+
+                window.fetch =
+                    function() {
+
+                        try {
+
+                            var input =
+                                arguments[0];
+
+                            var url =
+                                typeof input ===
+                                'string'
+                                ? input
+                                : input.url;
+
+                            console.log(
+                                'TP_FETCH:' + url
+                            );
+
+                        } catch(e) {}
+
+                        return originalFetch.apply(
+                            this,
+                            arguments
+                        );
+                    };
+
+                var originalOpen =
+                    XMLHttpRequest.prototype.open;
+
+                XMLHttpRequest.prototype.open =
+                    function(
+                        method,
+                        url
+                    ) {
+
+                        try {
+
+                            console.log(
+                                'TP_XHR:' +
+                                method +
+                                ':' +
+                                url
+                            );
+
+                        } catch(e) {}
+
+                        return originalOpen.apply(
+                            this,
+                            arguments
+                        );
+                    };
+
+                return 'HOOK_INSTALLED';
+
+            })();
+        """.trimIndent()
+
+        webView.evaluateJavascript(
+            javascript
+        ) { result ->
+
+            addLog(
+                "[JAVASCRIPT HOOK] $result"
+            )
+        }
+    }
+
+    private fun inspectRequest(
+        request: WebResourceRequest
+    ) {
+
+        val url =
+            request.url.toString()
+
+        val lower =
+            url.lowercase()
+
+        val interesting =
+            lower.contains("google.com/maps") ||
+            lower.contains("maps.google") ||
+            lower.contains("/maps/preview") ||
+            lower.contains("entitylist") ||
+            lower.contains("placelist") ||
+            lower.contains("place") ||
+            lower.contains("saved") ||
+            lower.contains("list") ||
+            lower.contains("batchexecute") ||
+            lower.contains("rpc") ||
+            lower.contains("pb=") ||
+            lower.contains("data=")
+
+        if (!interesting) {
+            return
+        }
+
+        addLog(
+            """
+            [GOOGLE REQUEST]
+
+            METHOD:
+            ${request.method}
+
+            URL:
+            $url
+
+            MAIN FRAME:
+            ${request.isForMainFrame}
+
+            """.trimIndent()
+        )
+    }
+
+    private fun inspectNavigation(
+        url: String
+    ) {
+
+        addLog(
+            """
+            [NAVIGAZIONE]
+
+            $url
+
+            """.trimIndent()
+        )
     }
 
     private fun handleIntent(
@@ -322,52 +601,6 @@ class MainActivity : Activity() {
         webView.loadUrl(url)
     }
 
-    private fun inspectRequest(
-        request: WebResourceRequest
-    ) {
-
-        val url =
-            request.url.toString()
-
-        val lower =
-            url.lowercase()
-
-        val interesting =
-            lower.contains("google.com/maps") ||
-            lower.contains("maps.google") ||
-            lower.contains("/maps/preview") ||
-            lower.contains("entitylist") ||
-            lower.contains("placelist") ||
-            lower.contains("place") ||
-            lower.contains("saved") ||
-            lower.contains("list") ||
-            lower.contains("batchexecute") ||
-            lower.contains("rpc") ||
-            lower.contains("pb=") ||
-            lower.contains("data=")
-
-        if (!interesting) {
-            return
-        }
-
-        val entry =
-            """
-            [GOOGLE REQUEST]
-
-            METHOD:
-            ${request.method}
-
-            URL:
-            $url
-
-            MAIN FRAME:
-            ${request.isForMainFrame}
-
-            """.trimIndent()
-
-        addLog(entry)
-    }
-
     private fun addLog(
         text: String
     ) {
@@ -381,25 +614,11 @@ class MainActivity : Activity() {
 
         runOnUiThread {
 
-            val text =
+            output.text =
+                "TRAVELPINS NETWORK MONITOR\n\n" +
                 log.joinToString(
                     separator = "\n"
                 )
-
-            output.text =
-                "TRAVELPINS NETWORK MONITOR\n\n" +
-                text
-        }
-    }
-
-    private fun updateScreen(
-        text: String
-    ) {
-
-        runOnUiThread {
-            output.text =
-                "TRAVELPINS NETWORK MONITOR\n\n" +
-                text
         }
     }
 
