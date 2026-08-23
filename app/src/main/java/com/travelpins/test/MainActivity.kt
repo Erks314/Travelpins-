@@ -100,14 +100,11 @@ class MainActivity : Activity() {
         consentButton =
             Button(this).apply {
 
-                text =
-                    "ACCETTA GOOGLE"
+                text = "ACCETTA GOOGLE"
 
-                visibility =
-                    Button.GONE
+                visibility = Button.GONE
 
                 setOnClickListener {
-
                     acceptGoogleConsent()
                 }
             }
@@ -143,7 +140,6 @@ class MainActivity : Activity() {
             TextView(this).apply {
 
                 textSize = 13f
-
                 setTextIsSelectable(true)
 
                 setPadding(
@@ -163,9 +159,7 @@ class MainActivity : Activity() {
                 addView(output)
             }
 
-        root.addView(
-            toolbar
-        )
+        root.addView(toolbar)
 
         root.addView(
             scroll,
@@ -181,8 +175,7 @@ class MainActivity : Activity() {
 
     private fun createWebView() {
 
-        webView =
-            WebView(this)
+        webView = WebView(this)
 
         webView.settings.apply {
 
@@ -260,16 +253,33 @@ class MainActivity : Activity() {
                         """.trimIndent()
                     )
 
-                    checkForConsent(url)
-
                     injectNetworkHook()
 
-                    handler.postDelayed(
-                        {
-                            checkForConsent(url)
-                        },
-                        1200
-                    )
+                    if (
+                        url.contains(
+                            "consent.google.com"
+                        )
+                    ) {
+
+                        consentButton.visibility =
+                            Button.VISIBLE
+
+                        addLog(
+                            """
+                            ==============================
+                            CONSENSO GOOGLE RILEVATO
+
+                            Premi:
+                            ACCETTA GOOGLE
+
+                            ==============================
+                            """.trimIndent()
+                        )
+                    } else {
+
+                        consentButton.visibility =
+                            Button.GONE
+                    }
                 }
 
                 override fun onRenderProcessGone(
@@ -294,56 +304,120 @@ class MainActivity : Activity() {
             }
     }
 
-    private fun checkForConsent(
-        url: String
-    ) {
-
-        if (
-            !url.contains(
-                "consent.google.com"
-            )
-        ) {
-
-            consentButton.visibility =
-                Button.GONE
-
-            return
-        }
-
-        consentButton.visibility =
-            Button.VISIBLE
-
-        addLog(
-            """
-            ==============================
-            CONSENSO GOOGLE RILEVATO
-
-            Premi:
-            ACCETTA GOOGLE
-
-            ==============================
-            """.trimIndent()
-        )
-    }
-
     private fun acceptGoogleConsent() {
 
         addLog(
             """
-            [CONSENSO]
-            Tentativo di accettazione
-            del consenso Google...
+            ==============================
+            AVVIO ACCETTAZIONE GOOGLE
+
+            ==============================
             """.trimIndent()
         )
 
         val javascript = """
             (function() {
 
-                function clickConsent() {
+                try {
+
+                    var result = [];
+
+                    /*
+                     * METODO 1:
+                     * pulsante ufficiale Google
+                     */
+
+                    var button =
+                        document.getElementById(
+                            'introAgreeButton'
+                        );
+
+                    if (button) {
+
+                        result.push(
+                            'INTRO_BUTTON_FOUND'
+                        );
+
+                        try {
+                            button.click();
+                            result.push(
+                                'INTRO_CLICK_OK'
+                            );
+                        } catch(e) {
+                            result.push(
+                                'INTRO_CLICK_ERROR:' +
+                                e.message
+                            );
+                        }
+
+                        /*
+                         * Prova anche il contenitore
+                         */
+
+                        try {
+
+                            if (button.parentElement) {
+
+                                button.parentElement.click();
+
+                                result.push(
+                                    'PARENT_CLICK_OK'
+                                );
+                            }
+
+                        } catch(e) {
+
+                            result.push(
+                                'PARENT_CLICK_ERROR:' +
+                                e.message
+                            );
+                        }
+
+                        /*
+                         * Trova il form associato
+                         */
+
+                        var form =
+                            button.closest('form');
+
+                        if (form) {
+
+                            result.push(
+                                'FORM_FOUND'
+                            );
+
+                            try {
+
+                                form.submit();
+
+                                result.push(
+                                    'FORM_SUBMIT_OK'
+                                );
+
+                            } catch(e) {
+
+                                result.push(
+                                    'FORM_SUBMIT_ERROR:' +
+                                    e.message
+                                );
+                            }
+                        }
+
+                    } else {
+
+                        result.push(
+                            'INTRO_BUTTON_NOT_FOUND'
+                        );
+                    }
+
+                    /*
+                     * METODO 2:
+                     * ricerca per testo
+                     */
 
                     var elements =
                         document.querySelectorAll(
-                            'button, input, div, span'
+                            'button, div[role="button"], input'
                         );
 
                     for (
@@ -355,10 +429,14 @@ class MainActivity : Activity() {
                         var e = elements[i];
 
                         var text =
-                            (e.innerText ||
-                             e.value ||
-                             e.getAttribute('aria-label') ||
-                             '')
+                            (
+                                e.innerText ||
+                                e.value ||
+                                e.getAttribute(
+                                    'aria-label'
+                                ) ||
+                                ''
+                            )
                             .trim()
                             .toLowerCase();
 
@@ -369,16 +447,38 @@ class MainActivity : Activity() {
                             text === 'accept'
                         ) {
 
-                            e.click();
+                            result.push(
+                                'TEXT_BUTTON_FOUND:' +
+                                text
+                            );
 
-                            return 'CLICK_OK:' + text;
+                            try {
+
+                                e.click();
+
+                                result.push(
+                                    'TEXT_CLICK_OK'
+                                );
+
+                            } catch(err) {
+
+                                result.push(
+                                    'TEXT_CLICK_ERROR:' +
+                                    err.message
+                                );
+                            }
+
+                            break;
                         }
                     }
 
-                    return 'BUTTON_NOT_FOUND';
-                }
+                    return result.join('|');
 
-                return clickConsent();
+                } catch(e) {
+
+                    return 'GLOBAL_ERROR:' +
+                           e.message;
+                }
 
             })();
         """.trimIndent()
@@ -393,9 +493,67 @@ class MainActivity : Activity() {
 
                 $result
 
+                ==============================
                 """.trimIndent()
             )
+
+            handler.postDelayed(
+                {
+                    checkAfterConsent()
+                },
+                2000
+            )
         }
+    }
+
+    private fun checkAfterConsent() {
+
+        val url =
+            webView.url ?: ""
+
+        addLog(
+            """
+            [CONTROLLO DOPO CONSENSO]
+
+            URL ATTUALE:
+            $url
+
+            """.trimIndent()
+        )
+
+        if (
+            !url.contains(
+                "consent.google.com"
+            )
+        ) {
+
+            consentButton.visibility =
+                Button.GONE
+
+            addLog(
+                """
+                ==============================
+                GOOGLE HA LASCIATO LA PAGINA
+                DI CONSENSO.
+
+                ORA ANALIZZIAMO MAPS.
+
+                ==============================
+                """.trimIndent()
+            )
+
+            return
+        }
+
+        addLog(
+            """
+            [CONSENSO]
+            Google è ancora sulla pagina
+            di consenso.
+
+            ==============================
+            """.trimIndent()
+        )
     }
 
     private fun injectNetworkHook() {
@@ -406,15 +564,11 @@ class MainActivity : Activity() {
                 if (
                     window.__travelpins_hooked
                 ) {
-                    return;
+                    return 'ALREADY_INSTALLED';
                 }
 
                 window.__travelpins_hooked =
                     true;
-
-                console.log(
-                    'TRAVELPINS NETWORK HOOK ACTIVE'
-                );
 
                 var originalFetch =
                     window.fetch;
@@ -434,7 +588,8 @@ class MainActivity : Activity() {
                                 : input.url;
 
                             console.log(
-                                'TP_FETCH:' + url
+                                'TP_FETCH:' +
+                                url
                             );
 
                         } catch(e) {}
