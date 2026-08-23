@@ -1,4 +1,4 @@
-package com.travelpins.test
+ package com.travelpins.test
 
 import android.app.Activity
 import android.content.Intent
@@ -46,7 +46,7 @@ class MainActivity : Activity() {
         val match = Regex("""https?://\S+""").find(sharedText)
 
         if (match == null) {
-            output.text = "Testo ricevuto:\n\n$sharedText"
+            output.text = "Nessun URL trovato."
             return
         }
 
@@ -57,19 +57,21 @@ class MainActivity : Activity() {
 
             Link ricevuto!
 
-            $url
-
-            Sto contattando Google...
+            Sto analizzando Google Maps...
         """.trimIndent()
 
         thread {
+
             try {
-                val connection = URL(url).openConnection() as HttpURLConnection
+
+                val connection =
+                    URL(url).openConnection() as HttpURLConnection
 
                 connection.requestMethod = "GET"
                 connection.instanceFollowRedirects = true
                 connection.connectTimeout = 15000
                 connection.readTimeout = 15000
+
                 connection.setRequestProperty(
                     "User-Agent",
                     "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
@@ -78,57 +80,66 @@ class MainActivity : Activity() {
                 val responseCode = connection.responseCode
                 val finalUrl = connection.url.toString()
 
-                val stream =
-                    if (responseCode >= 400) {
-                        connection.errorStream
-                    } else {
-                        connection.inputStream
-                    }
-
-                val body = stream?.bufferedReader()?.use {
-                    it.readText()
-                } ?: ""
-
-                val preview = body.take(3000)
-
-                runOnUiThread {
-                    output.text = """
-                        TRAVELPINS DIAGNOSTICA
-
-                        CODICE HTTP:
-                        $responseCode
-
-                        URL FINALE:
-                        $finalUrl
-
-                        ----------------------------
-
-                        RISPOSTA:
-
-                        $preview
-                    """.trimIndent()
-                }
+                val html = connection.inputStream
+                    .bufferedReader()
+                    .use { it.readText() }
 
                 connection.disconnect()
+
+                val index = html.indexOf("entitylist/getlist")
+
+                runOnUiThread {
+
+                    if (index >= 0) {
+
+                        val start = maxOf(0, index - 1000)
+                        val end = minOf(html.length, index + 3000)
+
+                        output.text = """
+                            🎉 TROVATO!
+
+                            HTTP: $responseCode
+
+                            URL FINALE:
+                            $finalUrl
+
+                            ============================
+
+                            ENTITYLIST/GETLIST TROVATO
+
+                            ============================
+
+                            $html.substring($start, $end)
+                        """.trimIndent()
+
+                    } else {
+
+                        output.text = """
+                            TravelPins TEST
+
+                            HTTP: $responseCode
+
+                            entitylist/getlist
+                            NON TROVATO.
+
+                            HTML ricevuto:
+                            ${html.take(5000)}
+                        """.trimIndent()
+                    }
+                }
 
             } catch (e: Exception) {
 
                 runOnUiThread {
                     output.text = """
-                        TRAVELPINS DIAGNOSTICA
-
-                        ERRORE:
+                        ERRORE
 
                         ${e.javaClass.name}
 
                         ${e.message}
-
-                        ----------------------------
-
-                        $url
                     """.trimIndent()
                 }
             }
         }
     }
-}
+}               
