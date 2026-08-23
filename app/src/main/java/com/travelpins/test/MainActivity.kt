@@ -1,121 +1,66 @@
 package com.travelpins.test
 
 import android.app.Activity
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
-import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class MainActivity : Activity() {
 
     private lateinit var webView: WebView
-    private lateinit var output: TextView
-    private lateinit var consentButton: Button
-    private lateinit var scanButton: Button
+    private lateinit var output: LinearLayout
+    private lateinit var progress: ProgressBar
 
-    private val log = ConcurrentLinkedQueue<String>()
     private val handler = Handler(Looper.getMainLooper())
+    private val log = ConcurrentLinkedQueue<String>()
+
+    private val places = ArrayList<Place>()
+    private val categories = ArrayList<Category>()
+
+    private var importing = false
 
     // ============================================================
-    // RISULTATO COMPLETO
+    // MODELLI
     // ============================================================
 
-    private var completeResult: String = ""
+    data class Place(
+        val name: String,
+        val address: String,
+        val lat: Double,
+        val lng: Double,
+        var categoryId: String = ""
+    )
+
+    data class Category(
+        val id: String,
+        var name: String,
+        var color: Int,
+        var icon: String
+    )
 
     // ============================================================
-    // JAVASCRIPT -> KOTLIN
+    // AVVIO
     // ============================================================
 
-    inner class TravelPinsBridge {
-
-        @JavascriptInterface
-        fun log(message: String?) {
-
-            if (message.isNullOrBlank()) {
-                return
-            }
-
-            addLog(
-                """
-                [JAVASCRIPT]
-
-                $message
-
-                """.trimIndent()
-            )
-        }
-
-        @JavascriptInterface
-        fun network(
-            type: String?,
-            method: String?,
-            url: String?,
-            data: String?
-        ) {
-
-            val currentUrl = url ?: ""
-
-            val interesting =
-                currentUrl.contains("userlists", true) ||
-                currentUrl.contains("listview", true) ||
-                currentUrl.contains("batchexecute", true) ||
-                currentUrl.contains("entitylist", true) ||
-                currentUrl.contains("rpc", true)
-
-            if (!interesting) {
-                return
-            }
-
-            val limitedData =
-                (data ?: "").take(5000)
-
-            addLog(
-                """
-                ==============================
-                NETWORK ${type ?: ""}
-
-                METHOD:
-                ${method ?: ""}
-
-                URL:
-                $currentUrl
-
-                DATA:
-                $limitedData
-
-                ==============================
-                """.trimIndent()
-            )
-        }
-    }
-
-    // ============================================================
-    // ON CREATE
-    // ============================================================
-
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        loadCategories()
         createInterface()
         createWebView()
 
@@ -123,119 +68,31 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // INTERFACCIA
+    // INTERFACCIA PRINCIPALE
     // ============================================================
 
     private fun createInterface() {
 
-        val root =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(12, 12, 12, 12)
-            }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.WHITE)
+        }
 
-        val toolbar =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(20, 18, 20, 18)
+            setBackgroundColor(Color.rgb(35, 35, 35))
+        }
 
-        // --------------------------------------------------------
-        // COPIA TUTTO
-        // --------------------------------------------------------
-
-        val copyButton =
-            Button(this).apply {
-
-                text = "COPIA TUTTO"
-
-                setOnClickListener {
-
-                    val textToCopy =
-                        if (completeResult.isNotBlank()) {
-                            completeResult
-                        } else {
-                            output.text.toString()
-                        }
-
-                    val clipboard =
-                        getSystemService(
-                            Context.CLIPBOARD_SERVICE
-                        ) as ClipboardManager
-
-                    clipboard.setPrimaryClip(
-                        ClipData.newPlainText(
-                            "TravelPins",
-                            textToCopy
-                        )
-                    )
-
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Lista completa copiata!",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
-
-        // --------------------------------------------------------
-        // PULISCI
-        // --------------------------------------------------------
-
-        val clearButton =
-            Button(this).apply {
-
-                text = "PULISCI"
-
-                setOnClickListener {
-
-                    log.clear()
-                    completeResult = ""
-
-                    output.text =
-                        """
-                        TRAVELPINS NETWORK MONITOR
-
-                        Monitor pulito.
-                        """.trimIndent()
-                }
-            }
-
-        // --------------------------------------------------------
-        // CONSENSO
-        // --------------------------------------------------------
-
-        consentButton =
-            Button(this).apply {
-
-                text = "ACCETTA GOOGLE"
-
-                visibility = Button.GONE
-
-                setOnClickListener {
-                    acceptGoogleConsent()
-                }
-            }
-
-        // --------------------------------------------------------
-        // SCANSIONA
-        // --------------------------------------------------------
-
-        scanButton =
-            Button(this).apply {
-
-                text = "SCANSIONA"
-
-                visibility = Button.GONE
-
-                isEnabled = false
-
-                setOnClickListener {
-                    scanGoogleList()
-                }
-            }
+        val title = TextView(this).apply {
+            text = "📍 TravelPins"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
 
         toolbar.addView(
-            copyButton,
+            title,
             LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -243,61 +100,30 @@ class MainActivity : Activity() {
             )
         )
 
-        toolbar.addView(
-            clearButton,
-            LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-
-        toolbar.addView(
-            consentButton,
-            LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-
-        toolbar.addView(
-            scanButton,
-            LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-
-        output =
-            TextView(this).apply {
-
-                textSize = 13f
-
-                setTextIsSelectable(true)
-
-                setPadding(
-                    12,
-                    12,
-                    12,
-                    30
-                )
-
-                text =
-                    """
-                    TRAVELPINS NETWORK MONITOR
-
-                    In attesa del link...
-                    """.trimIndent()
+        val categoriesButton = Button(this).apply {
+            text = "Categorie"
+            setOnClickListener {
+                showCategories()
             }
+        }
 
-        val scroll =
-            ScrollView(this).apply {
-                addView(output)
-            }
+        toolbar.addView(categoriesButton)
+
+        progress = ProgressBar(this).apply {
+            visibility = ProgressBar.GONE
+        }
 
         root.addView(toolbar)
+        root.addView(progress)
+
+        val scroll = ScrollView(this)
+
+        output = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 20, 20, 40)
+        }
+
+        scroll.addView(output)
 
         root.addView(
             scroll,
@@ -309,6 +135,52 @@ class MainActivity : Activity() {
         )
 
         setContentView(root)
+
+        showWelcome()
+    }
+
+    // ============================================================
+    // SCHERMATA INIZIALE
+    // ============================================================
+
+    private fun showWelcome() {
+
+        output.removeAllViews()
+
+        val title = TextView(this).apply {
+            text = "Le tue destinazioni"
+            textSize = 28f
+            setTextColor(Color.BLACK)
+            setPadding(0, 10, 0, 20)
+        }
+
+        output.addView(title)
+
+        val info = TextView(this).apply {
+            text =
+                "Condividi una lista di Google Maps con TravelPins.\n\n" +
+                "I luoghi verranno importati automaticamente e potrai " +
+                "organizzarli nelle tue categorie."
+            textSize = 17f
+            setTextColor(Color.DKGRAY)
+        }
+
+        output.addView(info)
+
+        if (places.isEmpty()) {
+
+            val empty = TextView(this).apply {
+                text = "\n\n📍 Nessun luogo importato."
+                textSize = 18f
+                setTextColor(Color.GRAY)
+            }
+
+            output.addView(empty)
+
+        } else {
+
+            showPlaces()
+        }
     }
 
     // ============================================================
@@ -336,24 +208,17 @@ class MainActivity : Activity() {
                 "Mobile Safari/537.36"
         }
 
-        CookieManager
-            .getInstance()
-            .setAcceptCookie(true)
+        CookieManager.getInstance().setAcceptCookie(true)
 
-        CookieManager
-            .getInstance()
-            .setAcceptThirdPartyCookies(
-                webView,
-                true
-            )
+        CookieManager.getInstance()
+            .setAcceptThirdPartyCookies(webView, true)
 
         webView.addJavascriptInterface(
             TravelPinsBridge(),
             "TravelPins"
         )
 
-        webView.webChromeClient =
-            WebChromeClient()
+        webView.webChromeClient = WebChromeClient()
 
         webView.webViewClient =
             object : WebViewClient() {
@@ -363,14 +228,9 @@ class MainActivity : Activity() {
                     request: WebResourceRequest
                 ): Boolean {
 
-                    val url =
-                        request.url.toString()
+                    val url = request.url.toString()
 
-                    inspectNavigation(url)
-
-                    if (
-                        url.startsWith("intent://")
-                    ) {
+                    if (url.startsWith("intent://")) {
 
                         handleGoogleIntent(url)
 
@@ -385,8 +245,6 @@ class MainActivity : Activity() {
                     request: WebResourceRequest
                 ): WebResourceResponse? {
 
-                    inspectRequest(request)
-
                     return null
                 }
 
@@ -395,100 +253,93 @@ class MainActivity : Activity() {
                     url: String
                 ) {
 
-                    addLog(
-                        """
-                        ==============================
-                        PAGINA CARICATA
-
-                        $url
-
-                        ==============================
-                        """.trimIndent()
-                    )
-
                     injectNetworkHook()
 
-                    if (
-                        url.contains(
-                            "consent.google.com",
-                            true
-                        )
-                    ) {
+                    if (isGoogleListUrl(url)) {
 
-                        consentButton.visibility =
-                            Button.VISIBLE
+                        if (!importing) {
 
-                        scanButton.visibility =
-                            Button.GONE
+                            importing = true
 
-                        scanButton.isEnabled =
-                            false
+                            handler.postDelayed({
 
-                        addLog(
-                            """
-                            ==============================
-                            CONSENSO GOOGLE RILEVATO
+                                scanGoogleList()
 
-                            Premi:
-                            ACCETTA GOOGLE
-
-                            ==============================
-                            """.trimIndent()
-                        )
-
-                    } else {
-
-                        consentButton.visibility =
-                            Button.GONE
+                            }, 1200)
+                        }
                     }
-
-                    if (
-                        isGoogleListUrl(url)
-                    ) {
-
-                        addLog(
-                            """
-                            ==============================
-                            LISTA GOOGLE MAPS RILEVATA
-
-                            URL LISTA:
-
-                            $url
-
-                            ==============================
-                            Premi SCANSIONA.
-
-                            """.trimIndent()
-                        )
-
-                        scanButton.visibility =
-                            Button.VISIBLE
-
-                        scanButton.isEnabled =
-                            true
-                    }
-                }
-
-                override fun onRenderProcessGone(
-                    view: WebView,
-                    detail: RenderProcessGoneDetail
-                ): Boolean {
-
-                    addLog(
-                        """
-                        ==============================
-                        WEBVIEW RENDERER TERMINATO
-
-                        CRASH:
-                        ${detail.didCrash()}
-
-                        ==============================
-                        """.trimIndent()
-                    )
-
-                    return true
                 }
             }
+    }
+
+    // ============================================================
+    // JAVASCRIPT BRIDGE
+    // ============================================================
+
+    inner class TravelPinsBridge {
+
+        @JavascriptInterface
+        fun log(message: String?) {
+
+            if (!message.isNullOrBlank()) {
+                addLog(message)
+            }
+        }
+
+        @JavascriptInterface
+        fun importPlaces(json: String) {
+
+            runOnUiThread {
+
+                try {
+
+                    val array = JSONArray(json)
+
+                    places.clear()
+
+                    for (i in 0 until array.length()) {
+
+                        val item = array.getJSONObject(i)
+
+                        places.add(
+                            Place(
+                                name =
+                                    item.optString("name"),
+                                address =
+                                    item.optString("address"),
+                                lat =
+                                    item.optDouble("lat"),
+                                lng =
+                                    item.optDouble("lng")
+                            )
+                        )
+                    }
+
+                    progress.visibility =
+                        ProgressBar.GONE
+
+                    webView.visibility =
+                        WebView.GONE
+
+                    importing = false
+
+                    showPlaces()
+
+                } catch (e: Exception) {
+
+                    importing = false
+
+                    progress.visibility =
+                        ProgressBar.GONE
+
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Errore importazione: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
     }
 
     // ============================================================
@@ -518,879 +369,293 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
-    // SCANSIONE
+    // IMPORTAZIONE
     // ============================================================
 
     private fun scanGoogleList() {
 
-        if (!scanButton.isEnabled) {
-            return
+        runOnUiThread {
+
+            progress.visibility =
+                ProgressBar.VISIBLE
         }
 
-        scanButton.isEnabled = false
+        val javascript = """
 
-        completeResult = ""
+            (async function() {
 
-        addLog(
-            """
-            ==============================
-            SCANSIONE LISTA AVVIATA
+                try {
 
-            Metodo:
-            entitylist/getlist
+                    var currentUrl =
+                        window.location.href;
 
-            NON utilizzo il DOM.
+                    var listId = '';
 
-            ==============================
-            """.trimIndent()
-        )
-
-        inspectGoogleListPage()
-    }
-
-    // ============================================================
-    // LETTURA ENTITYLIST
-    // ============================================================
-
-    private fun inspectGoogleListPage() {
-
-        handler.postDelayed({
-
-            val javascript = """
-
-                (async function() {
-
-                    try {
-
-                        // =================================================
-                        // URL
-                        // =================================================
-
-                        var currentUrl =
-                            window.location.href;
-
-                        TravelPins.log(
-                            'URL ANALIZZATO: ' +
-                            currentUrl
+                    var match =
+                        currentUrl.match(
+                            /!11m2!2s([^!&]+)/i
                         );
 
-                        // =================================================
-                        // LIST ID
-                        // =================================================
+                    if (match) {
+                        listId = match[1];
+                    }
 
-                        var listId = '';
+                    if (!listId) {
 
-                        var match =
+                        match =
                             currentUrl.match(
-                                /!11m2!2s([^!&]+)/i
+                                /\/local\/userlists\/list\/([^?\/]+)/i
                             );
 
                         if (match) {
                             listId = match[1];
                         }
+                    }
 
-                        if (!listId) {
+                    if (!listId) {
 
-                            match =
-                                currentUrl.match(
-                                    /\/local\/userlists\/list\/([^?\/]+)/i
-                                );
+                        TravelPins.log(
+                            'LIST ID NON TROVATO'
+                        );
 
-                            if (match) {
-                                listId = match[1];
+                        return;
+                    }
+
+                    var pb =
+                        '!1m4' +
+                        '!1s' +
+                        encodeURIComponent(listId) +
+                        '!2e1' +
+                        '!3m1!1e1' +
+                        '!2e2' +
+                        '!3e3' +
+                        '!4i500' +
+                        '!8i3' +
+                        '!16b1';
+
+                    var endpoint =
+                        '/maps/preview/entitylist/getlist' +
+                        '?authuser=0' +
+                        '&hl=it' +
+                        '&gl=it' +
+                        '&pb=' +
+                        pb;
+
+                    var response =
+                        await fetch(
+                            endpoint,
+                            {
+                                method: 'GET',
+                                credentials: 'include',
+                                cache: 'no-store'
                             }
-                        }
-
-                        if (!listId) {
-
-                            match =
-                                currentUrl.match(
-                                    /2s([A-Za-z0-9_-]{20,})/
-                                );
-
-                            if (match) {
-                                listId = match[1];
-                            }
-                        }
-
-                        TravelPins.log(
-                            'LIST ID: ' +
-                            (
-                                listId ||
-                                'NON TROVATO'
-                            )
                         );
 
-                        if (!listId) {
+                    var raw =
+                        await response.text();
 
-                            TravelPins.log(
-                                'ERRORE: LIST ID NON TROVATO'
-                            );
+                    if (!raw) {
+                        return;
+                    }
 
-                            return;
-                        }
+                    if (
+                        raw.indexOf(")]}'") === 0
+                    ) {
 
-                        // =================================================
-                        // GETLIST
-                        // =================================================
-
-                        var pb =
-                            '!1m4' +
-                            '!1s' +
-                            encodeURIComponent(listId) +
-                            '!2e1' +
-                            '!3m1!1e1' +
-                            '!2e2' +
-                            '!3e3' +
-                            '!4i500' +
-                            '!8i3' +
-                            '!16b1';
-
-                        var endpoint =
-                            '/maps/preview/entitylist/getlist' +
-                            '?authuser=0' +
-                            '&hl=it' +
-                            '&gl=it' +
-                            '&pb=' +
-                            pb;
-
-                        TravelPins.log(
-                            'GETLIST URL: ' +
-                            endpoint
-                        );
-
-                        var response =
-                            await fetch(
-                                endpoint,
-                                {
-                                    method: 'GET',
-                                    credentials: 'include',
-                                    cache: 'no-store'
-                                }
-                            );
-
-                        TravelPins.log(
-                            'GETLIST HTTP: ' +
-                            response.status
-                        );
-
-                        var raw =
-                            await response.text();
-
-                        TravelPins.log(
-                            'GETLIST LENGTH: ' +
-                            raw.length
-                        );
+                        raw = raw.substring(4);
 
                         if (
-                            !raw ||
-                            raw.length < 10
+                            raw.charAt(0) === '\\n'
                         ) {
-
-                            TravelPins.log(
-                                'RISPOSTA GETLIST VUOTA'
-                            );
-
-                            return;
+                            raw = raw.substring(1);
                         }
+                    }
 
-                        // =================================================
-                        // PARSE
-                        // =================================================
+                    var data =
+                        JSON.parse(raw);
 
-                        var cleaned =
-                            raw;
+                    var places = [];
+
+                    function number(v) {
+                        return typeof v === 'number' &&
+                               isFinite(v);
+                    }
+
+                    function coords(a,b) {
+
+                        return number(a) &&
+                               number(b) &&
+                               Math.abs(a) <= 90 &&
+                               Math.abs(b) <= 180;
+                    }
+
+                    function clean(v) {
 
                         if (
-                            cleaned.indexOf(
-                                ")]}'"
-                            ) === 0
+                            typeof v !== 'string'
                         ) {
-
-                            cleaned =
-                                cleaned.substring(4);
-
-                            if (
-                                cleaned.charAt(0) === '\\n'
-                            ) {
-
-                                cleaned =
-                                    cleaned.substring(1);
-                            }
+                            return '';
                         }
 
-                        var data;
+                        return v
+                            .replace(/\\s+/g,' ')
+                            .trim();
+                    }
+
+                    function useful(v) {
+
+                        v = clean(v);
+
+                        return (
+                            v.length >= 2 &&
+                            v.length <= 250 &&
+                            v.indexOf('http://') !== 0 &&
+                            v.indexOf('https://') !== 0
+                        );
+                    }
+
+                    function parsePlace(x) {
 
                         try {
 
-                            data =
-                                JSON.parse(cleaned);
-
-                            TravelPins.log(
-                                'JSON PARSATO CORRETTAMENTE'
-                            );
-
-                        } catch(e) {
-
-                            TravelPins.log(
-                                'JSON PARSE FALLITO: ' +
-                                e.message
-                            );
-
-                            return;
-                        }
-
-                        // =================================================
-                        // UTILITIES
-                        // =================================================
-
-                        var places = [];
-
-                        function isNumber(v) {
-
-                            return typeof v === 'number' &&
-                                   isFinite(v);
-                        }
-
-                        function looksLikeLatLng(
-                            a,
-                            b
-                        ) {
-
-                            return (
-                                isNumber(a) &&
-                                isNumber(b) &&
-                                Math.abs(a) <= 90 &&
-                                Math.abs(b) <= 180
-                            );
-                        }
-
-                        function cleanString(
-                            value
-                        ) {
-
                             if (
-                                typeof value !== 'string'
+                                !Array.isArray(x) ||
+                                x.length < 3
                             ) {
-                                return '';
-                            }
-
-                            return value
-                                .replace(/\\s+/g, ' ')
-                                .trim();
-                        }
-
-                        function isUsefulName(
-                            value
-                        ) {
-
-                            var s =
-                                cleanString(value);
-
-                            if (
-                                !s ||
-                                s.length < 2 ||
-                                s.length > 250
-                            ) {
-                                return false;
-                            }
-
-                            if (
-                                s.indexOf('http://') === 0 ||
-                                s.indexOf('https://') === 0
-                            ) {
-                                return false;
-                            }
-
-                            return true;
-                        }
-
-                        // =================================================
-                        // PARSER
-                        // =================================================
-
-                        function tryKnownPlace(x) {
-
-                            try {
-
-                                if (
-                                    !Array.isArray(x) ||
-                                    x.length < 3
-                                ) {
-                                    return;
-                                }
-
-                                var name =
-                                    cleanString(x[2]);
-
-                                if (
-                                    !isUsefulName(name)
-                                ) {
-                                    return;
-                                }
-
-                                var envelope =
-                                    x[1];
-
-                                if (
-                                    !Array.isArray(envelope)
-                                ) {
-                                    return;
-                                }
-
-                                var coordBlock =
-                                    envelope[5];
-
-                                if (
-                                    !Array.isArray(coordBlock)
-                                ) {
-                                    return;
-                                }
-
-                                var lat =
-                                    coordBlock[2];
-
-                                var lng =
-                                    coordBlock[3];
-
-                                if (
-                                    !looksLikeLatLng(
-                                        lat,
-                                        lng
-                                    )
-                                ) {
-                                    return;
-                                }
-
-                                var address = '';
-
-                                if (
-                                    typeof x[3] === 'string'
-                                ) {
-
-                                    address =
-                                        cleanString(x[3]);
-                                }
-
-                                var placeId = '';
-
-                                function findId(node) {
-
-                                    if (
-                                        placeId ||
-                                        !node
-                                    ) {
-                                        return;
-                                    }
-
-                                    if (
-                                        typeof node === 'string'
-                                    ) {
-
-                                        if (
-                                            node.length > 15 &&
-                                            node.length < 200 &&
-                                            (
-                                                node.indexOf('ChIJ') === 0 ||
-                                                node.indexOf('0x') === 0
-                                            )
-                                        ) {
-
-                                            placeId = node;
-                                        }
-
-                                        return;
-                                    }
-
-                                    if (
-                                        Array.isArray(node)
-                                    ) {
-
-                                        for (
-                                            var i = 0;
-                                            i < node.length;
-                                            i++
-                                        ) {
-
-                                            findId(node[i]);
-
-                                            if (
-                                                placeId
-                                            ) {
-                                                return;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                findId(envelope);
-
-                                places.push({
-
-                                    name: name,
-                                    address: address,
-                                    lat: lat,
-                                    lng: lng,
-                                    placeId: placeId
-
-                                });
-
-                            } catch(e) {}
-                        }
-
-                        function walk(node) {
-
-                            if (!node) {
                                 return;
                             }
 
-                            if (
-                                Array.isArray(node)
-                            ) {
+                            var name =
+                                clean(x[2]);
 
-                                tryKnownPlace(node);
-
-                                for (
-                                    var i = 0;
-                                    i < node.length;
-                                    i++
-                                ) {
-
-                                    walk(node[i]);
-                                }
-
-                            } else if (
-                                typeof node === 'object'
-                            ) {
-
-                                for (
-                                    var key in node
-                                ) {
-
-                                    try {
-                                        walk(node[key]);
-                                    } catch(e) {}
-                                }
+                            if (!useful(name)) {
+                                return;
                             }
-                        }
 
-                        walk(data);
-
-                        // =================================================
-                        // DEDUPLICA
-                        // =================================================
-
-                        var unique = [];
-                        var seen = {};
-
-                        for (
-                            var i = 0;
-                            i < places.length;
-                            i++
-                        ) {
-
-                            var p =
-                                places[i];
-
-                            var key =
-                                p.name +
-                                '|' +
-                                p.lat +
-                                '|' +
-                                p.lng;
+                            var envelope =
+                                x[1];
 
                             if (
-                                !seen[key]
+                                !Array.isArray(envelope)
                             ) {
-
-                                seen[key] = true;
-                                unique.push(p);
+                                return;
                             }
-                        }
 
-                        places = unique;
+                            var block =
+                                envelope[5];
 
-                        // =================================================
-                        // CONTEGGIO
-                        // =================================================
+                            if (
+                                !Array.isArray(block)
+                            ) {
+                                return;
+                            }
 
-                        TravelPins.log(
-                            'PLACE TROVATI: ' +
-                            places.length
-                        );
+                            var lat =
+                                block[2];
 
-                        if (
-                            places.length === 0
-                        ) {
+                            var lng =
+                                block[3];
 
-                            TravelPins.log(
-                                'NESSUN PLACE TROVATO.'
-                            );
+                            if (!coords(lat,lng)) {
+                                return;
+                            }
 
+                            var address = '';
+
+                            if (
+                                typeof x[3] === 'string'
+                            ) {
+                                address =
+                                    clean(x[3]);
+                            }
+
+                            places.push({
+                                name:name,
+                                address:address,
+                                lat:lat,
+                                lng:lng
+                            });
+
+                        } catch(e) {}
+                    }
+
+                    function walk(node) {
+
+                        if (!node) {
                             return;
                         }
 
-                        // =================================================
-                        // OUTPUT COMPLETO
-                        // =================================================
-
-                        var output = '';
-
-                        output +=
-                            'TITLE: Google Maps List\\n\\n';
-
-                        output +=
-                            'PLACES (' +
-                            places.length +
-                            ')\\n';
-
-                        output +=
-                            '==============================\\n';
-
-                        for (
-                            var j = 0;
-                            j < places.length;
-                            j++
+                        if (
+                            Array.isArray(node)
                         ) {
 
-                            var place =
-                                places[j];
+                            parsePlace(node);
 
-                            output +=
-                                '\\n' +
-                                (j + 1) +
-                                '. ' +
-                                place.name +
-                                '\\n';
-
-                            if (
-                                place.address
+                            for (
+                                var i=0;
+                                i<node.length;
+                                i++
                             ) {
-
-                                output +=
-                                    '   ' +
-                                    place.address +
-                                    '\\n';
+                                walk(node[i]);
                             }
 
-                            output +=
-                                '   COORD: ' +
-                                place.lat +
-                                ', ' +
-                                place.lng +
-                                '\\n';
+                        } else if (
+                            typeof node === 'object'
+                        ) {
 
-                            if (
-                                place.placeId
+                            for (
+                                var key in node
                             ) {
 
-                                output +=
-                                    '   PLACE ID: ' +
-                                    place.placeId +
-                                    '\\n';
+                                walk(node[key]);
                             }
-
-                            output +=
-                                '   MAPS: ' +
-                                'https://www.google.com/maps/search/?api=1&query=' +
-                                encodeURIComponent(
-                                    place.lat +
-                                    ',' +
-                                    place.lng
-                                ) +
-                                '\\n';
-
-                            output +=
-                                '------------------------------\\n';
                         }
-
-                        // =================================================
-                        // INVIO COMPLETO
-                        // =================================================
-
-                        TravelPins.log(
-                            '===== RISULTATO LISTA ====='
-                        );
-
-                        TravelPins.log(
-                            output
-                        );
-
-                        // =================================================
-                        // SALVA NELLA WEBVIEW
-                        // =================================================
-
-                        window.__travelpins_places =
-                            places;
-
-                        window.__travelpins_output =
-                            output;
-
-                    } catch(e) {
-
-                        TravelPins.log(
-                            'ERRORE GENERALE GETLIST: ' +
-                            e.message
-                        );
                     }
 
-                })();
+                    walk(data);
 
-            """.trimIndent()
-
-            webView.evaluateJavascript(
-                javascript
-            ) { result ->
-
-                addLog(
-                    """
-                    ==============================
-                    CALLBACK GETLIST
-
-                    SCANSIONE TERMINATA.
-
-                    ==============================
-                    """.trimIndent()
-                )
-
-                // Recuperiamo direttamente il risultato
-                // completo dalla WebView.
-
-                val retrieveJavascript = """
-                    (function() {
-                        return window.__travelpins_output || '';
-                    })();
-                """.trimIndent()
-
-                webView.evaluateJavascript(
-                    retrieveJavascript
-                ) { encodedResult ->
-
-                    val decoded =
-                        decodeJavascriptString(
-                            encodedResult
-                        )
-
-                    if (
-                        decoded.isNotBlank()
-                    ) {
-
-                        completeResult =
-                            decoded
-
-                        // Il TextView può contenere
-                        // tranquillamente l'intero risultato.
-
-                        output.text =
-                            buildFullScreenOutput(
-                                decoded
-                            )
-
-                        addLog(
-                            """
-                            ==============================
-                            RISULTATO COMPLETO ACQUISITO
-
-                            CARATTERI:
-                            ${decoded.length}
-
-                            ==============================
-                            """.trimIndent()
-                        )
-
-                    } else {
-
-                        addLog(
-                            "ATTENZIONE: risultato completo non recuperato."
-                        )
-                    }
-
-                    runOnUiThread {
-
-                        scanButton.isEnabled =
-                            true
-                    }
-                }
-            }
-
-        }, 1000)
-    }
-
-    // ============================================================
-    // DECODIFICA RISULTATO JAVASCRIPT
-    // ============================================================
-
-    private fun decodeJavascriptString(
-        value: String?
-    ): String {
-
-        if (
-            value.isNullOrBlank()
-        ) {
-            return ""
-        }
-
-        var text =
-            value.trim()
-
-        if (
-            text == "null" ||
-            text == "\"\""
-        ) {
-            return ""
-        }
-
-        try {
-
-            if (
-                text.startsWith("\"") &&
-                text.endsWith("\"")
-            ) {
-
-                text =
-                    text.substring(
-                        1,
-                        text.length - 1
-                    )
-            }
-
-            text =
-                text.replace(
-                    "\\n",
-                    "\n"
-                )
-
-            text =
-                text.replace(
-                    "\\r",
-                    "\r"
-                )
-
-            text =
-                text.replace(
-                    "\\t",
-                    "\t"
-                )
-
-            text =
-                text.replace(
-                    "\\\"",
-                    "\""
-                )
-
-            text =
-                text.replace(
-                    "\\\\",
-                    "\\"
-                )
-
-        } catch(e: Exception) {
-        }
-
-        return text
-    }
-
-    // ============================================================
-    // OUTPUT SCHERMATA
-    // ============================================================
-
-    private fun buildFullScreenOutput(
-        result: String
-    ): String {
-
-        return (
-            "TRAVELPINS — RISULTATO SCANSIONE\n\n" +
-            result
-        )
-    }
-
-    // ============================================================
-    // CONSENSO GOOGLE
-    // ============================================================
-
-    private fun acceptGoogleConsent() {
-
-        addLog(
-            """
-            ==============================
-            AVVIO ACCETTAZIONE GOOGLE
-
-            ==============================
-            """.trimIndent()
-        )
-
-        val javascript = """
-
-            (function() {
-
-                try {
-
-                    var result = [];
-
-                    var elements =
-                        document.querySelectorAll(
-                            'button, div[role="button"], input'
-                        );
+                    var unique = [];
+                    var seen = {};
 
                     for (
-                        var i = 0;
-                        i < elements.length;
+                        var i=0;
+                        i<places.length;
                         i++
                     ) {
 
-                        var e =
-                            elements[i];
+                        var p =
+                            places[i];
 
-                        var text =
-                            (
-                                e.innerText ||
-                                e.value ||
-                                e.getAttribute(
-                                    'aria-label'
-                                ) ||
-                                ''
-                            )
-                            .trim()
-                            .toLowerCase();
+                        var key =
+                            p.name +
+                            '|' +
+                            p.lat +
+                            '|' +
+                            p.lng;
 
-                        if (
-                            text === 'accetta tutto' ||
-                            text === 'accetta' ||
-                            text === 'accept all' ||
-                            text === 'accept'
-                        ) {
+                        if (!seen[key]) {
 
-                            result.push(
-                                'BUTTON_FOUND: ' +
-                                text
-                            );
+                            seen[key] = true;
 
-                            try {
-
-                                e.click();
-
-                                result.push(
-                                    'CLICK_OK'
-                                );
-
-                            } catch(err) {
-
-                                result.push(
-                                    'CLICK_ERROR: ' +
-                                    err.message
-                                );
-                            }
-
-                            break;
+                            unique.push(p);
                         }
                     }
 
-                    return result.join('|');
+                    TravelPins.log(
+                        'LUOGHI IMPORTATI: ' +
+                        unique.length
+                    );
+
+                    TravelPins.importPlaces(
+                        JSON.stringify(unique)
+                    );
 
                 } catch(e) {
 
-                    return 'ERROR: ' +
-                           e.message;
+                    TravelPins.log(
+                        'ERRORE: ' +
+                        e.message
+                    );
                 }
 
             })();
@@ -1398,215 +663,616 @@ class MainActivity : Activity() {
         """.trimIndent()
 
         webView.evaluateJavascript(
-            javascript
-        ) { result ->
-
-            addLog(
-                """
-                [CONSENSO RISULTATO]
-
-                $result
-
-                ==============================
-                """.trimIndent()
-            )
-        }
+            javascript,
+            null
+        )
     }
 
     // ============================================================
-    // NETWORK HOOK
+    // HOOK
     // ============================================================
 
     private fun injectNetworkHook() {
 
-        val javascript = """
+        webView.evaluateJavascript(
+            """
+            (function(){
 
-            (function() {
+                if(window.__tp_hooked)
+                    return;
 
-                if (
-                    window.__travelpins_hooked
-                ) {
+                window.__tp_hooked=true;
 
-                    return 'ALREADY_INSTALLED';
-                }
+                var f=window.fetch;
 
-                window.__travelpins_hooked =
-                    true;
+                window.fetch=function(){
 
-                var originalFetch =
-                    window.fetch;
-
-                window.fetch =
-                    async function() {
-
-                        var input =
-                            arguments[0];
-
-                        var options =
-                            arguments[1] || {};
-
-                        var url =
-                            typeof input === 'string'
-                            ? input
-                            : input.url;
-
-                        var method =
-                            options.method ||
-                            (
-                                typeof input !== 'string'
-                                ? input.method
-                                : 'GET'
-                            ) ||
-                            'GET';
-
-                        var body =
-                            options.body || '';
-
-                        try {
-
-                            TravelPins.network(
-                                'FETCH_REQUEST',
-                                method,
-                                url,
-                                body
-                            );
-
-                        } catch(e) {}
-
-                        return originalFetch.apply(
-                            this,
-                            arguments
-                        );
-                    };
-
-                var originalOpen =
-                    XMLHttpRequest.prototype.open;
-
-                var originalSend =
-                    XMLHttpRequest.prototype.send;
-
-                XMLHttpRequest.prototype.open =
-                    function(
-                        method,
-                        url
-                    ) {
-
-                        this.__tp_method =
-                            method;
-
-                        this.__tp_url =
-                            url;
-
-                        return originalOpen.apply(
-                            this,
-                            arguments
-                        );
-                    };
-
-                XMLHttpRequest.prototype.send =
-                    function(body) {
-
-                        var xhr =
-                            this;
-
-                        try {
-
-                            TravelPins.network(
-                                'XHR_REQUEST',
-                                xhr.__tp_method ||
-                                'GET',
-                                xhr.__tp_url ||
-                                '',
-                                body || ''
-                            );
-
-                        } catch(e) {}
-
-                        return originalSend.apply(
-                            this,
-                            arguments
-                        );
-                    };
-
-                try {
-
-                    TravelPins.log(
-                        'NETWORK HOOK INSTALLATO'
+                    return f.apply(
+                        this,
+                        arguments
                     );
-
-                } catch(e) {}
-
-                return 'HOOK_INSTALLED';
+                };
 
             })();
+            """.trimIndent(),
+            null
+        )
+    }
 
-        """.trimIndent()
+    // ============================================================
+    // VISUALIZZAZIONE LUOGHI
+    // ============================================================
 
-        webView.evaluateJavascript(
-            javascript
-        ) { result ->
+    private fun showPlaces() {
 
-            addLog(
-                "[JAVASCRIPT HOOK] $result"
+        output.removeAllViews()
+
+        val title = TextView(this).apply {
+
+            text =
+                "📍 Luoghi importati: ${places.size}"
+
+            textSize = 25f
+            setTextColor(Color.BLACK)
+            setPadding(0,10,0,20)
+        }
+
+        output.addView(title)
+
+        places.forEachIndexed { index, place ->
+
+            addPlaceCard(
+                index,
+                place
             )
         }
     }
 
-    // ============================================================
-    // REQUEST MONITOR
-    // ============================================================
-
-    private fun inspectRequest(
-        request: WebResourceRequest
+    private fun addPlaceCard(
+        index: Int,
+        place: Place
     ) {
 
-        val url =
-            request.url.toString()
+        val category =
+            categories.find {
+                it.id == place.categoryId
+            }
 
-        val lower =
-            url.lowercase()
+        val card =
+            LinearLayout(this).apply {
 
-        val interesting =
-            lower.contains("userlists") ||
-            lower.contains("listview") ||
-            lower.contains("entitylist") ||
-            lower.contains("batchexecute") ||
-            lower.contains("rpc")
+                orientation =
+                    LinearLayout.VERTICAL
 
-        if (!interesting) {
-            return
+                setPadding(
+                    20,
+                    18,
+                    20,
+                    18
+                )
+
+                setBackgroundColor(
+                    Color.rgb(
+                        245,
+                        245,
+                        245
+                    )
+                )
+            }
+
+        val title =
+            TextView(this).apply {
+
+                text =
+                    "${index + 1}. ${place.name}"
+
+                textSize = 18f
+                setTextColor(Color.BLACK)
+            }
+
+        card.addView(title)
+
+        if (place.address.isNotBlank()) {
+
+            val address =
+                TextView(this).apply {
+
+                    text =
+                        place.address
+
+                    textSize = 14f
+                    setTextColor(Color.DKGRAY)
+                    setPadding(0,8,0,8)
+                }
+
+            card.addView(address)
         }
 
-        addLog(
-            """
-            [GOOGLE REQUEST]
+        val categoryText =
+            TextView(this).apply {
 
-            ${request.method}
-            $url
+                text =
+                    if (category == null)
+                        "⚪ Nessuna categoria"
+                    else
+                        "${category.icon} ${category.name}"
 
-            MAIN FRAME:
-            ${request.isForMainFrame}
+                textSize = 15f
 
-            """.trimIndent()
+                if (category != null) {
+                    setTextColor(category.color)
+                } else {
+                    setTextColor(Color.GRAY)
+                }
+
+                setPadding(0,6,0,6)
+
+                setOnClickListener {
+
+                    chooseCategory(place)
+                }
+            }
+
+        card.addView(categoryText)
+
+        card.setOnClickListener {
+
+            chooseCategory(place)
+        }
+
+        val params =
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+
+        params.setMargins(
+            0,
+            0,
+            0,
+            15
+        )
+
+        output.addView(
+            card,
+            params
         )
     }
 
     // ============================================================
-    // NAVIGAZIONE
+    // CATEGORIE
     // ============================================================
 
-    private fun inspectNavigation(
-        url: String
+    private fun showCategories() {
+
+        val dialog =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    40,
+                    20,
+                    40,
+                    10
+                )
+            }
+
+        categories.forEach { category ->
+
+            val row =
+                LinearLayout(this).apply {
+
+                    orientation =
+                        LinearLayout.HORIZONTAL
+
+                    setPadding(
+                        0,
+                        15,
+                        0,
+                        15
+                    )
+                }
+
+            val icon =
+                TextView(this).apply {
+
+                    text =
+                        category.icon
+
+                    textSize = 25f
+                }
+
+            val name =
+                TextView(this).apply {
+
+                    text =
+                        category.name
+
+                    textSize = 18f
+
+                    setTextColor(
+                        category.color
+                    )
+
+                    setPadding(
+                        20,
+                        0,
+                        0,
+                        0
+                    )
+                }
+
+            row.addView(icon)
+
+            row.addView(
+                name,
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+
+            dialog.addView(row)
+        }
+
+        val add =
+            Button(this).apply {
+
+                text =
+                    "＋ Nuova categoria"
+
+                setOnClickListener {
+
+                    createCategory()
+
+                }
+            }
+
+        dialog.addView(add)
+
+        AlertDialogBuilder(
+            "Categorie",
+            dialog
+        )
+    }
+
+    private fun chooseCategory(
+        place: Place
     ) {
 
-        addLog(
-            """
-            [NAVIGAZIONE]
+        if (categories.isEmpty()) {
 
-            $url
+            createCategory()
 
-            """.trimIndent()
+            return
+        }
+
+        val names =
+            categories.map {
+                "${it.icon} ${it.name}"
+            }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                "Categoria per ${place.name}"
+            )
+            .setItems(names) { _, which ->
+
+                place.categoryId =
+                    categories[which].id
+
+                savePlaces()
+
+                showPlaces()
+            }
+            .setNegativeButton(
+                "Nessuna",
+                null
+            )
+            .show()
+    }
+
+    private fun createCategory() {
+
+        val layout =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    40,
+                    10,
+                    40,
+                    10
+                )
+            }
+
+        val name =
+            EditText(this).apply {
+
+                hint =
+                    "Nome categoria"
+            }
+
+        val icons =
+            arrayOf(
+                "📍",
+                "🍴",
+                "🏰",
+                "🌊",
+                "🏔️",
+                "🏖️",
+                "☕",
+                "🍺",
+                "📸",
+                "🚗",
+                "🏨",
+                "⭐"
+            )
+
+        val iconSpinner =
+            Spinner(this)
+
+        iconSpinner.adapter =
+            ArrayAdapter(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                icons
+            )
+
+        layout.addView(name)
+        layout.addView(iconSpinner)
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                "Nuova categoria"
+            )
+            .setView(layout)
+            .setPositiveButton(
+                "Crea"
+            ) { _, _ ->
+
+                val categoryName =
+                    name.text.toString().trim()
+
+                if (categoryName.isBlank()) {
+                    return@setPositiveButton
+                }
+
+                val newCategory =
+                    Category(
+                        id =
+                            System.currentTimeMillis()
+                                .toString(),
+
+                        name =
+                            categoryName,
+
+                        color =
+                            Color.rgb(
+                                30,
+                                100,
+                                200
+                            ),
+
+                        icon =
+                            icons[
+                                iconSpinner
+                                    .selectedItemPosition
+                            ]
+                    )
+
+                categories.add(
+                    newCategory
+                )
+
+                saveCategories()
+
+                Toast.makeText(
+                    this,
+                    "Categoria creata",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+            }
+            .setNegativeButton(
+                "Annulla",
+                null
+            )
+            .show()
+    }
+
+    // ============================================================
+    // DIALOG CATEGORIE
+    // ============================================================
+
+    private fun AlertDialogBuilder(
+        title: String,
+        view: LinearLayout
+    ) {
+
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(view)
+            .setPositiveButton(
+                "Chiudi",
+                null
+            )
+            .show()
+    }
+
+    // ============================================================
+    // SALVATAGGIO CATEGORIE
+    // ============================================================
+
+    private fun saveCategories() {
+
+        val array = JSONArray()
+
+        categories.forEach {
+
+            val obj =
+                JSONObject()
+
+            obj.put(
+                "id",
+                it.id
+            )
+
+            obj.put(
+                "name",
+                it.name
+            )
+
+            obj.put(
+                "color",
+                it.color
+            )
+
+            obj.put(
+                "icon",
+                it.icon
+            )
+
+            array.put(obj)
+        }
+
+        getPreferences(
+            Context.MODE_PRIVATE
         )
+            .edit()
+            .putString(
+                "categories",
+                array.toString()
+            )
+            .apply()
+    }
+
+    private fun loadCategories() {
+
+        categories.clear()
+
+        val raw =
+            getPreferences(
+                Context.MODE_PRIVATE
+            )
+                .getString(
+                    "categories",
+                    null
+                )
+
+        if (raw.isNullOrBlank()) {
+
+            categories.add(
+                Category(
+                    "1",
+                    "Da vedere",
+                    Color.rgb(30,100,200),
+                    "📍"
+                )
+            )
+
+            categories.add(
+                Category(
+                    "2",
+                    "Ristoranti",
+                    Color.rgb(220,80,50),
+                    "🍴"
+                )
+            )
+
+            categories.add(
+                Category(
+                    "3",
+                    "Natura",
+                    Color.rgb(40,150,70),
+                    "🌿"
+                )
+            )
+
+            saveCategories()
+
+            return
+        }
+
+        try {
+
+            val array =
+                JSONArray(raw)
+
+            for (i in 0 until array.length()) {
+
+                val obj =
+                    array.getJSONObject(i)
+
+                categories.add(
+                    Category(
+                        obj.getString("id"),
+                        obj.getString("name"),
+                        obj.getInt("color"),
+                        obj.getString("icon")
+                    )
+                )
+            }
+
+        } catch (e: Exception) {}
+    }
+
+    // ============================================================
+    // SALVATAGGIO LUOGHI
+    // ============================================================
+
+    private fun savePlaces() {
+
+        val array =
+            JSONArray()
+
+        places.forEach {
+
+            val obj =
+                JSONObject()
+
+            obj.put(
+                "name",
+                it.name
+            )
+
+            obj.put(
+                "address",
+                it.address
+            )
+
+            obj.put(
+                "lat",
+                it.lat
+            )
+
+            obj.put(
+                "lng",
+                it.lng
+            )
+
+            obj.put(
+                "category",
+                it.categoryId
+            )
+
+            array.put(obj)
+        }
+
+        getPreferences(
+            Context.MODE_PRIVATE
+        )
+            .edit()
+            .putString(
+                "places",
+                array.toString()
+            )
+            .apply()
     }
 
     // ============================================================
@@ -1616,17 +1282,6 @@ class MainActivity : Activity() {
     private fun handleGoogleIntent(
         intentUrl: String
     ) {
-
-        addLog(
-            """
-            ==============================
-            GOOGLE INTENT INTERCETTATO
-
-            CERCO FALLBACK WEB...
-
-            ==============================
-            """.trimIndent()
-        )
 
         try {
 
@@ -1638,74 +1293,18 @@ class MainActivity : Activity() {
                     "S.browser_fallback_url"
                 )
 
-            if (
-                !fallback.isNullOrBlank()
-            ) {
+            if (!fallback.isNullOrBlank()) {
 
                 webView.loadUrl(
                     fallback
                 )
-
-                return
             }
 
-            val marker =
-                "S.browser_fallback_url="
-
-            val index =
-                intentUrl.indexOf(marker)
-
-            if (index >= 0) {
-
-                var fallbackText =
-                    intentUrl.substring(
-                        index + marker.length
-                    )
-
-                val end =
-                    fallbackText.indexOf(
-                        "#Intent"
-                    )
-
-                if (end >= 0) {
-
-                    fallbackText =
-                        fallbackText.substring(
-                            0,
-                            end
-                        )
-                }
-
-                fallbackText =
-                    Uri.decode(
-                        fallbackText
-                    )
-
-                webView.loadUrl(
-                    fallbackText
-                )
-
-                return
-            }
-
-            addLog(
-                "FALLBACK URL NON TROVATO"
-            )
-
-        } catch(e: Exception) {
-
-            addLog(
-                """
-                ERRORE PARSING INTENT:
-
-                ${e.message}
-                """.trimIndent()
-            )
-        }
+        } catch (e: Exception) {}
     }
 
     // ============================================================
-    // SHARE INTENT
+    // CONDIVIDI
     // ============================================================
 
     private fun handleIntent(
@@ -1724,85 +1323,27 @@ class MainActivity : Activity() {
                 Intent.EXTRA_TEXT
             )
 
-        if (
-            sharedText.isNullOrBlank()
-        ) {
-
-            addLog(
-                "Nessun testo ricevuto."
-            )
-
+        if (sharedText.isNullOrBlank()) {
             return
         }
 
         val match =
             Regex(
                 """https?://\S+"""
-            ).find(
-                sharedText
-            )
+            ).find(sharedText)
 
         if (match == null) {
-
-            addLog(
-                "Nessun URL trovato."
-            )
-
             return
         }
 
         val url =
             match.value
 
-        addLog(
-            """
-            ==============================
-            LINK RICEVUTO
-
-            $url
-
-            ==============================
-            AVVIO GOOGLE MAPS WEB...
-            """.trimIndent()
-        )
+        webView.visibility =
+            WebView.VISIBLE
 
         webView.loadUrl(url)
     }
-
-    // ============================================================
-    // LOG
-    // ============================================================
-
-    private fun addLog(
-        text: String
-    ) {
-
-        log.add(text)
-
-        while (
-            log.size > 100
-        ) {
-            log.poll()
-        }
-
-        updateScreen()
-    }
-
-    private fun updateScreen() {
-
-        runOnUiThread {
-
-            output.text =
-                "TRAVELPINS NETWORK MONITOR\n\n" +
-                log.joinToString(
-                    separator = "\n"
-                )
-        }
-    }
-
-    // ============================================================
-    // NEW INTENT
-    // ============================================================
 
     override fun onNewIntent(
         intent: Intent
@@ -1816,15 +1357,28 @@ class MainActivity : Activity() {
     }
 
     // ============================================================
+    // LOG
+    // ============================================================
+
+    private fun addLog(
+        message: String
+    ) {
+
+        log.add(message)
+
+        while (log.size > 50) {
+            log.poll()
+        }
+    }
+
+    // ============================================================
     // BACK
     // ============================================================
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
-        if (
-            webView.canGoBack()
-        ) {
+        if (webView.canGoBack()) {
 
             webView.goBack()
 
