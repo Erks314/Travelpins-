@@ -1,11 +1,11 @@
 package com.travelpins.test
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : Activity() {
 
     private lateinit var output: TextView
 
@@ -31,35 +31,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun processIntent(intent: Intent?) {
 
-        if (intent == null) return
-
-        if (intent.action != Intent.ACTION_SEND) return
-
-        val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
-
-        if (sharedText.isNullOrBlank()) {
-            output.text = """
-                TravelPins TEST
-
-                L'app è stata aperta,
-                ma Google Maps non ha fornito
-                alcun testo.
-            """.trimIndent()
+        if (intent?.action != Intent.ACTION_SEND) {
             return
         }
 
-        output.text = """
+        val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+
+        output.text = if (sharedText.isNullOrBlank()) {
+            """
             TravelPins TEST
 
-            ✓ Link ricevuto!
+            L'app è stata aperta,
+            ma non è stato ricevuto alcun testo.
+            """.trimIndent()
+        } else {
+            """
+            TravelPins TEST
+
+            ✓ LINK RICEVUTO!
 
             $sharedText
 
             --------------------
 
-            Questo significa che
             Google Maps → TravelPins
-            funziona correttamente.
-        """.trimIndent()
+            FUNZIONA!
+            """.trimIndent()
+        }
     }
 }
