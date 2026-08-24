@@ -482,7 +482,8 @@ class MainActivity : ComponentActivity() {
                     orientation =
                         LinearLayout.VERTICAL
 
-                    gravity = Gravity.CENTER
+                    gravity =
+                        Gravity.CENTER
 
                     setPadding(
                         24,
@@ -1429,6 +1430,7 @@ class MainActivity : ComponentActivity() {
                         249,
                         250
                     )
+                )
 
                 setPadding(
                     28,
