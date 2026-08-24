@@ -41,4 +41,10 @@ interface PlaceDao {
         LIMIT 1
     """)
     suspend fun findByPlaceId(placeId: String): Place?
+
+    @Query("""
+        DELETE FROM places
+        WHERE id = :placeId
+    """)
+    suspend fun deleteById(placeId: Long)
 }
