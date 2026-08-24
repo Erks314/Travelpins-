@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [Place::class, Category::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,7 +25,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "travelpins.db"
-                ).build().also { INSTANCE = it }
+                )
+                    .fallbackToDestructiveMigration(true)
+                    .build().also { INSTANCE = it }
             }
         }
     }
