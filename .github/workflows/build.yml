@@ -30,11 +30,8 @@ jobs:
 
       - name: Get SHA-1
         run: |
-          keytool -list -v \
-            -keystore ~/.android/debug.keystore \
-            -alias androiddebugkey \
-            -storepass android \
-            -keypass android
+          find "$HOME" -name "debug.keystore" -type f -print
+          find "$GITHUB_WORKSPACE" -name "*.keystore" -type f -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
