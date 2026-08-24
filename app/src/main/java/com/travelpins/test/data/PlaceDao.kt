@@ -11,14 +11,21 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface PlaceDao {
 
-    @Query("SELECT * FROM places ORDER BY importedAt DESC")
+    @Query(
+        "SELECT * FROM places " +
+                "ORDER BY importedAt DESC"
+    )
     fun observeAll(): Flow<List<Place>>
 
-    @Query("SELECT * FROM places ORDER BY importedAt DESC")
+    @Query(
+        "SELECT * FROM places " +
+                "ORDER BY importedAt DESC"
+    )
     suspend fun observeAllOnce(): List<Place>
 
     @Query(
-        "SELECT * FROM places WHERE categoryId = :categoryId " +
+        "SELECT * FROM places " +
+                "WHERE categoryId = :categoryId " +
                 "ORDER BY name ASC"
     )
     fun observeByCategory(
@@ -26,20 +33,26 @@ interface PlaceDao {
     ): Flow<List<Place>>
 
     @Query(
-        "SELECT * FROM places WHERE categoryId IS NULL " +
+        "SELECT * FROM places " +
+                "WHERE categoryId IS NULL " +
                 "ORDER BY importedAt DESC"
     )
     fun observeUncategorized(): Flow<List<Place>>
 
     @Query(
-        "SELECT * FROM places WHERE placeId = :placeId " +
+        "SELECT * FROM places " +
+                "WHERE placeId = :placeId " +
+                "AND sourceListId = :sourceListId " +
                 "LIMIT 1"
     )
-    suspend fun findByPlaceId(
-        placeId: String
+    suspend fun findByPlaceIdInList(
+        placeId: String,
+        sourceListId: String
     ): Place?
 
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    @Insert(
+        onConflict = OnConflictStrategy.IGNORE
+    )
     suspend fun insertAll(
         places: List<Place>
     ): List<Long>
@@ -50,7 +63,8 @@ interface PlaceDao {
     )
 
     @Query(
-        "UPDATE places SET categoryId = :categoryId " +
+        "UPDATE places " +
+                "SET categoryId = :categoryId " +
                 "WHERE id = :placeId"
     )
     suspend fun assignCategory(
@@ -64,7 +78,8 @@ interface PlaceDao {
     )
 
     @Query(
-        "DELETE FROM places WHERE id = :placeId"
+        "DELETE FROM places " +
+                "WHERE id = :placeId"
     )
     suspend fun deleteById(
         placeId: Long
