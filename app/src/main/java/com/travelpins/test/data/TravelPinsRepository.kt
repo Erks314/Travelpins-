@@ -9,15 +9,10 @@ class TravelPinsRepository(context: Context) {
     private val placeDao = db.placeDao()
     private val categoryDao = db.categoryDao()
 
-    val places: Flow<List<Place>> =
-        placeDao.observeAll()
+    val places: Flow<List<Place>> = placeDao.observeAll()
+    val categories: Flow<List<Category>> = categoryDao.observeAll()
 
-    val categories: Flow<List<Category>> =
-        categoryDao.observeAll()
-
-    fun placesInCategory(
-        categoryId: Long
-    ): Flow<List<Place>> =
+    fun placesInCategory(categoryId: Long): Flow<List<Place>> =
         placeDao.observeByCategory(categoryId)
 
     val uncategorizedPlaces: Flow<List<Place>> =
@@ -27,98 +22,25 @@ class TravelPinsRepository(context: Context) {
         places: List<Place>
     ): Int {
 
-        // Prima di una nuova importazione eliminiamo
-        // eventuali duplicati già presenti nel database.
-        cleanDuplicatePlaces()
+        val newPlaces = places.filter { place ->
 
-        var savedCount = 0
+            val placeId = place.placeId
 
-        for (place in places) {
-
-            if (!place.placeId.isNullOrBlank()) {
-
-                val existing =
-                    placeDao.findByPlaceId(
-                        place.placeId
-                    )
-
-                // Il luogo è già presente:
-                // non lo reinseriamo e non tocchiamo
-                // la sua eventuale categoria.
-                if (existing != null) {
-                    continue
-                }
-            }
-
-            val result =
-                placeDao.insertAll(
-                    listOf(place)
-                )
-
-            if (
-                result.isNotEmpty() &&
-                result.first() != -1L
-            ) {
-                savedCount++
+            if (placeId.isNullOrBlank()) {
+                true
+            } else {
+                placeDao.findByPlaceId(placeId) == null
             }
         }
 
-        return savedCount
-    }
-
-    suspend fun cleanDuplicatePlaces(): Int {
-
-        val allPlaces =
-            placeDao.observeAllOnce()
-
-        val groups =
-            allPlaces
-                .filter {
-                    !it.placeId.isNullOrBlank()
-                }
-                .groupBy {
-                    it.placeId
-                }
-
-        var deletedCount = 0
-
-        groups.values.forEach { duplicates ->
-
-            if (duplicates.size <= 1) {
-                return@forEach
-            }
-
-            // Conserviamo preferibilmente il record
-            // che ha già una categoria.
-            //
-            // A parità, conserviamo quello importato
-            // più recentemente.
-            val keep =
-                duplicates
-                    .sortedWith(
-                        compareByDescending<Place> {
-                            it.categoryId != null
-                        }.thenByDescending {
-                            it.importedAt
-                        }
-                    )
-                    .first()
-
-            duplicates
-                .filter {
-                    it.id != keep.id
-                }
-                .forEach { duplicate ->
-
-                    placeDao.deleteById(
-                        duplicate.id
-                    )
-
-                    deletedCount++
-                }
+        if (newPlaces.isEmpty()) {
+            return 0
         }
 
-        return deletedCount
+        val inserted =
+            placeDao.insertAll(newPlaces)
+
+        return inserted.count { it != -1L }
     }
 
     suspend fun createCategory(
