@@ -1,4 +1,5 @@
 package com.travelpins.test
+
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -43,12 +44,18 @@ import java.net.URLDecoder
 
 class MainActivity : ComponentActivity() {
 
+    private enum class Screen { HOME, LIST_DETAIL }
+
     private lateinit var webView: WebView
     private lateinit var outputView: TextView
     private lateinit var repository: TravelPinsRepository
 
     private var mapView: MapView? = null
     private var googleMap: GoogleMap? = null
+
+    private var currentScreen: Screen = Screen.HOME
+    private var viewingListId: String? = null
+    private var viewingListName: String? = null
 
     private var currentListId: String? = null
     private var currentListName: String? = null
@@ -80,6 +87,15 @@ class MainActivity : ComponentActivity() {
         currentListId = null
         currentListName = null
         handleIntent(intent)
+    }
+
+    @Suppress("DEPRECATION", "MissingSuperCall")
+    override fun onBackPressed() {
+        if (currentScreen == Screen.LIST_DETAIL) {
+            showHome()
+        } else {
+            super.onBackPressed()
+        }
     }
 
     override fun onStart() {
@@ -114,10 +130,15 @@ class MainActivity : ComponentActivity() {
     }
 
     // ============================================================
-    // HOME
+    // HOME — solo elenco degli "elenchi" importati
     // ============================================================
 
     private fun showHome() {
+        currentScreen = Screen.HOME
+        viewingListId = null
+        viewingListName = null
+        selectedCategoryId = null
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(248, 249, 250))
@@ -132,7 +153,7 @@ class MainActivity : ComponentActivity() {
         }
 
         val subtitle = TextView(this).apply {
-            text = "I miei luoghi"
+            text = "I miei elenchi"
             textSize = 18f
             setTextColor(Color.rgb(90, 90, 90))
             setPadding(0, 0, 0, 18)
@@ -141,36 +162,171 @@ class MainActivity : ComponentActivity() {
         root.addView(title)
         root.addView(subtitle)
 
-        val countCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(20, 18, 20, 18)
-            background = roundedBackground(Color.WHITE, 18f)
+        val importButton = Button(this).apply {
+            text = "＋  IMPORTA DA GOOGLE MAPS"
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            background = roundedBackground(Color.rgb(45, 105, 225), 16f)
+            setPadding(12, 8, 12, 8)
+            setOnClickListener { showImporter() }
         }
-
-        val countTitle = TextView(this).apply {
-            text = "LUOGHI SALVATI"
-            textSize = 12f
-            setTextColor(Color.rgb(110, 110, 110))
-        }
-
-        val countView = TextView(this).apply {
-            tag = "place_count"
-            text = "0"
-            textSize = 30f
-            setTextColor(Color.rgb(30, 30, 30))
-            setPadding(0, 4, 0, 0)
-        }
-
-        countCard.addView(countTitle)
-        countCard.addView(countView)
 
         root.addView(
-            countCard,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 12 }
+            importButton,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 58).apply {
+                bottomMargin = 18
+            }
         )
+
+        val listsTitle = TextView(this).apply {
+            text = "ELENCHI IMPORTATI"
+            textSize = 13f
+            setTextColor(Color.rgb(100, 100, 100))
+            setPadding(2, 0, 0, 8)
+        }
+
+        root.addView(listsTitle)
+
+        val listsScroll = ScrollView(this)
+
+        val listsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = "lists_container"
+            setPadding(0, 0, 0, 20)
+        }
+
+        listsScroll.addView(listsContainer)
+
+        root.addView(
+            listsScroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
+
+        setContentView(root)
+        refreshHome()
+    }
+
+    private fun refreshListsScreen(content: View) {
+        val container = content.findViewWithTag<LinearLayout>("lists_container") ?: return
+        container.removeAllViews()
+
+        if (currentPlaces.isEmpty()) {
+            val emptyCard = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(24, 32, 24, 32)
+                background = roundedBackground(Color.WHITE, 18f)
+            }
+
+            val emptyTitle = TextView(this).apply {
+                text = "Nessun elenco importato"
+                textSize = 17f
+                setTextColor(Color.rgb(50, 50, 50))
+                gravity = Gravity.CENTER
+            }
+
+            val emptyText = TextView(this).apply {
+                text = "Importa una lista da Google Maps per iniziare."
+                textSize = 14f
+                setTextColor(Color.rgb(110, 110, 110))
+                gravity = Gravity.CENTER
+                setPadding(0, 8, 0, 0)
+            }
+
+            emptyCard.addView(emptyTitle)
+            emptyCard.addView(emptyText)
+
+            container.addView(
+                emptyCard,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            return
+        }
+
+        val groups = currentPlaces
+            .groupBy { it.sourceListId to it.sourceListName }
+            .toList()
+            .sortedByDescending { (_, places) -> places.maxOf { it.importedAt } }
+
+        groups.forEach { (key, placesInGroup) ->
+            val (listId, listName) = key
+            val displayName = listName?.takeIf { it.isNotBlank() } ?: "Elenco senza titolo"
+
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(18, 16, 18, 16)
+                background = roundedBackground(Color.WHITE, 18f)
+                setOnClickListener { showListDetail(listId, listName) }
+            }
+
+            val nameView = TextView(this).apply {
+                text = "📁  $displayName"
+                textSize = 17f
+                setTextColor(Color.rgb(35, 35, 35))
+                setPadding(0, 0, 0, 6)
+            }
+
+            val countView = TextView(this).apply {
+                text = "${placesInGroup.size} luoghi"
+                textSize = 13f
+                setTextColor(Color.rgb(120, 120, 120))
+            }
+
+            card.addView(nameView)
+            card.addView(countView)
+
+            container.addView(
+                card,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = 10 }
+            )
+        }
+    }
+
+    // ============================================================
+    // DETTAGLIO ELENCO — mappa + luoghi di UN elenco
+    // ============================================================
+
+    private fun showListDetail(listId: String?, listName: String?) {
+        currentScreen = Screen.LIST_DETAIL
+        viewingListId = listId
+        viewingListName = listName
+        selectedCategoryId = null
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.rgb(248, 249, 250))
+            setPadding(20, 28, 20, 20)
+        }
+
+        val backButton = Button(this).apply {
+            text = "←  ELENCHI"
+            textSize = 13f
+            setTextColor(Color.rgb(70, 70, 70))
+            background = roundedBackground(Color.WHITE, 14f)
+            setOnClickListener { showHome() }
+        }
+
+        root.addView(
+            backButton,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 44).apply {
+                bottomMargin = 14
+            }
+        )
+
+        val title = TextView(this).apply {
+            text = listName?.takeIf { it.isNotBlank() } ?: "Elenco senza titolo"
+            textSize = 26f
+            setTextColor(Color.rgb(25, 25, 25))
+            setPadding(0, 0, 0, 18)
+        }
+
+        root.addView(title)
 
         val mapTitle = TextView(this).apply {
             text = "MAPPA"
@@ -192,30 +348,14 @@ class MainActivity : ComponentActivity() {
         mapView?.let { map ->
             mapContainer.addView(
                 map,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280))
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260))
             )
         }
 
         root.addView(
             mapContainer,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280)).apply {
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260)).apply {
                 bottomMargin = 14
-            }
-        )
-
-        val importButton = Button(this).apply {
-            text = "＋  IMPORTA DA GOOGLE MAPS"
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            background = roundedBackground(Color.rgb(45, 105, 225), 16f)
-            setPadding(12, 8, 12, 8)
-            setOnClickListener { showImporter() }
-        }
-
-        root.addView(
-            importButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 58).apply {
-                bottomMargin = 10
             }
         )
 
@@ -278,6 +418,10 @@ class MainActivity : ComponentActivity() {
         refreshHome()
     }
 
+    private fun placesInCurrentList(): List<Place> {
+        return currentPlaces.filter { it.sourceListId == viewingListId }
+    }
+
     // ============================================================
     // MAP VIEW
     // ============================================================
@@ -312,16 +456,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun updateMapMarkers() {
+    private fun updateMapMarkers(scopedPlaces: List<Place> = placesInCurrentList()) {
+        if (currentScreen != Screen.LIST_DETAIL) return
+
         val map = googleMap ?: return
 
         mapView?.post {
             map.clear()
 
             val placesToShow = when {
-                selectedCategoryId == null -> currentPlaces
-                selectedCategoryId == -1L -> currentPlaces.filter { it.categoryId == null }
-                else -> currentPlaces.filter { it.categoryId == selectedCategoryId }
+                selectedCategoryId == null -> scopedPlaces
+                selectedCategoryId == -1L -> scopedPlaces.filter { it.categoryId == null }
+                else -> scopedPlaces.filter { it.categoryId == selectedCategoryId }
             }
 
             if (placesToShow.isEmpty()) {
@@ -432,16 +578,19 @@ class MainActivity : ComponentActivity() {
 
         val content = findViewById<View>(android.R.id.content) ?: return
 
-        val countView = content.findViewWithTag<TextView>("place_count")
-        countView?.text = currentPlaces.size.toString()
-
-        refreshFilters(content)
-        refreshPlaces(content)
-        updateMapMarkers()
+        when (currentScreen) {
+            Screen.HOME -> refreshListsScreen(content)
+            Screen.LIST_DETAIL -> {
+                val listPlaces = placesInCurrentList()
+                refreshFilters(content)
+                refreshPlaces(content, listPlaces)
+                updateMapMarkers(listPlaces)
+            }
+        }
     }
 
     // ============================================================
-    // FILTERS
+    // FILTERS (per categoria, dentro un elenco)
     // ============================================================
 
     private fun refreshFilters(content: View) {
@@ -482,17 +631,17 @@ class MainActivity : ComponentActivity() {
     }
 
     // ============================================================
-    // PLACES (con raggruppamento per lista importata)
+    // PLACES (luoghi di UN elenco, filtrati per categoria)
     // ============================================================
 
-    private fun refreshPlaces(content: View) {
+    private fun refreshPlaces(content: View, scopedPlaces: List<Place>) {
         val container = content.findViewWithTag<LinearLayout>("places_container") ?: return
         container.removeAllViews()
 
         val placesToShow = when {
-            selectedCategoryId == null -> currentPlaces
-            selectedCategoryId == -1L -> currentPlaces.filter { it.categoryId == null }
-            else -> currentPlaces.filter { it.categoryId == selectedCategoryId }
+            selectedCategoryId == null -> scopedPlaces
+            selectedCategoryId == -1L -> scopedPlaces.filter { it.categoryId == null }
+            else -> scopedPlaces.filter { it.categoryId == selectedCategoryId }
         }
 
         if (placesToShow.isEmpty()) {
@@ -504,8 +653,8 @@ class MainActivity : ComponentActivity() {
             }
 
             val emptyTitle = TextView(this).apply {
-                text = if (currentPlaces.isEmpty()) {
-                    "Nessun luogo ancora salvato"
+                text = if (scopedPlaces.isEmpty()) {
+                    "Nessun luogo in questo elenco"
                 } else {
                     "Nessun luogo in questa categoria"
                 }
@@ -514,20 +663,7 @@ class MainActivity : ComponentActivity() {
                 gravity = Gravity.CENTER
             }
 
-            val emptyText = TextView(this).apply {
-                text = if (currentPlaces.isEmpty()) {
-                    "Importa una lista da Google Maps\nper iniziare a organizzare i tuoi luoghi."
-                } else {
-                    "Prova a selezionare un'altra categoria."
-                }
-                textSize = 14f
-                setTextColor(Color.rgb(110, 110, 110))
-                gravity = Gravity.CENTER
-                setPadding(0, 8, 0, 0)
-            }
-
             emptyCard.addView(emptyTitle)
-            emptyCard.addView(emptyText)
 
             container.addView(
                 emptyCard,
@@ -539,41 +675,14 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val groups = placesToShow
-            .groupBy { it.sourceListId to it.sourceListName }
-            .toList()
-            .sortedByDescending { (_, places) -> places.maxOf { it.importedAt } }
-
-        var isFirstGroup = true
-
-        groups.forEach { (key, placesInGroup) ->
-            val (sourceListId, sourceListName) = key
-
-            val header = TextView(this).apply {
-                text = (
-                    when {
-                        !sourceListName.isNullOrBlank() -> sourceListName
-                        sourceListId != null -> "Lista importata"
-                        else -> "Altri luoghi"
-                    }
-                    ) + "  (${placesInGroup.size})"
-                textSize = 13f
-                setTextColor(Color.rgb(120, 120, 120))
-                setPadding(4, if (isFirstGroup) 0 else 22, 0, 8)
-            }
-
-            isFirstGroup = false
-            container.addView(header)
-
-            placesInGroup.forEach { place ->
-                container.addView(
-                    createPlaceView(place),
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = 10 }
-                )
-            }
+        placesToShow.forEach { place ->
+            container.addView(
+                createPlaceView(place),
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = 10 }
+            )
         }
     }
 
@@ -763,7 +872,7 @@ class MainActivity : ComponentActivity() {
     private fun showCategoryOptions(category: Category) {
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("${category.iconKey}  ${category.name}")
-            .setItems(arrayOf("Visualizza luoghi", "Elimina categoria")) { _, which ->
+            .setItems(arrayOf("Filtra per questa categoria", "Elimina categoria")) { _, which ->
                 when (which) {
                     0 -> {
                         selectedCategoryId = category.id
@@ -1327,4 +1436,3 @@ class MainActivity : ComponentActivity() {
         outputView.text = "TRAVELPINS NETWORK MONITOR\n\nMonitor pulito."
     }
 }
-
