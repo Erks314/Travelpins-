@@ -1327,5 +1327,4 @@ class MainActivity : ComponentActivity() {
         outputView.text = "TRAVELPINS NETWORK MONITOR\n\nMonitor pulito."
     }
 }
-KOTLIN_EOF
-wc -l 
+
