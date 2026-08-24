@@ -517,8 +517,7 @@ class MainActivity : ComponentActivity() {
                         )
                     )
 
-                    gravity =
-                        Gravity.CENTER
+                    gravity = Gravity.CENTER
                 }
 
             val emptyText =
@@ -542,8 +541,7 @@ class MainActivity : ComponentActivity() {
                         )
                     )
 
-                    gravity =
-                        Gravity.CENTER
+                    gravity = Gravity.CENTER
 
                     setPadding(
                         0,
@@ -679,6 +677,7 @@ class MainActivity : ComponentActivity() {
                 }
 
             box.addView(categoryView)
+
         } else {
 
             val uncategorized =
@@ -844,11 +843,6 @@ class MainActivity : ComponentActivity() {
     // ============================================================
 
     private fun showPlaceMenu(place: Place) {
-
-        val category =
-            currentCategories.firstOrNull {
-                it.id == place.categoryId
-            }
 
         val options =
             arrayOf(
@@ -1080,7 +1074,10 @@ class MainActivity : ComponentActivity() {
                 hint =
                     "Nome categoria"
 
-                singleLine = true
+                // CORREZIONE BUILD:
+                // uso il metodo esplicito invece
+                // della proprietà singleLine.
+                setSingleLine(true)
             }
 
         layout.addView(
