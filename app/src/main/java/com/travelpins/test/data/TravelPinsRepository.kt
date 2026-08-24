@@ -9,10 +9,15 @@ class TravelPinsRepository(context: Context) {
     private val placeDao = db.placeDao()
     private val categoryDao = db.categoryDao()
 
-    val places: Flow<List<Place>> = placeDao.observeAll()
-    val categories: Flow<List<Category>> = categoryDao.observeAll()
+    val places: Flow<List<Place>> =
+        placeDao.observeAll()
 
-    fun placesInCategory(categoryId: Long): Flow<List<Place>> =
+    val categories: Flow<List<Category>> =
+        categoryDao.observeAll()
+
+    fun placesInCategory(
+        categoryId: Long
+    ): Flow<List<Place>> =
         placeDao.observeByCategory(categoryId)
 
     val uncategorizedPlaces: Flow<List<Place>> =
@@ -26,8 +31,6 @@ class TravelPinsRepository(context: Context) {
 
         for (place in places) {
 
-            // Se Google ha fornito un placeId,
-            // controlliamo se il luogo è già presente.
             if (!place.placeId.isNullOrBlank()) {
 
                 val existing =
@@ -35,13 +38,11 @@ class TravelPinsRepository(context: Context) {
                         place.placeId
                     )
 
-                // Già presente: non lo reinseriamo.
                 if (existing != null) {
                     continue
                 }
             }
 
-            // Luogo nuovo: lo inseriamo.
             val result =
                 placeDao.insertAll(
                     listOf(place)
@@ -56,6 +57,56 @@ class TravelPinsRepository(context: Context) {
         }
 
         return savedCount
+    }
+
+    suspend fun cleanDuplicatePlaces(): Int {
+
+        val allPlaces =
+            placeDao.observeAllOnce()
+
+        val groups =
+            allPlaces
+                .filter {
+                    !it.placeId.isNullOrBlank()
+                }
+                .groupBy {
+                    it.placeId
+                }
+
+        var deletedCount = 0
+
+        groups.values.forEach { duplicates ->
+
+            if (duplicates.size <= 1) {
+                return@forEach
+            }
+
+            val keep =
+                duplicates
+                    .sortedWith(
+                        compareByDescending<Place> {
+                            it.categoryId != null
+                        }.thenByDescending {
+                            it.importedAt
+                        }
+                    )
+                    .first()
+
+            duplicates
+                .filter {
+                    it.id != keep.id
+                }
+                .forEach { duplicate ->
+
+                    placeDao.deleteById(
+                        duplicate.id
+                    )
+
+                    deletedCount++
+                }
+        }
+
+        return deletedCount
     }
 
     suspend fun createCategory(
