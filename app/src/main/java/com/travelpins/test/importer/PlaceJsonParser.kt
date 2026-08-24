@@ -2,11 +2,14 @@ package com.travelpins.test.importer
 
 import com.travelpins.test.data.Place
 import org.json.JSONArray
-import org.json.JSONObject
 
 object PlaceJsonParser {
 
-    fun parse(json: String): List<Place> {
+    fun parse(
+        json: String,
+        sourceListId: String?,
+        sourceListName: String?
+    ): List<Place> {
         val result = mutableListOf<Place>()
 
         try {
@@ -15,17 +18,18 @@ object PlaceJsonParser {
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
 
+                if (!obj.has("latitude") || !obj.has("longitude")) {
+                    continue
+                }
+
                 result.add(
                     Place(
                         name = obj.optString("name"),
                         address = obj.optString("address").ifBlank { null },
-                        latitude = if (obj.has("latitude"))
-                            obj.optDouble("latitude")
-                        else null,
-                        longitude = if (obj.has("longitude"))
-                            obj.optDouble("longitude")
-                        else null,
-                        googleMapsUrl = obj.optString("url").ifBlank { null }
+                        latitude = obj.optDouble("latitude"),
+                        longitude = obj.optDouble("longitude"),
+                        sourceListId = sourceListId,
+                        sourceListName = sourceListName
                     )
                 )
             }
