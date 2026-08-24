@@ -17,37 +17,64 @@ interface PlaceDao {
     @Query("SELECT * FROM places ORDER BY importedAt DESC")
     suspend fun observeAllOnce(): List<Place>
 
-    @Query("SELECT * FROM places WHERE categoryId = :categoryId ORDER BY name ASC")
-    fun observeByCategory(categoryId: Long): Flow<List<Place>>
+    @Query(
+        "SELECT * FROM places WHERE categoryId = :categoryId " +
+                "ORDER BY name ASC"
+    )
+    fun observeByCategory(
+        categoryId: Long
+    ): Flow<List<Place>>
 
-    @Query("SELECT * FROM places WHERE categoryId IS NULL ORDER BY importedAt DESC")
+    @Query(
+        "SELECT * FROM places WHERE categoryId IS NULL " +
+                "ORDER BY importedAt DESC"
+    )
     fun observeUncategorized(): Flow<List<Place>>
 
+    @Query(
+        "SELECT * FROM places WHERE placeId = :placeId " +
+                "LIMIT 1"
+    )
+    suspend fun findByPlaceId(
+        placeId: String
+    ): Place?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertAll(places: List<Place>): List<Long>
+    suspend fun insertAll(
+        places: List<Place>
+    ): List<Long>
 
     @Update
-    suspend fun update(place: Place)
+    suspend fun update(
+        place: Place
+    )
 
-    @Query("UPDATE places SET categoryId = :categoryId WHERE id = :placeId")
-    suspend fun assignCategory(placeId: Long, categoryId: Long?)
+    @Query(
+        "UPDATE places SET categoryId = :categoryId " +
+                "WHERE id = :placeId"
+    )
+    suspend fun assignCategory(
+        placeId: Long,
+        categoryId: Long?
+    )
 
     @Delete
-    suspend fun delete(place: Place)
+    suspend fun delete(
+        place: Place
+    )
 
-    @Query("SELECT COUNT(*) FROM places WHERE sourceListId = :sourceListId")
-    suspend fun countForList(sourceListId: String): Int
+    @Query(
+        "DELETE FROM places WHERE id = :placeId"
+    )
+    suspend fun deleteById(
+        placeId: Long
+    )
 
-    @Query("""
-        SELECT * FROM places
-        WHERE placeId = :placeId
-        LIMIT 1
-    """)
-    suspend fun findByPlaceId(placeId: String): Place?
-
-    @Query("""
-        DELETE FROM places
-        WHERE id = :placeId
-    """)
-    suspend fun deleteById(placeId: Long)
+    @Query(
+        "SELECT COUNT(*) FROM places " +
+                "WHERE sourceListId = :sourceListId"
+    )
+    suspend fun countForList(
+        sourceListId: String
+    ): Int
 }
