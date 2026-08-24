@@ -1114,9 +1114,10 @@ class MainActivity : ComponentActivity() {
                 setTextColor(
                     Color.rgb(
                         35,
-                                               35,
+                        35,
                         35
                     )
+                )
 
                 setPadding(
                     0,
