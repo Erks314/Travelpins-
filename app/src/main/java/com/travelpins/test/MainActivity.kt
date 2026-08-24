@@ -37,7 +37,6 @@ class MainActivity : ComponentActivity() {
 
     private var currentListId: String? = null
 
-    // Evita di eseguire due volte la stessa fase.
     private var consentAttempted = false
     private var scanStarted = false
     private var importStarted = false
@@ -60,7 +59,6 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
 
-        // Nuovo link condiviso = nuovo import.
         consentAttempted = false
         scanStarted = false
         importStarted = false
@@ -70,6 +68,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+
         if (::webView.isInitialized) {
             webView.stopLoading()
             webView.destroy()
@@ -90,10 +89,6 @@ class MainActivity : ComponentActivity() {
             setPadding(20, 28, 20, 20)
         }
 
-        // --------------------------------------------------------
-        // HEADER
-        // --------------------------------------------------------
-
         val title = TextView(this).apply {
             text = "TRAVELPINS"
             textSize = 30f
@@ -109,7 +104,6 @@ class MainActivity : ComponentActivity() {
         }
 
         root.addView(title)
-
         root.addView(subtitle)
 
         // --------------------------------------------------------
@@ -476,10 +470,6 @@ class MainActivity : ComponentActivity() {
             box.addView(address)
         }
 
-        // --------------------------------------------------------
-        // CATEGORIA
-        // --------------------------------------------------------
-
         if (place.categoryId != null) {
 
             val category =
@@ -508,10 +498,6 @@ class MainActivity : ComponentActivity() {
 
             box.addView(category)
         }
-
-        // --------------------------------------------------------
-        // COORDINATE
-        // --------------------------------------------------------
 
         val coordinates =
             TextView(this).apply {
@@ -558,7 +544,6 @@ class MainActivity : ComponentActivity() {
 
     private fun showImporter() {
 
-        // Reset del ciclo dell'importazione.
         consentAttempted = false
         scanStarted = false
         importStarted = false
@@ -660,10 +645,6 @@ class MainActivity : ComponentActivity() {
             )
         )
 
-        // ========================================================
-        // WEBVIEW
-        // ========================================================
-
         root.addView(
             webView,
             LinearLayout.LayoutParams(
@@ -673,15 +654,7 @@ class MainActivity : ComponentActivity() {
             )
         )
 
-        // ========================================================
-        // LOG
-        // ========================================================
-
         root.addView(logScroll)
-
-        // ========================================================
-        // BUTTONS
-        // ========================================================
 
         root.addView(buttonRow)
 
@@ -735,6 +708,16 @@ class MainActivity : ComponentActivity() {
                         "Importazione completata: $savedCount luoghi",
                         Toast.LENGTH_LONG
                     ).show()
+
+                    // ====================================================
+                    // NUOVO:
+                    // dopo il salvataggio torniamo automaticamente
+                    // alla Home.
+                    // ====================================================
+
+                    webView.stopLoading()
+
+                    showHome()
                 }
             },
 
@@ -797,16 +780,11 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // Installa l'hook di rete.
                     view.evaluateJavascript(
                         GoogleMapsScraperScript
                             .NETWORK_HOOK_SCRIPT,
                         null
                     )
-
-                    // ====================================================
-                    // CONSENSO GOOGLE
-                    // ====================================================
 
                     if (
                         url.contains(
@@ -832,10 +810,6 @@ class MainActivity : ComponentActivity() {
 
                         return
                     }
-
-                    // ====================================================
-                    // LISTA GOOGLE
-                    // ====================================================
 
                     if (
                         GoogleMapsScraperScript
@@ -1116,13 +1090,11 @@ class MainActivity : ComponentActivity() {
         val url =
             match.value
 
-        // Nuovo ciclo di importazione.
         consentAttempted = false
         scanStarted = false
         importStarted = false
         currentListId = null
 
-        // Mostra immediatamente l'importatore.
         showImporter()
 
         appendOutput(
