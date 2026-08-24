@@ -18,7 +18,7 @@ object PlaceJsonParser {
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
 
-                if (!obj.has("latitude") || !obj.has("longitude")) {
+                if (!obj.has("lat") || !obj.has("lng")) {
                     continue
                 }
 
@@ -26,8 +26,9 @@ object PlaceJsonParser {
                     Place(
                         name = obj.optString("name"),
                         address = obj.optString("address").ifBlank { null },
-                        latitude = obj.optDouble("latitude"),
-                        longitude = obj.optDouble("longitude"),
+                        latitude = obj.optDouble("lat"),
+                        longitude = obj.optDouble("lng"),
+                        placeId = obj.optString("placeId").ifBlank { null },
                         sourceListId = sourceListId,
                         sourceListName = sourceListName
                     )
