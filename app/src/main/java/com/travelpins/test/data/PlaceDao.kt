@@ -34,4 +34,11 @@ interface PlaceDao {
 
     @Query("SELECT COUNT(*) FROM places WHERE sourceListId = :sourceListId")
     suspend fun countForList(sourceListId: String): Int
+
+    @Query("""
+        SELECT * FROM places
+        WHERE placeId = :placeId
+        LIMIT 1
+    """)
+    suspend fun findByPlaceId(placeId: String): Place?
 }
