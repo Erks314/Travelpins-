@@ -46,6 +46,7 @@ class TravelPinsJsBridge(
                 .replace(Regex("\\s+"), " ")
 
         if (cleanTitle.isNotBlank()) {
+
             extractedListName = cleanTitle
 
             Log.d(
@@ -75,7 +76,7 @@ class TravelPinsJsBridge(
 
                 val places =
                     PlaceJsonParser.parse(
-                        rawJson = rawJson,
+                        json = rawJson,
                         sourceListId = sourceListId,
                         sourceListName = sourceListName
                     )
