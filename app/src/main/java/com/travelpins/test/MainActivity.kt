@@ -70,7 +70,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-
         if (::webView.isInitialized) {
             webView.stopLoading()
             webView.destroy()
@@ -497,6 +496,7 @@ class MainActivity : ComponentActivity() {
                             100,
                             180
                         )
+                    )
 
                     setPadding(
                         0,
@@ -548,7 +548,7 @@ class MainActivity : ComponentActivity() {
             setColor(color)
             cornerRadius =
                 radius *
-                        resources.displayMetrics.density
+                    resources.displayMetrics.density
         }
     }
 
