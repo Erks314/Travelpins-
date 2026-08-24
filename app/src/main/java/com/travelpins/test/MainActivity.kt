@@ -12,7 +12,6 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -60,6 +59,7 @@ class MainActivity : ComponentActivity() {
             webView.stopLoading()
             webView.destroy()
         }
+
         super.onDestroy()
     }
 
@@ -74,10 +74,7 @@ class MainActivity : ComponentActivity() {
             setBackgroundColor(Color.WHITE)
         }
 
-        // -----------------------------------------------------------
         // HEADER
-        // -----------------------------------------------------------
-
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 28, 24, 20)
@@ -110,10 +107,7 @@ class MainActivity : ComponentActivity() {
             )
         )
 
-        // -----------------------------------------------------------
-        // STATO IMPORTAZIONE
-        // -----------------------------------------------------------
-
+        // STATO
         statusView = TextView(this).apply {
             text = "Condividi una lista da Google Maps per importarla."
             textSize = 14f
@@ -130,10 +124,7 @@ class MainActivity : ComponentActivity() {
             )
         )
 
-        // -----------------------------------------------------------
-        // CONTENUTO LUOGHI
-        // -----------------------------------------------------------
-
+        // LISTA LUOGHI
         val scrollView = ScrollView(this).apply {
             isFillViewport = true
         }
@@ -145,7 +136,7 @@ class MainActivity : ComponentActivity() {
 
         scrollView.addView(
             contentView,
-            ScrollView.LayoutParams(
+            ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
@@ -170,7 +161,9 @@ class MainActivity : ComponentActivity() {
     private fun observePlaces() {
 
         lifecycleScope.launch {
+
             repository.places.collectLatest { places ->
+
                 runOnUiThread {
                     showPlaces(places)
                 }
@@ -185,10 +178,12 @@ class MainActivity : ComponentActivity() {
         if (places.isEmpty()) {
 
             val empty = TextView(this).apply {
+
                 text = """
                     Nessun luogo ancora presente.
 
                     Per iniziare:
+
                     1. Apri Google Maps
                     2. Apri una tua lista
                     3. Premi Condividi
@@ -213,6 +208,7 @@ class MainActivity : ComponentActivity() {
         }
 
         val countTitle = TextView(this).apply {
+
             text = "${places.size} luoghi"
             textSize = 20f
             setTypeface(null, Typeface.BOLD)
@@ -223,11 +219,10 @@ class MainActivity : ComponentActivity() {
         contentView.addView(countTitle)
 
         for (place in places) {
+
             contentView.addView(createPlaceCard(place))
 
-            val spacer = View(this).apply {
-                setBackgroundColor(Color.TRANSPARENT)
-            }
+            val spacer = View(this)
 
             contentView.addView(
                 spacer,
@@ -296,10 +291,6 @@ class MainActivity : ComponentActivity() {
                 "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 
-            /*
-             * La WebView rimane presente ma praticamente invisibile.
-             * Serve per eseguire il flusso Google Maps già funzionante.
-             */
             alpha = 0f
         }
 
@@ -359,27 +350,23 @@ class MainActivity : ComponentActivity() {
                         }
 
                         message == "NETWORK HOOK INSTALLATO" -> {
-                            // Nessuna azione: messaggio tecnico.
+                            // Messaggio tecnico ignorato.
                         }
 
                         message.startsWith("GETLIST HTTP:") -> {
-                            statusView.text = "Lettura della lista Google Maps..."
+                            statusView.text =
+                                "Lettura della lista Google Maps..."
                         }
 
                         message.startsWith("JSON PARSATO CORRETTAMENTE") -> {
-                            statusView.text = "Lista Google Maps analizzata."
+                            statusView.text =
+                                "Lista Google Maps analizzata."
                         }
                     }
                 }
             }
         )
 
-        /*
-         * Il bridge funzionante utilizza il nome TravelPins.
-         *
-         * NON aggiungiamo BRIDGE_NAME perché nel file
-         * TravelPinsJsBridge attuale non esiste.
-         */
         webView.addJavascriptInterface(
             bridge,
             TravelPinsJsBridge.NAME
@@ -394,16 +381,12 @@ class MainActivity : ComponentActivity() {
 
                 super.onPageFinished(view, url)
 
-                // Hook diagnostico già funzionante.
                 view.evaluateJavascript(
                     GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT,
                     null
                 )
 
-                // ---------------------------------------------------
                 // CONSENSO GOOGLE
-                // ---------------------------------------------------
-
                 if (url.contains("consent.google.com")) {
 
                     statusView.text =
@@ -413,11 +396,8 @@ class MainActivity : ComponentActivity() {
                         GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT
                     ) { result ->
 
-                        /*
-                         * Google normalmente prosegue automaticamente
-                         * dopo il click sul consenso.
-                         */
                         if (result.contains("CLICK_OK")) {
+
                             statusView.text =
                                 "Consenso Google accettato. Caricamento lista..."
                         }
@@ -426,10 +406,7 @@ class MainActivity : ComponentActivity() {
                     return
                 }
 
-                // ---------------------------------------------------
                 // LISTA GOOGLE MAPS
-                // ---------------------------------------------------
-
                 if (GoogleMapsScraperScript.isGoogleListUrl(url)) {
 
                     val listId = extractListId(url)
@@ -438,10 +415,6 @@ class MainActivity : ComponentActivity() {
                         currentListId = listId
                     }
 
-                    /*
-                     * Evita di lanciare GETLIST più volte sulla stessa
-                     * pagina quando Google richiama onPageFinished.
-                     */
                     if (
                         currentListId != null &&
                         currentListId != lastScannedListId
@@ -463,6 +436,7 @@ class MainActivity : ComponentActivity() {
             ): Boolean {
 
                 runOnUiThread {
+
                     statusView.text =
                         "Errore nel motore Google Maps."
                 }
@@ -488,16 +462,16 @@ class MainActivity : ComponentActivity() {
         }
 
         /*
-         * WebView di servizio.
-         * Altezza minima per rimanere attaccata alla gerarchia della
-         * Activity senza occupare la schermata.
+         * WebView invisibile utilizzata esclusivamente per
+         * l'importazione Google Maps.
          */
-        val params = ViewGroup.LayoutParams(
-            1,
-            1
+        addContentView(
+            webView,
+            ViewGroup.LayoutParams(
+                1,
+                1
+            )
         )
-
-        addContentView(webView, params)
     }
 
     // ===============================================================
@@ -554,13 +528,17 @@ class MainActivity : ComponentActivity() {
             val start = intentUrl.indexOf(marker)
 
             if (start == -1) {
+
                 statusView.text =
                     "URL Google Maps non riconosciuto."
+
                 return
             }
 
             var value =
-                intentUrl.substring(start + marker.length)
+                intentUrl.substring(
+                    start + marker.length
+                )
 
             val end = value.indexOf("#Intent")
 
@@ -587,7 +565,7 @@ class MainActivity : ComponentActivity() {
     }
 
     // ===============================================================
-    // CONDIVIDI DA GOOGLE MAPS
+    // CONDIVISIONE DA GOOGLE MAPS
     // ===============================================================
 
     private fun handleIntent(intent: Intent?) {
@@ -600,8 +578,10 @@ class MainActivity : ComponentActivity() {
             intent.getStringExtra(Intent.EXTRA_TEXT)
 
         if (text.isNullOrBlank()) {
+
             statusView.text =
                 "Nessun link ricevuto da Google Maps."
+
             return
         }
 
@@ -609,8 +589,10 @@ class MainActivity : ComponentActivity() {
             Regex("""https?://\S+""").find(text)
 
         if (match == null) {
+
             statusView.text =
                 "Nessun URL trovato."
+
             return
         }
 
@@ -619,9 +601,6 @@ class MainActivity : ComponentActivity() {
         statusView.text =
             "Ricevuta lista Google Maps..."
 
-        /*
-         * Nuova condivisione = nuova scansione.
-         */
         lastScannedListId = null
         currentListId = null
 
