@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -85,40 +87,122 @@ class MainActivity : ComponentActivity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 32, 24, 24)
+            setBackgroundColor(Color.rgb(248, 249, 250))
+            setPadding(20, 28, 20, 20)
         }
+
+        // --------------------------------------------------------
+        // HEADER
+        // --------------------------------------------------------
 
         val title = TextView(this).apply {
             text = "TRAVELPINS"
-            textSize = 28f
-            setPadding(0, 0, 0, 8)
+            textSize = 30f
+            setTextColor(Color.rgb(30, 30, 30))
+            setPadding(0, 0, 0, 4)
         }
 
         val subtitle = TextView(this).apply {
             text = "I miei luoghi"
             textSize = 18f
-            setPadding(0, 0, 0, 20)
+            setTextColor(Color.rgb(90, 90, 90))
+            setPadding(0, 0, 0, 18)
+        }
+
+        root.addView(title)
+
+        root.addView(subtitle)
+
+        // --------------------------------------------------------
+        // CONTATORE
+        // --------------------------------------------------------
+
+        val countCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 18, 20, 18)
+            background = roundedBackground(
+                Color.WHITE,
+                18f
+            )
+        }
+
+        val countTitle = TextView(this).apply {
+            text = "I TUOI LUOGHI"
+            textSize = 12f
+            setTextColor(Color.rgb(110, 110, 110))
         }
 
         val countView = TextView(this).apply {
             tag = "place_count"
-            text = "Luoghi salvati: 0"
-            textSize = 16f
-            setPadding(0, 0, 0, 16)
+            text = "0"
+            textSize = 30f
+            setTextColor(Color.rgb(30, 30, 30))
+            setPadding(0, 4, 0, 0)
         }
+
+        countCard.addView(countTitle)
+        countCard.addView(countView)
+
+        root.addView(
+            countCard,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 14
+            }
+        )
+
+        // --------------------------------------------------------
+        // IMPORTA
+        // --------------------------------------------------------
 
         val importButton = Button(this).apply {
 
-            text = "＋ IMPORTA DA GOOGLE MAPS"
+            text = "＋  IMPORTA DA GOOGLE MAPS"
+
+            textSize = 15f
+
+            setTextColor(Color.WHITE)
+
+            background = roundedBackground(
+                Color.rgb(45, 105, 225),
+                16f
+            )
+
+            setPadding(12, 8, 12, 8)
 
             setOnClickListener {
                 showImporter()
             }
         }
 
+        root.addView(
+            importButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                58
+            ).apply {
+                bottomMargin = 10
+            }
+        )
+
+        // --------------------------------------------------------
+        // CATEGORIE
+        // --------------------------------------------------------
+
         val categoriesButton = Button(this).apply {
 
             text = "CATEGORIE"
+
+            textSize = 14f
+
+            setTextColor(Color.rgb(45, 45, 45))
+
+            background = roundedBackground(
+                Color.WHITE,
+                16f
+            )
 
             setOnClickListener {
 
@@ -131,50 +215,38 @@ class MainActivity : ComponentActivity() {
         }
 
         root.addView(
-            title,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        root.addView(
-            subtitle,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        root.addView(
-            countView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        root.addView(
-            importButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        root.addView(
             categoriesButton,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+                52
+            ).apply {
+                bottomMargin = 18
+            }
         )
+
+        // --------------------------------------------------------
+        // TITOLO LISTA
+        // --------------------------------------------------------
+
+        val placesTitle = TextView(this).apply {
+            text = "LUOGHI SALVATI"
+            textSize = 13f
+            setTextColor(Color.rgb(100, 100, 100))
+            setPadding(2, 0, 0, 10)
+        }
+
+        root.addView(placesTitle)
+
+        // --------------------------------------------------------
+        // LISTA LUOGHI
+        // --------------------------------------------------------
 
         val placesScroll = ScrollView(this)
 
         val placesContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             tag = "places_container"
+            setPadding(0, 0, 0, 20)
         }
 
         placesScroll.addView(placesContainer)
@@ -212,7 +284,7 @@ class MainActivity : ComponentActivity() {
                         )
 
                     countView?.text =
-                        "Luoghi salvati: ${places.size}"
+                        places.size.toString()
 
                     val container =
                         content.findViewWithTag<LinearLayout>(
@@ -224,31 +296,100 @@ class MainActivity : ComponentActivity() {
 
                     if (places.isEmpty()) {
 
-                        val emptyView =
+                        val emptyCard =
+                            LinearLayout(this@MainActivity).apply {
+
+                                orientation =
+                                    LinearLayout.VERTICAL
+
+                                gravity =
+                                    android.view.Gravity.CENTER
+
+                                setPadding(
+                                    24,
+                                    32,
+                                    24,
+                                    32
+                                )
+
+                                background =
+                                    roundedBackground(
+                                        Color.WHITE,
+                                        18f
+                                    )
+                            }
+
+                        val emptyTitle =
                             TextView(this@MainActivity).apply {
 
                                 text =
-                                    "\nNessun luogo ancora salvato.\n\n" +
-                                    "Importa una lista da Google Maps."
+                                    "Nessun luogo ancora salvato"
 
-                                textSize = 16f
+                                textSize = 17f
+
+                                setTextColor(
+                                    Color.rgb(
+                                        50,
+                                        50,
+                                        50
+                                    )
+                                )
+
+                                gravity =
+                                    android.view.Gravity.CENTER
+                            }
+
+                        val emptyText =
+                            TextView(this@MainActivity).apply {
+
+                                text =
+                                    "Importa una lista da Google Maps\n" +
+                                    "per iniziare a organizzare i tuoi luoghi."
+
+                                textSize = 14f
+
+                                setTextColor(
+                                    Color.rgb(
+                                        110,
+                                        110,
+                                        110
+                                    )
+                                )
+
+                                gravity =
+                                    android.view.Gravity.CENTER
 
                                 setPadding(
+                                    0,
                                     8,
-                                    24,
-                                    8,
-                                    24
+                                    0,
+                                    0
                                 )
                             }
 
-                        container.addView(emptyView)
+                        emptyCard.addView(emptyTitle)
+                        emptyCard.addView(emptyText)
+
+                        container.addView(
+                            emptyCard,
+                            LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            )
+                        )
 
                     } else {
 
                         places.forEach { place ->
 
                             container.addView(
-                                createPlaceView(place)
+                                createPlaceView(place),
+                                LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.WRAP_CONTENT
+                                ).apply {
+                                    bottomMargin = 10
+                                }
                             )
                         }
                     }
@@ -256,6 +397,10 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    // ============================================================
+    // CARD SINGOLO LUOGO
+    // ============================================================
 
     private fun createPlaceView(
         place: Place
@@ -267,24 +412,38 @@ class MainActivity : ComponentActivity() {
                 LinearLayout.VERTICAL
 
             setPadding(
+                18,
                 16,
-                16,
-                16,
+                18,
                 16
             )
+
+            background =
+                roundedBackground(
+                    Color.WHITE,
+                    18f
+                )
         }
 
         val name = TextView(this).apply {
 
             text = place.name
 
-            textSize = 18f
+            textSize = 17f
+
+            setTextColor(
+                Color.rgb(
+                    35,
+                    35,
+                    35
+                )
+            )
 
             setPadding(
                 0,
                 0,
                 0,
-                6
+                7
             )
         }
 
@@ -292,73 +451,105 @@ class MainActivity : ComponentActivity() {
 
         if (!place.address.isNullOrBlank()) {
 
-            val address = TextView(this).apply {
+            val address =
+                TextView(this).apply {
 
-                text = place.address
+                    text = place.address
 
-                textSize = 14f
+                    textSize = 14f
 
-                setPadding(
-                    0,
-                    0,
-                    0,
-                    6
-                )
-            }
+                    setTextColor(
+                        Color.rgb(
+                            95,
+                            95,
+                            95
+                        )
+                    )
+
+                    setPadding(
+                        0,
+                        0,
+                        0,
+                        7
+                    )
+                }
 
             box.addView(address)
         }
 
-        val coordinates = TextView(this).apply {
-
-            text =
-                "📍 ${place.latitude}, ${place.longitude}"
-
-            textSize = 12f
-        }
-
-        box.addView(coordinates)
+        // --------------------------------------------------------
+        // CATEGORIA
+        // --------------------------------------------------------
 
         if (place.categoryId != null) {
 
-            val category = TextView(this).apply {
+            val category =
+                TextView(this).apply {
 
-                text =
-                    "Categoria ID: ${place.categoryId}"
+                    text =
+                        "Categoria ID: ${place.categoryId}"
 
-                textSize = 12f
+                    textSize = 12f
 
-                setPadding(
-                    0,
-                    6,
-                    0,
-                    0
-                )
-            }
+                    setTextColor(
+                        Color.rgb(
+                            70,
+                            100,
+                            180
+                        )
+
+                    setPadding(
+                        0,
+                        4,
+                        0,
+                        7
+                    )
+                }
 
             box.addView(category)
         }
 
-        val separator = View(this).apply {
+        // --------------------------------------------------------
+        // COORDINATE
+        // --------------------------------------------------------
 
-            setBackgroundResource(
-                android.R.color.darker_gray
-            )
-        }
+        val coordinates =
+            TextView(this).apply {
 
-        box.addView(
-            separator,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                1
-            ).apply {
+                text =
+                    "📍 ${place.latitude}, ${place.longitude}"
 
-                topMargin = 12
-                bottomMargin = 4
+                textSize = 11f
+
+                setTextColor(
+                    Color.rgb(
+                        130,
+                        130,
+                        130
+                    )
+                )
             }
-        )
+
+        box.addView(coordinates)
 
         return box
+    }
+
+    // ============================================================
+    // BACKGROUND CARD
+    // ============================================================
+
+    private fun roundedBackground(
+        color: Int,
+        radius: Float
+    ): GradientDrawable {
+
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadius =
+                radius *
+                        resources.displayMetrics.density
+        }
     }
 
     // ============================================================
@@ -513,8 +704,7 @@ class MainActivity : ComponentActivity() {
             settings.userAgentString =
                 "Mozilla/5.0 (Linux; Android 10) " +
                 "AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) " +
-                "Chrome/131.0.0.0 Mobile Safari/537.36"
+                "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
         }
 
         val bridge = TravelPinsJsBridge(
@@ -633,9 +823,6 @@ class MainActivity : ComponentActivity() {
                                 "Tento automaticamente di accettare..."
                             )
 
-                            // Piccolo ritardo per permettere
-                            // alla pagina di costruire completamente
-                            // il pulsante.
                             view.postDelayed({
 
                                 acceptGoogleConsent()
@@ -663,7 +850,6 @@ class MainActivity : ComponentActivity() {
                             "URL LISTA:\n$url"
                         )
 
-                        // Avvio automatico UNA SOLA VOLTA.
                         if (
                             currentListId != null &&
                             !scanStarted
