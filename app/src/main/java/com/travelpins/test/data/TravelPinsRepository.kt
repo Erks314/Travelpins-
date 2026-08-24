@@ -27,6 +27,10 @@ class TravelPinsRepository(context: Context) {
         places: List<Place>
     ): Int {
 
+        // Prima di una nuova importazione eliminiamo
+        // eventuali duplicati già presenti nel database.
+        cleanDuplicatePlaces()
+
         var savedCount = 0
 
         for (place in places) {
@@ -38,6 +42,9 @@ class TravelPinsRepository(context: Context) {
                         place.placeId
                     )
 
+                // Il luogo è già presente:
+                // non lo reinseriamo e non tocchiamo
+                // la sua eventuale categoria.
                 if (existing != null) {
                     continue
                 }
@@ -81,6 +88,11 @@ class TravelPinsRepository(context: Context) {
                 return@forEach
             }
 
+            // Conserviamo preferibilmente il record
+            // che ha già una categoria.
+            //
+            // A parità, conserviamo quello importato
+            // più recentemente.
             val keep =
                 duplicates
                     .sortedWith(
