@@ -29,12 +29,23 @@ jobs:
         run: |
           gradle signingReport
 
+  
+      - name: Check Maps API key
+        env:
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+        run: |
+          if [ -z "$MAPS_API_KEY" ]; then
+            echo "ERRORE: MAPS_API_KEY è vuota"
+            exit 1
+          else
+            echo "OK: MAPS_API_KEY presente"
+          fi
+
       - name: Build APK
         env:
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
         run: |
           gradle assembleDebug -PMAPS_API_KEY="$MAPS_API_KEY"
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
