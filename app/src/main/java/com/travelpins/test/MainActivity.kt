@@ -23,7 +23,6 @@ import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.importer.TravelPinsJsBridge
 import com.travelpins.test.scraper.GoogleMapsScraperScript
-import kotlinx.coroutines.launch
 import java.net.URLDecoder
 
 class MainActivity : ComponentActivity() {
@@ -178,7 +177,7 @@ class MainActivity : ComponentActivity() {
 
     private fun observePlaces() {
 
-        lifecycleScope.launch {
+        lifecycleScope.launchWhenStarted {
 
             repository.places.collect { places ->
 
@@ -220,7 +219,6 @@ class MainActivity : ComponentActivity() {
                     } else {
 
                         places.forEach { place ->
-
                             container.addView(
                                 createPlaceView(place)
                             )
@@ -425,10 +423,6 @@ class MainActivity : ComponentActivity() {
             )
         )
 
-        // ========================================================
-        // WEBVIEW GOOGLE MAPS
-        // ========================================================
-
         root.addView(
             webView,
             LinearLayout.LayoutParams(
@@ -438,15 +432,7 @@ class MainActivity : ComponentActivity() {
             )
         )
 
-        // ========================================================
-        // LOG
-        // ========================================================
-
         root.addView(logScroll)
-
-        // ========================================================
-        // BUTTONS
-        // ========================================================
 
         root.addView(buttonRow)
 
@@ -505,8 +491,7 @@ class MainActivity : ComponentActivity() {
 
                     Toast.makeText(
                         this,
-                        "Errore salvataggio: " +
-                            "${error.message}",
+                        "Errore salvataggio: ${error.message}",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -566,8 +551,7 @@ class MainActivity : ComponentActivity() {
                     ) {
 
                         if (
-                            ::consentButton
-                                .isInitialized
+                            ::consentButton.isInitialized
                         ) {
                             consentButton.visibility =
                                 View.VISIBLE
@@ -586,19 +570,41 @@ class MainActivity : ComponentActivity() {
                         currentListId =
                             extractListId(url)
 
-                        if (
-                            ::scanButton
-                                .isInitialized
-                        ) {
-                            scanButton.visibility =
-                                View.VISIBLE
-                        }
-
                         appendOutput(
                             "LISTA GOOGLE MAPS RILEVATA\n\n" +
-                            "URL LISTA:\n$url\n\n" +
-                            "Premere SCANSIONA."
+                            "URL LISTA:\n$url"
                         )
+
+                        /*
+                         * NUOVO COMPORTAMENTO
+                         *
+                         * Non aspettiamo più che l'utente
+                         * prema SCANSIONA.
+                         *
+                         * Avviamo automaticamente la scansione.
+                         */
+
+                        appendOutput(
+                            "AVVIO SCANSIONE AUTOMATICA..."
+                        )
+
+                        scanButton.visibility =
+                            View.VISIBLE
+
+                        webView.postDelayed({
+
+                            if (
+                                currentListId != null
+                            ) {
+                                scanGoogleList()
+                            } else {
+
+                                appendOutput(
+                                    "ERRORE: LIST ID NON TROVATO"
+                                )
+                            }
+
+                        }, 800)
                     }
                 }
 
@@ -680,224 +686,4 @@ class MainActivity : ComponentActivity() {
     private fun acceptGoogleConsent() {
 
         appendOutput(
-            "AVVIO ACCETTAZIONE GOOGLE"
-        )
-
-        webView.evaluateJavascript(
-            GoogleMapsScraperScript
-                .ACCEPT_CONSENT_SCRIPT
-        ) { result ->
-
-            appendOutput(
-                "CONSENSO RISULTATO\n\n$result"
-            )
-        }
-    }
-
-    // ============================================================
-    // GOOGLE SCAN
-    // ============================================================
-
-    private fun scanGoogleList() {
-
-        appendOutput(
-            "SCANSIONE LISTA AVVIATA\n\n" +
-            "Metodo: entitylist/getlist\n\n" +
-            "NON utilizzo il DOM."
-        )
-
-        webView.evaluateJavascript(
-            GoogleMapsScraperScript
-                .GETLIST_SCRIPT
-        ) { result ->
-
-            appendOutput(
-                "CALLBACK GETLIST\n\n$result"
-            )
-        }
-    }
-
-    // ============================================================
-    // GOOGLE INTENT
-    // ============================================================
-
-    private fun handleGoogleIntent(
-        intentUrl: String
-    ) {
-
-        try {
-
-            val marker =
-                "S.browser_fallback_url="
-
-            val start =
-                intentUrl.indexOf(marker)
-
-            if (start == -1) {
-
-                appendOutput(
-                    "FALLBACK URL NON TROVATO"
-                )
-
-                return
-            }
-
-            var value =
-                intentUrl.substring(
-                    start + marker.length
-                )
-
-            val end =
-                value.indexOf("#Intent")
-
-            if (end != -1) {
-                value =
-                    value.substring(0, end)
-            }
-
-            val decoded =
-                URLDecoder.decode(
-                    value,
-                    "UTF-8"
-                )
-
-            appendOutput(
-                "GOOGLE INTENT INTERCETTATO\n\n" +
-                "CERCO FALLBACK WEB..."
-            )
-
-            appendOutput(
-                "FALLBACK WEB TROVATO:\n\n" +
-                decoded
-            )
-
-            webView.loadUrl(decoded)
-
-        } catch (e: Exception) {
-
-            appendOutput(
-                "ERRORE PARSING INTENT:\n$e"
-            )
-        }
-    }
-
-    // ============================================================
-    // SHARE INTENT
-    // ============================================================
-
-    private fun handleIntent(
-        intent: Intent?
-    ) {
-
-        if (
-            intent?.action !=
-            Intent.ACTION_SEND
-        ) {
-            return
-        }
-
-        val text =
-            intent.getStringExtra(
-                Intent.EXTRA_TEXT
-            )
-
-        if (text.isNullOrBlank()) {
-
-            Toast.makeText(
-                this,
-                "Nessun testo ricevuto",
-                Toast.LENGTH_SHORT
-            ).show()
-
-            return
-        }
-
-        val match =
-            Regex(
-                """https?://\S+"""
-            ).find(text)
-
-        if (match == null) {
-
-            Toast.makeText(
-                this,
-                "Nessun URL trovato",
-                Toast.LENGTH_SHORT
-            ).show()
-
-            return
-        }
-
-        val url =
-            match.value
-
-        // IMPORTANTISSIMO:
-        // quando TravelPins viene aperto
-        // tramite Condividi, mostra subito
-        // la schermata dell'importatore.
-
-        showImporter()
-
-        appendOutput(
-            "LINK RICEVUTO\n\n" +
-            "$url\n\n" +
-            "AVVIO GOOGLE MAPS WEB..."
-        )
-
-        webView.loadUrl(url)
-    }
-
-    // ============================================================
-    // LOG
-    // ============================================================
-
-    private fun appendOutput(
-        section: String
-    ) {
-
-        if (!::outputView.isInitialized) {
-            return
-        }
-
-        outputView.append(
-            "\n$section\n"
-        )
-    }
-
-    private fun copyOutputToClipboard() {
-
-        if (!::outputView.isInitialized) {
-            return
-        }
-
-        val clipboard =
-            getSystemService(
-                Context.CLIPBOARD_SERVICE
-            ) as? ClipboardManager
-                ?: return
-
-        clipboard.setPrimaryClip(
-            ClipData.newPlainText(
-                "TravelPins",
-                outputView.text
-            )
-        )
-
-        Toast.makeText(
-            this,
-            "Copiato!",
-            Toast.LENGTH_SHORT
-        ).show()
-    }
-
-    private fun clearOutput() {
-
-        if (!::outputView.isInitialized) {
-            return
-        }
-
-        outputView.text =
-            "TRAVELPINS NETWORK MONITOR\n\n" +
-            "Monitor pulito."
-    }
-}
+            "AVVIO ACCETTA
