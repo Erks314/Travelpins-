@@ -14,11 +14,14 @@ interface PlaceDao {
     @Query("SELECT * FROM places ORDER BY importedAt DESC")
     fun observeAll(): Flow<List<Place>>
 
+    @Query("SELECT * FROM places ORDER BY importedAt DESC")
+    suspend fun observeAllOnce(): List<Place>
+
     @Query("SELECT * FROM places WHERE categoryId = :categoryId ORDER BY name ASC")
     fun observeByCategory(categoryId: Long): Flow<List<Place>>
 
     @Query("SELECT * FROM places WHERE categoryId IS NULL ORDER BY importedAt DESC")
-    fun observeUncategorized(): Flow<List<Place>>
+    fun observeUncategorizedPlaces(): Flow<List<Place>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(places: List<Place>): List<Long>
