@@ -51,5 +51,6 @@ class TravelPinsJsBridge(
 
     companion object {
         const val NAME = "TravelPins"
+        const val BRIDGE_NAME = "TravelPinsBridge"
     }
 }
