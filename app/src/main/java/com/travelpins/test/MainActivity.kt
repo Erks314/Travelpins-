@@ -31,16 +31,14 @@ class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private lateinit var outputView: TextView
 
-    private lateinit var consentButton: Button
-    private lateinit var scanButton: Button
-
     private lateinit var repository: TravelPinsRepository
 
     private var currentListId: String? = null
-    private var currentListName: String? = null
 
-    private var importerVisible = false
-    private var scanAlreadyStarted = false
+    // Evita di eseguire due volte la stessa fase.
+    private var consentAttempted = false
+    private var scanStarted = false
+    private var importStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,8 +56,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-
         setIntent(intent)
+
+        // Nuovo link condiviso = nuovo import.
+        consentAttempted = false
+        scanStarted = false
+        importStarted = false
+        currentListId = null
 
         handleIntent(intent)
     }
@@ -79,9 +82,6 @@ class MainActivity : ComponentActivity() {
     // ============================================================
 
     private fun showHome() {
-
-        importerVisible = false
-        scanAlreadyStarted = false
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -192,7 +192,7 @@ class MainActivity : ComponentActivity() {
     }
 
     // ============================================================
-    // OSSERVAZIONE DATABASE
+    // DATABASE OBSERVER
     // ============================================================
 
     private fun observePlaces() {
@@ -257,7 +257,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun createPlaceView(place: Place): View {
+    private fun createPlaceView(
+        place: Place
+    ): View {
 
         val box = LinearLayout(this).apply {
 
@@ -290,63 +292,59 @@ class MainActivity : ComponentActivity() {
 
         if (!place.address.isNullOrBlank()) {
 
-            val address =
-                TextView(this).apply {
+            val address = TextView(this).apply {
 
-                    text = place.address
+                text = place.address
 
-                    textSize = 14f
+                textSize = 14f
 
-                    setPadding(
-                        0,
-                        0,
-                        0,
-                        6
-                    )
-                }
+                setPadding(
+                    0,
+                    0,
+                    0,
+                    6
+                )
+            }
 
             box.addView(address)
         }
 
-        val coordinates =
-            TextView(this).apply {
+        val coordinates = TextView(this).apply {
 
-                text =
-                    "📍 ${place.latitude}, ${place.longitude}"
+            text =
+                "📍 ${place.latitude}, ${place.longitude}"
 
-                textSize = 12f
-            }
+            textSize = 12f
+        }
 
         box.addView(coordinates)
 
         if (place.categoryId != null) {
 
-            val category =
-                TextView(this).apply {
+            val category = TextView(this).apply {
 
-                    text =
-                        "Categoria ID: ${place.categoryId}"
+                text =
+                    "Categoria ID: ${place.categoryId}"
 
-                    textSize = 12f
+                textSize = 12f
 
-                    setPadding(
-                        0,
-                        6,
-                        0,
-                        0
-                    )
-                }
+                setPadding(
+                    0,
+                    6,
+                    0,
+                    0
+                )
+            }
 
             box.addView(category)
         }
 
-        val separator =
-            View(this).apply {
+        val separator = View(this).apply {
 
-                setBackgroundResource(
-                    android.R.color.darker_gray
-                )
-            }
+            setBackgroundResource(
+                android.R.color.darker_gray
+            )
+        }
 
         box.addView(
             separator,
@@ -369,159 +367,99 @@ class MainActivity : ComponentActivity() {
 
     private fun showImporter() {
 
-        importerVisible = true
-        scanAlreadyStarted = false
+        // Reset del ciclo dell'importazione.
+        consentAttempted = false
+        scanStarted = false
+        importStarted = false
+        currentListId = null
 
-        val root =
-            LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
 
-                orientation =
-                    LinearLayout.VERTICAL
+        val backButton = Button(this).apply {
+
+            text = "← TORNA AI MIEI LUOGHI"
+
+            setOnClickListener {
+
+                webView.stopLoading()
+
+                showHome()
             }
+        }
 
-        val backButton =
-            Button(this).apply {
+        outputView = TextView(this).apply {
 
-                text =
-                    "← TORNA AI MIEI LUOGHI"
+            text =
+                "TRAVELPINS NETWORK MONITOR\n\n" +
+                "In attesa del link..."
 
-                setOnClickListener {
+            setPadding(
+                16,
+                16,
+                16,
+                16
+            )
 
-                    showHome()
-                }
-            }
+            textSize = 12f
+        }
 
-        outputView =
-            TextView(this).apply {
+        val logScroll = ScrollView(this).apply {
 
-                text =
-                    "TRAVELPINS NETWORK MONITOR\n\n" +
-                    "In attesa del link..."
+            addView(outputView)
 
-                setPadding(
-                    16,
-                    16,
-                    16,
-                    16
+            layoutParams =
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    0.40f
                 )
+        }
 
-                textSize = 12f
+        val copyButton = Button(this).apply {
+
+            text = "COPIA"
+
+            setOnClickListener {
+
+                copyOutputToClipboard()
             }
+        }
 
-        val logScroll =
-            ScrollView(this).apply {
+        val cleanButton = Button(this).apply {
 
-                addView(outputView)
+            text = "PULISCI"
 
-                layoutParams =
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        0,
-                        0.40f
-                    )
+            setOnClickListener {
+
+                clearOutput()
             }
+        }
 
-        consentButton =
-            Button(this).apply {
+        val buttonRow = LinearLayout(this).apply {
 
-                text =
-                    "ACCETTA GOOGLE"
+            orientation =
+                LinearLayout.HORIZONTAL
 
-                visibility =
-                    View.GONE
-
-                setOnClickListener {
-
-                    acceptGoogleConsent()
-                }
-            }
-
-        scanButton =
-            Button(this).apply {
-
-                text =
-                    "SCANSIONA"
-
-                /*
-                 * Lo teniamo come fallback.
-                 * Normalmente la scansione partirà
-                 * automaticamente.
-                 */
-                visibility =
-                    View.GONE
-
-                setOnClickListener {
-
-                    scanGoogleList()
-                }
-            }
-
-        val copyButton =
-            Button(this).apply {
-
-                text =
-                    "COPIA"
-
-                setOnClickListener {
-
-                    copyOutputToClipboard()
-                }
-            }
-
-        val cleanButton =
-            Button(this).apply {
-
-                text =
-                    "PULISCI"
-
-                setOnClickListener {
-
-                    clearOutput()
-                }
-            }
-
-        val buttonRow =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.HORIZONTAL
-
-                addView(
-                    copyButton,
-                    LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1f
-                    )
+            addView(
+                copyButton,
+                LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
                 )
+            )
 
-                addView(
-                    cleanButton,
-                    LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1f
-                    )
+            addView(
+                cleanButton,
+                LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
                 )
-
-                addView(
-                    consentButton,
-                    LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1f
-                    )
-                )
-
-                addView(
-                    scanButton,
-                    LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1f
-                    )
-                )
-            }
+            )
+        }
 
         root.addView(
             backButton,
@@ -530,6 +468,10 @@ class MainActivity : ComponentActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
+
+        // ========================================================
+        // WEBVIEW
+        // ========================================================
 
         root.addView(
             webView,
@@ -540,7 +482,15 @@ class MainActivity : ComponentActivity() {
             )
         )
 
+        // ========================================================
+        // LOG
+        // ========================================================
+
         root.addView(logScroll)
+
+        // ========================================================
+        // BUTTONS
+        // ========================================================
 
         root.addView(buttonRow)
 
@@ -554,86 +504,78 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView() {
 
-        webView =
-            WebView(this).apply {
+        webView = WebView(this).apply {
 
-                settings.javaScriptEnabled =
-                    true
+            settings.javaScriptEnabled = true
 
-                settings.domStorageEnabled =
-                    true
+            settings.domStorageEnabled = true
 
-                settings.databaseEnabled =
-                    true
+            settings.userAgentString =
+                "Mozilla/5.0 (Linux; Android 10) " +
+                "AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) " +
+                "Chrome/131.0.0.0 Mobile Safari/537.36"
+        }
 
-                settings.userAgentString =
-                    "Mozilla/5.0 (Linux; Android 10) " +
-                    "AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) " +
-                    "Chrome/131.0.0.0 Mobile Safari/537.36"
-            }
+        val bridge = TravelPinsJsBridge(
 
-        val bridge =
-            TravelPinsJsBridge(
+            repository = repository,
 
-                repository =
-                    repository,
+            scope = lifecycleScope,
 
-                scope =
-                    lifecycleScope,
+            getCurrentSourceListId = {
+                currentListId
+            },
 
-                getCurrentSourceListId = {
-                    currentListId
-                },
+            getCurrentSourceListName = {
+                null
+            },
 
-                getCurrentSourceListName = {
-                    currentListName
-                },
+            onImportFinished = { savedCount ->
 
-                onImportFinished = { savedCount ->
+                runOnUiThread {
 
-                    runOnUiThread {
+                    appendOutput(
+                        "\nIMPORTAZIONE COMPLETATA\n\n" +
+                        "Luoghi salvati: $savedCount"
+                    )
 
-                        appendOutput(
-                            "IMPORTAZIONE COMPLETATA\n\n" +
-                            "Luoghi salvati: $savedCount"
-                        )
+                    Toast.makeText(
+                        this,
+                        "Importazione completata: $savedCount luoghi",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            },
 
-                        Toast.makeText(
-                            this,
-                            "Salvati $savedCount luoghi nel database",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                },
+            onImportError = { error ->
 
-                onImportError = { error ->
+                runOnUiThread {
 
-                    runOnUiThread {
+                    appendOutput(
+                        "\nERRORE SALVATAGGIO:\n" +
+                        "${error.message}"
+                    )
 
-                        appendOutput(
-                            "ERRORE SALVATAGGIO:\n" +
-                            "${error.message}"
-                        )
+                    Toast.makeText(
+                        this,
+                        "Errore salvataggio: ${error.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            },
 
-                        Toast.makeText(
-                            this,
-                            "Errore salvataggio: ${error.message}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                },
+            onLogMessage = { message ->
 
-                onLogMessage = { message ->
+                runOnUiThread {
 
-                    runOnUiThread {
+                    if (::outputView.isInitialized) {
 
-                        if (::outputView.isInitialized) {
-                            appendOutput(message)
-                        }
+                        appendOutput(message)
                     }
                 }
-            )
+            }
+        )
 
         webView.addJavascriptInterface(
             bridge,
@@ -665,46 +607,49 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    /*
-                     * Installiamo l'hook su ogni pagina.
-                     */
+                    // Installa l'hook di rete.
                     view.evaluateJavascript(
                         GoogleMapsScraperScript
                             .NETWORK_HOOK_SCRIPT,
                         null
                     )
 
-                    /*
-                     * CONSENSO GOOGLE
-                     */
+                    // ====================================================
+                    // CONSENSO GOOGLE
+                    // ====================================================
+
                     if (
                         url.contains(
-                            "consent.google.com",
-                            ignoreCase = true
+                            "consent.google.com"
                         )
                     ) {
 
-                        appendOutput(
-                            "CONSENSO GOOGLE RILEVATO\n\n" +
-                            "Tento automaticamente di accettare..."
-                        )
+                        if (!consentAttempted) {
 
-                        /*
-                         * NON richiediamo più il click manuale.
-                         */
-                        view.postDelayed(
-                            {
+                            consentAttempted = true
+
+                            appendOutput(
+                                "CONSENSO GOOGLE RILEVATO\n\n" +
+                                "Tento automaticamente di accettare..."
+                            )
+
+                            // Piccolo ritardo per permettere
+                            // alla pagina di costruire completamente
+                            // il pulsante.
+                            view.postDelayed({
+
                                 acceptGoogleConsent()
-                            },
-                            500
-                        )
+
+                            }, 700)
+                        }
 
                         return
                     }
 
-                    /*
-                     * LISTA GOOGLE MAPS
-                     */
+                    // ====================================================
+                    // LISTA GOOGLE
+                    // ====================================================
+
                     if (
                         GoogleMapsScraperScript
                             .isGoogleListUrl(url)
@@ -713,33 +658,29 @@ class MainActivity : ComponentActivity() {
                         currentListId =
                             extractListId(url)
 
-                        currentListName =
-                            "Google Maps List"
-
                         appendOutput(
                             "LISTA GOOGLE MAPS RILEVATA\n\n" +
-                            "URL LISTA:\n$url\n\n" +
-                            "SCANSIONE AUTOMATICA..."
+                            "URL LISTA:\n$url"
                         )
 
-                        /*
-                         * Piccolo ritardo per dare tempo
-                         * alla WebView di completare il caricamento.
-                         */
-                        view.postDelayed(
-                            {
+                        // Avvio automatico UNA SOLA VOLTA.
+                        if (
+                            currentListId != null &&
+                            !scanStarted
+                        ) {
 
-                                if (
-                                    !scanAlreadyStarted &&
-                                    currentListId != null
-                                ) {
+                            scanStarted = true
 
-                                    scanGoogleList()
-                                }
+                            appendOutput(
+                                "\nSCANSIONE AUTOMATICA..."
+                            )
 
-                            },
-                            700
-                        )
+                            view.postDelayed({
+
+                                scanGoogleList()
+
+                            }, 500)
+                        }
                     }
                 }
 
@@ -770,9 +711,7 @@ class MainActivity : ComponentActivity() {
                         request.url.toString()
 
                     if (
-                        url.startsWith(
-                            "intent://"
-                        )
+                        url.startsWith("intent://")
                     ) {
 
                         handleGoogleIntent(url)
@@ -825,6 +764,10 @@ class MainActivity : ComponentActivity() {
 
     private fun acceptGoogleConsent() {
 
+        if (!::webView.isInitialized) {
+            return
+        }
+
         appendOutput(
             "AVVIO ACCETTAZIONE GOOGLE"
         )
@@ -837,42 +780,6 @@ class MainActivity : ComponentActivity() {
             appendOutput(
                 "CONSENSO RISULTATO\n\n$result"
             )
-
-            /*
-             * Se il click ha funzionato Google dovrebbe
-             * navigare automaticamente alla pagina Maps.
-             *
-             * Se invece siamo ancora sulla pagina di consenso,
-             * facciamo un secondo tentativo dopo un breve delay.
-             */
-            webView.postDelayed(
-                {
-
-                    val currentUrl =
-                        webView.url ?: ""
-
-                    if (
-                        currentUrl.contains(
-                            "consent.google.com",
-                            ignoreCase = true
-                        )
-                    ) {
-
-                        appendOutput(
-                            "CONSENSO ANCORA PRESENTE: " +
-                            "secondo tentativo..."
-                        )
-
-                        webView.evaluateJavascript(
-                            GoogleMapsScraperScript
-                                .ACCEPT_CONSENT_SCRIPT,
-                            null
-                        )
-                    }
-
-                },
-                1500
-            )
         }
     }
 
@@ -882,30 +789,11 @@ class MainActivity : ComponentActivity() {
 
     private fun scanGoogleList() {
 
-        if (scanAlreadyStarted) {
+        if (importStarted) {
             return
         }
 
-        if (currentListId == null) {
-
-            appendOutput(
-                "SCANSIONE ANNULLATA: LIST ID NON DISPONIBILE"
-            )
-
-            return
-        }
-
-        scanAlreadyStarted = true
-
-        /*
-         * Il pulsante resta nascosto: è solo un fallback
-         * tecnico e non dovrebbe più essere necessario.
-         */
-        if (::scanButton.isInitialized) {
-
-            scanButton.visibility =
-                View.GONE
-        }
+        importStarted = true
 
         appendOutput(
             "SCANSIONE LISTA AVVIATA\n\n" +
@@ -955,9 +843,7 @@ class MainActivity : ComponentActivity() {
                 )
 
             val end =
-                value.indexOf(
-                    "#Intent"
-                )
+                value.indexOf("#Intent")
 
             if (end != -1) {
 
@@ -989,8 +875,7 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
 
             appendOutput(
-                "ERRORE PARSING INTENT:\n" +
-                e
+                "ERRORE PARSING INTENT:\n$e"
             )
         }
     }
@@ -1007,7 +892,6 @@ class MainActivity : ComponentActivity() {
             intent?.action !=
             Intent.ACTION_SEND
         ) {
-
             return
         }
 
@@ -1046,16 +930,13 @@ class MainActivity : ComponentActivity() {
         val url =
             match.value
 
-        /*
-         * Reset dello stato dell'importazione.
-         */
+        // Nuovo ciclo di importazione.
+        consentAttempted = false
+        scanStarted = false
+        importStarted = false
         currentListId = null
-        currentListName = null
-        scanAlreadyStarted = false
 
-        /*
-         * Apriamo immediatamente l'importatore.
-         */
+        // Mostra immediatamente l'importatore.
         showImporter()
 
         appendOutput(
@@ -1082,27 +963,7 @@ class MainActivity : ComponentActivity() {
         outputView.append(
             "\n$section\n"
         )
-
-        /*
-         * Scroll automatico in fondo al log.
-         */
-        outputView.post {
-
-            val parent =
-                outputView.parent
-
-            if (parent is ScrollView) {
-
-                parent.fullScroll(
-                    View.FOCUS_DOWN
-                )
-            }
-        }
     }
-
-    // ============================================================
-    // COPIA
-    // ============================================================
 
     private fun copyOutputToClipboard() {
 
@@ -1129,10 +990,6 @@ class MainActivity : ComponentActivity() {
             Toast.LENGTH_SHORT
         ).show()
     }
-
-    // ============================================================
-    // PULISCI
-    // ============================================================
 
     private fun clearOutput() {
 
