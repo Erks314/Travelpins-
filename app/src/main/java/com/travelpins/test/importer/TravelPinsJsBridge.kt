@@ -16,6 +16,8 @@ class TravelPinsJsBridge(
     private val onLogMessage: (String) -> Unit = {}
 ) {
 
+    private var extractedListName: String? = null
+
     @JavascriptInterface
     fun log(message: String) {
         Log.d("TravelPins", message)
@@ -23,34 +25,94 @@ class TravelPinsJsBridge(
     }
 
     @JavascriptInterface
-    fun network(type: String, method: String, url: String, body: String) {
-        Log.d("TravelPinsNetwork", "$type $method $url")
+    fun network(
+        type: String,
+        method: String,
+        url: String,
+        body: String
+    ) {
+        Log.d(
+            "TravelPinsNetwork",
+            "$type $method $url"
+        )
+    }
+
+    @JavascriptInterface
+    fun onListTitleExtracted(title: String) {
+
+        val cleanTitle =
+            title
+                .trim()
+                .replace(Regex("\\s+"), " ")
+
+        if (cleanTitle.isNotBlank()) {
+            extractedListName = cleanTitle
+
+            Log.d(
+                "TravelPins",
+                "NOME LISTA RICEVUTO: $cleanTitle"
+            )
+
+            onLogMessage(
+                "NOME LISTA: $cleanTitle"
+            )
+        }
     }
 
     @JavascriptInterface
     fun onPlacesExtracted(rawJson: String) {
-        scope.launch {
-            try {
-                val sourceListId = getCurrentSourceListId()
-                val sourceListName = getCurrentSourceListName()
 
-                val places = PlaceJsonParser.parse(
-                    rawJson,
-                    sourceListId,
-                    sourceListName
+        scope.launch {
+
+            try {
+
+                val sourceListId =
+                    getCurrentSourceListId()
+
+                val sourceListName =
+                    extractedListName
+                        ?: getCurrentSourceListName()
+
+                val places =
+                    PlaceJsonParser.parse(
+                        rawJson = rawJson,
+                        sourceListId = sourceListId,
+                        sourceListName = sourceListName
+                    )
+
+                onLogMessage(
+                    "LUOGHI PARSATI: ${places.size}"
                 )
 
-                val saved = repository.saveImportedPlaces(places)
+                onLogMessage(
+                    "ELENCO: ${sourceListName ?: "Senza nome"}"
+                )
+
+                val saved =
+                    repository.saveImportedPlaces(
+                        places
+                    )
 
                 onImportFinished(saved)
+
             } catch (t: Throwable) {
+
+                Log.e(
+                    "TravelPins",
+                    "Errore importazione",
+                    t
+                )
+
                 onImportError(t)
             }
         }
     }
 
     companion object {
+
         const val NAME = "TravelPins"
-        const val BRIDGE_NAME = "TravelPinsBridge"
+
+        const val BRIDGE_NAME =
+            "TravelPinsBridge"
     }
 }
