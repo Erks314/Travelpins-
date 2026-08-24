@@ -21,7 +21,7 @@ interface PlaceDao {
     fun observeByCategory(categoryId: Long): Flow<List<Place>>
 
     @Query("SELECT * FROM places WHERE categoryId IS NULL ORDER BY importedAt DESC")
-    fun observeUncategorizedPlaces(): Flow<List<Place>>
+    fun observeUncategorized(): Flow<List<Place>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(places: List<Place>): List<Long>
