@@ -18,7 +18,14 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.SET_NULL
         )
     ],
-    indices = [Index("categoryId"), Index("sourceListId")]
+    indices = [
+        Index("categoryId"),
+        Index("sourceListId"),
+        Index(
+            value = ["sourceListId", "name", "latitude", "longitude"],
+            unique = true
+        )
+    ]
 )
 data class Place(
     @PrimaryKey(autoGenerate = true)
