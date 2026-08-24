@@ -7,7 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
@@ -15,12 +17,15 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
+import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.importer.TravelPinsJsBridge
@@ -32,7 +37,6 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
     private lateinit var outputView: TextView
-
     private lateinit var repository: TravelPinsRepository
 
     private var currentListId: String? = null
@@ -40,6 +44,15 @@ class MainActivity : ComponentActivity() {
     private var consentAttempted = false
     private var scanStarted = false
     private var importStarted = false
+
+    private var currentPlaces: List<Place> = emptyList()
+    private var currentCategories: List<Category> = emptyList()
+
+    private var selectedCategoryId: Long? = null
+
+    // ============================================================
+    // ACTIVITY
+    // ============================================================
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,11 +65,12 @@ class MainActivity : ComponentActivity() {
 
         handleIntent(intent)
 
-        observePlaces()
+        observeData()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+
         setIntent(intent)
 
         consentAttempted = false
@@ -89,11 +103,15 @@ class MainActivity : ComponentActivity() {
             setPadding(20, 28, 20, 20)
         }
 
+        // --------------------------------------------------------
+        // HEADER
+        // --------------------------------------------------------
+
         val title = TextView(this).apply {
             text = "TRAVELPINS"
             textSize = 30f
-            setTextColor(Color.rgb(30, 30, 30))
-            setPadding(0, 0, 0, 4)
+            setTextColor(Color.rgb(25, 25, 25))
+            setPadding(0, 0, 0, 2)
         }
 
         val subtitle = TextView(this).apply {
@@ -120,7 +138,7 @@ class MainActivity : ComponentActivity() {
         }
 
         val countTitle = TextView(this).apply {
-            text = "I TUOI LUOGHI"
+            text = "LUOGHI SALVATI"
             textSize = 12f
             setTextColor(Color.rgb(110, 110, 110))
         }
@@ -186,7 +204,7 @@ class MainActivity : ComponentActivity() {
 
         val categoriesButton = Button(this).apply {
 
-            text = "CATEGORIE"
+            text = "📁  CATEGORIE"
 
             textSize = 14f
 
@@ -198,12 +216,7 @@ class MainActivity : ComponentActivity() {
             )
 
             setOnClickListener {
-
-                Toast.makeText(
-                    this@MainActivity,
-                    "Sezione categorie: prossimo step",
-                    Toast.LENGTH_SHORT
-                ).show()
+                showCategoriesDialog()
             }
         }
 
@@ -213,19 +226,44 @@ class MainActivity : ComponentActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 52
             ).apply {
-                bottomMargin = 18
+                bottomMargin = 14
             }
         )
 
         // --------------------------------------------------------
-        // TITOLO LISTA
+        // FILTRI
+        // --------------------------------------------------------
+
+        val filterScroll = ScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+
+        val filterContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            tag = "filter_container"
+        }
+
+        filterScroll.addView(filterContainer)
+
+        root.addView(
+            filterScroll,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                48
+            ).apply {
+                bottomMargin = 10
+            }
+        )
+
+        // --------------------------------------------------------
+        // TITOLO
         // --------------------------------------------------------
 
         val placesTitle = TextView(this).apply {
-            text = "LUOGHI SALVATI"
+            text = "LUOGHI"
             textSize = 13f
             setTextColor(Color.rgb(100, 100, 100))
-            setPadding(2, 0, 0, 10)
+            setPadding(2, 0, 0, 8)
         }
 
         root.addView(placesTitle)
@@ -254,200 +292,433 @@ class MainActivity : ComponentActivity() {
         )
 
         setContentView(root)
+
+        refreshHome()
     }
 
     // ============================================================
-    // DATABASE OBSERVER
+    // DATABASE
     // ============================================================
 
-    private fun observePlaces() {
+    private fun observeData() {
 
         lifecycleScope.launch {
 
             repository.places.collect { places ->
 
+                currentPlaces = places
+
                 runOnUiThread {
+                    refreshHome()
+                }
+            }
+        }
 
-                    val content =
-                        findViewById<View>(android.R.id.content)
+        lifecycleScope.launch {
 
-                    val countView =
-                        content.findViewWithTag<TextView>(
-                            "place_count"
-                        )
+            repository.categories.collect { categories ->
 
-                    countView?.text =
-                        places.size.toString()
+                currentCategories = categories
 
-                    val container =
-                        content.findViewWithTag<LinearLayout>(
-                            "places_container"
-                        )
-                            ?: return@runOnUiThread
-
-                    container.removeAllViews()
-
-                    if (places.isEmpty()) {
-
-                        val emptyCard =
-                            LinearLayout(this@MainActivity).apply {
-
-                                orientation =
-                                    LinearLayout.VERTICAL
-
-                                gravity =
-                                    android.view.Gravity.CENTER
-
-                                setPadding(
-                                    24,
-                                    32,
-                                    24,
-                                    32
-                                )
-
-                                background =
-                                    roundedBackground(
-                                        Color.WHITE,
-                                        18f
-                                    )
-                            }
-
-                        val emptyTitle =
-                            TextView(this@MainActivity).apply {
-
-                                text =
-                                    "Nessun luogo ancora salvato"
-
-                                textSize = 17f
-
-                                setTextColor(
-                                    Color.rgb(
-                                        50,
-                                        50,
-                                        50
-                                    )
-                                )
-
-                                gravity =
-                                    android.view.Gravity.CENTER
-                            }
-
-                        val emptyText =
-                            TextView(this@MainActivity).apply {
-
-                                text =
-                                    "Importa una lista da Google Maps\n" +
-                                    "per iniziare a organizzare i tuoi luoghi."
-
-                                textSize = 14f
-
-                                setTextColor(
-                                    Color.rgb(
-                                        110,
-                                        110,
-                                        110
-                                    )
-                                )
-
-                                gravity =
-                                    android.view.Gravity.CENTER
-
-                                setPadding(
-                                    0,
-                                    8,
-                                    0,
-                                    0
-                                )
-                            }
-
-                        emptyCard.addView(emptyTitle)
-                        emptyCard.addView(emptyText)
-
-                        container.addView(
-                            emptyCard,
-                            LinearLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.WRAP_CONTENT
-                            )
-                        )
-
-                    } else {
-
-                        places.forEach { place ->
-
-                            container.addView(
-                                createPlaceView(place),
-                                LinearLayout.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                    ViewGroup.LayoutParams.WRAP_CONTENT
-                                ).apply {
-                                    bottomMargin = 10
-                                }
-                            )
-                        }
-                    }
+                runOnUiThread {
+                    refreshHome()
                 }
             }
         }
     }
 
     // ============================================================
-    // CARD SINGOLO LUOGO
+    // REFRESH HOME
+    // ============================================================
+
+    private fun refreshHome() {
+
+        if (!::repository.isInitialized) {
+            return
+        }
+
+        val content =
+            findViewById<View>(android.R.id.content)
+                ?: return
+
+        val countView =
+            content.findViewWithTag<TextView>(
+                "place_count"
+            )
+
+        countView?.text =
+            currentPlaces.size.toString()
+
+        refreshFilters(content)
+        refreshPlaces(content)
+    }
+
+    // ============================================================
+    // FILTERS
+    // ============================================================
+
+    private fun refreshFilters(content: View) {
+
+        val container =
+            content.findViewWithTag<LinearLayout>(
+                "filter_container"
+            )
+                ?: return
+
+        container.removeAllViews()
+
+        addFilterButton(
+            container,
+            "Tutti",
+            null
+        )
+
+        addFilterButton(
+            container,
+            "Senza categoria",
+            -1L
+        )
+
+        currentCategories.forEach { category ->
+
+            addFilterButton(
+                container,
+                "${category.iconKey}  ${category.name}",
+                category.id
+            )
+        }
+    }
+
+    private fun addFilterButton(
+        container: LinearLayout,
+        text: String,
+        categoryId: Long?
+    ) {
+
+        val selected =
+            selectedCategoryId == categoryId
+
+        val button = Button(this).apply {
+
+            this.text = text
+
+            textSize = 12f
+
+            setTextColor(
+                if (selected) {
+                    Color.WHITE
+                } else {
+                    Color.rgb(55, 55, 55)
+                }
+            )
+
+            background = roundedBackground(
+                if (selected) {
+                    Color.rgb(45, 105, 225)
+                } else {
+                    Color.WHITE
+                },
+                14f
+            )
+
+            setPadding(16, 0, 16, 0)
+
+            setOnClickListener {
+
+                selectedCategoryId = categoryId
+
+                refreshHome()
+            }
+        }
+
+        container.addView(
+            button,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                44
+            ).apply {
+                rightMargin = 8
+            }
+        )
+    }
+
+    // ============================================================
+    // PLACES
+    // ============================================================
+
+    private fun refreshPlaces(content: View) {
+
+        val container =
+            content.findViewWithTag<LinearLayout>(
+                "places_container"
+            )
+                ?: return
+
+        container.removeAllViews()
+
+        val placesToShow =
+            when {
+
+                selectedCategoryId == null ->
+                    currentPlaces
+
+                selectedCategoryId == -1L ->
+                    currentPlaces.filter {
+                        it.categoryId == null
+                    }
+
+                else ->
+                    currentPlaces.filter {
+                        it.categoryId == selectedCategoryId
+                    }
+            }
+
+        if (placesToShow.isEmpty()) {
+
+            val emptyCard =
+                LinearLayout(this).apply {
+
+                    orientation =
+                        LinearLayout.VERTICAL
+
+                    gravity = Gravity.CENTER
+
+                    setPadding(
+                        24,
+                        32,
+                        24,
+                        32
+                    )
+
+                    background =
+                        roundedBackground(
+                            Color.WHITE,
+                            18f
+                        )
+                }
+
+            val emptyTitle =
+                TextView(this).apply {
+
+                    text =
+                        if (currentPlaces.isEmpty()) {
+                            "Nessun luogo ancora salvato"
+                        } else {
+                            "Nessun luogo in questa categoria"
+                        }
+
+                    textSize = 17f
+
+                    setTextColor(
+                        Color.rgb(
+                            50,
+                            50,
+                            50
+                        )
+                    )
+
+                    gravity =
+                        Gravity.CENTER
+                }
+
+            val emptyText =
+                TextView(this).apply {
+
+                    text =
+                        if (currentPlaces.isEmpty()) {
+                            "Importa una lista da Google Maps\n" +
+                                    "per iniziare a organizzare i tuoi luoghi."
+                        } else {
+                            "Prova a selezionare un'altra categoria."
+                        }
+
+                    textSize = 14f
+
+                    setTextColor(
+                        Color.rgb(
+                            110,
+                            110,
+                            110
+                        )
+                    )
+
+                    gravity =
+                        Gravity.CENTER
+
+                    setPadding(
+                        0,
+                        8,
+                        0,
+                        0
+                    )
+                }
+
+            emptyCard.addView(emptyTitle)
+            emptyCard.addView(emptyText)
+
+            container.addView(
+                emptyCard,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            return
+        }
+
+        placesToShow.forEach { place ->
+
+            container.addView(
+                createPlaceView(place),
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = 10
+                }
+            )
+        }
+    }
+
+    // ============================================================
+    // PLACE CARD
     // ============================================================
 
     private fun createPlaceView(
         place: Place
     ): View {
 
-        val box = LinearLayout(this).apply {
+        val category =
+            currentCategories.firstOrNull {
+                it.id == place.categoryId
+            }
 
-            orientation =
-                LinearLayout.VERTICAL
+        val box =
+            LinearLayout(this).apply {
 
-            setPadding(
-                18,
-                16,
-                18,
-                16
-            )
+                orientation =
+                    LinearLayout.VERTICAL
 
-            background =
-                roundedBackground(
-                    Color.WHITE,
-                    18f
+                setPadding(
+                    18,
+                    16,
+                    18,
+                    16
                 )
-        }
 
-        val name = TextView(this).apply {
+                background =
+                    roundedBackground(
+                        Color.WHITE,
+                        18f
+                    )
 
-            text = place.name
+                setOnClickListener {
+                    showPlaceMenu(place)
+                }
+            }
 
-            textSize = 17f
+        // --------------------------------------------------------
+        // NOME
+        // --------------------------------------------------------
 
-            setTextColor(
-                Color.rgb(
-                    35,
-                    35,
-                    35
+        val name =
+            TextView(this).apply {
+
+                text =
+                    if (category != null) {
+                        "${category.iconKey}  ${place.name}"
+                    } else {
+                        "📍  ${place.name}"
+                    }
+
+                textSize = 17f
+
+                setTextColor(
+                    Color.rgb(
+                        35,
+                        35,
+                        35
+                    )
                 )
-            )
 
-            setPadding(
-                0,
-                0,
-                0,
-                7
-            )
-        }
+                setPadding(
+                    0,
+                    0,
+                    0,
+                    7
+                )
+            }
 
         box.addView(name)
+
+        // --------------------------------------------------------
+        // CATEGORIA
+        // --------------------------------------------------------
+
+        if (category != null) {
+
+            val categoryView =
+                TextView(this).apply {
+
+                    text =
+                        category.name
+
+                    textSize = 12f
+
+                    setTextColor(
+                        category.colorArgb
+                    )
+
+                    setPadding(
+                        0,
+                        0,
+                        0,
+                        7
+                    )
+                }
+
+            box.addView(categoryView)
+        } else {
+
+            val uncategorized =
+                TextView(this).apply {
+
+                    text =
+                        "Senza categoria"
+
+                    textSize = 12f
+
+                    setTextColor(
+                        Color.rgb(
+                            150,
+                            150,
+                            150
+                        )
+                    )
+
+                    setPadding(
+                        0,
+                        0,
+                        0,
+                        7
+                    )
+                }
+
+            box.addView(uncategorized)
+        }
+
+        // --------------------------------------------------------
+        // INDIRIZZO
+        // --------------------------------------------------------
 
         if (!place.address.isNullOrBlank()) {
 
             val address =
                 TextView(this).apply {
 
-                    text = place.address
+                    text =
+                        place.address
 
                     textSize = 14f
 
@@ -470,34 +741,9 @@ class MainActivity : ComponentActivity() {
             box.addView(address)
         }
 
-        if (place.categoryId != null) {
-
-            val category =
-                TextView(this).apply {
-
-                    text =
-                        "Categoria ID: ${place.categoryId}"
-
-                    textSize = 12f
-
-                    setTextColor(
-                        Color.rgb(
-                            70,
-                            100,
-                            180
-                        )
-                    )
-
-                    setPadding(
-                        0,
-                        4,
-                        0,
-                        7
-                    )
-                }
-
-            box.addView(category)
-        }
+        // --------------------------------------------------------
+        // COORDINATE
+        // --------------------------------------------------------
 
         val coordinates =
             TextView(this).apply {
@@ -518,11 +764,651 @@ class MainActivity : ComponentActivity() {
 
         box.addView(coordinates)
 
+        // --------------------------------------------------------
+        // AZIONI
+        // --------------------------------------------------------
+
+        val actions =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.HORIZONTAL
+
+                gravity =
+                    Gravity.END
+
+                setPadding(
+                    0,
+                    10,
+                    0,
+                    0
+                )
+            }
+
+        val mapsButton =
+            Button(this).apply {
+
+                text = "MAPS"
+
+                textSize = 11f
+
+                setOnClickListener {
+
+                    openInGoogleMaps(place)
+                }
+            }
+
+        val categoryButton =
+            Button(this).apply {
+
+                text =
+                    if (category == null) {
+                        "CATEGORIZZA"
+                    } else {
+                        "CAMBIA CATEGORIA"
+                    }
+
+                textSize = 11f
+
+                setOnClickListener {
+
+                    showCategoryPicker(place)
+                }
+            }
+
+        actions.addView(
+            categoryButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                42
+            ).apply {
+                rightMargin = 6
+            }
+        )
+
+        actions.addView(
+            mapsButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                42
+            )
+        )
+
+        box.addView(actions)
+
         return box
     }
 
     // ============================================================
-    // BACKGROUND CARD
+    // PLACE MENU
+    // ============================================================
+
+    private fun showPlaceMenu(place: Place) {
+
+        val category =
+            currentCategories.firstOrNull {
+                it.id == place.categoryId
+            }
+
+        val options =
+            arrayOf(
+                "Cambia categoria",
+                "Apri in Google Maps"
+            )
+
+        AlertDialog.Builder(this)
+            .setTitle(place.name)
+            .setItems(options) { _, which ->
+
+                when (which) {
+
+                    0 ->
+                        showCategoryPicker(place)
+
+                    1 ->
+                        openInGoogleMaps(place)
+                }
+            }
+            .setNegativeButton(
+                "Annulla",
+                null
+            )
+            .show()
+    }
+
+    // ============================================================
+    // CATEGORY PICKER
+    // ============================================================
+
+    private fun showCategoryPicker(
+        place: Place
+    ) {
+
+        if (currentCategories.isEmpty()) {
+
+            Toast.makeText(
+                this,
+                "Prima crea almeno una categoria.",
+                Toast.LENGTH_LONG
+            ).show()
+
+            showCreateCategoryDialog()
+
+            return
+        }
+
+        val items =
+            mutableListOf<String>()
+
+        items.add(
+            "⚪  Senza categoria"
+        )
+
+        currentCategories.forEach { category ->
+
+            items.add(
+                "${category.iconKey}  ${category.name}"
+            )
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                "Categoria di\n${place.name}"
+            )
+            .setItems(
+                items.toTypedArray()
+            ) { _, which ->
+
+                val categoryId =
+                    if (which == 0) {
+                        null
+                    } else {
+                        currentCategories[
+                            which - 1
+                        ].id
+                    }
+
+                lifecycleScope.launch {
+
+                    repository.assignPlaceToCategory(
+                        place.id,
+                        categoryId
+                    )
+
+                    runOnUiThread {
+
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Categoria aggiornata",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            .setNeutralButton(
+                "＋ Nuova categoria"
+            ) { _, _ ->
+
+                showCreateCategoryDialog()
+            }
+            .setNegativeButton(
+                "Annulla",
+                null
+            )
+            .show()
+    }
+
+    // ============================================================
+    // CATEGORIES DIALOG
+    // ============================================================
+
+    private fun showCategoriesDialog() {
+
+        val items =
+            mutableListOf<String>()
+
+        currentCategories.forEach { category ->
+
+            val count =
+                currentPlaces.count {
+                    it.categoryId == category.id
+                }
+
+            items.add(
+                "${category.iconKey}  ${category.name}  ($count)"
+            )
+        }
+
+        items.add(
+            "＋  Crea nuova categoria"
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("Le mie categorie")
+            .setItems(
+                items.toTypedArray()
+            ) { _, which ->
+
+                if (
+                    which ==
+                    currentCategories.size
+                ) {
+
+                    showCreateCategoryDialog()
+
+                } else {
+
+                    showCategoryOptions(
+                        currentCategories[which]
+                    )
+                }
+            }
+            .setNegativeButton(
+                "Chiudi",
+                null
+            )
+            .show()
+    }
+
+    // ============================================================
+    // CATEGORY OPTIONS
+    // ============================================================
+
+    private fun showCategoryOptions(
+        category: Category
+    ) {
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                "${category.iconKey}  ${category.name}"
+            )
+            .setItems(
+                arrayOf(
+                    "Visualizza luoghi",
+                    "Elimina categoria"
+                )
+            ) { _, which ->
+
+                when (which) {
+
+                    0 -> {
+
+                        selectedCategoryId =
+                            category.id
+
+                        refreshHome()
+                    }
+
+                    1 -> {
+
+                        confirmDeleteCategory(
+                            category
+                        )
+                    }
+                }
+            }
+            .setNegativeButton(
+                "Annulla",
+                null
+            )
+            .show()
+    }
+
+    // ============================================================
+    // CREATE CATEGORY
+    // ============================================================
+
+    private fun showCreateCategoryDialog() {
+
+        val layout =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    24,
+                    8,
+                    24,
+                    0
+                )
+            }
+
+        val nameInput =
+            EditText(this).apply {
+
+                hint =
+                    "Nome categoria"
+
+                singleLine = true
+            }
+
+        layout.addView(
+            nameInput,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val iconTitle =
+            TextView(this).apply {
+
+                text =
+                    "Scegli icona"
+
+                textSize = 14f
+
+                setTextColor(
+                    Color.rgb(
+                        80,
+                        80,
+                        80
+                    )
+                )
+
+                setPadding(
+                    0,
+                    18,
+                    0,
+                    8
+                )
+            }
+
+        layout.addView(iconTitle)
+
+        var selectedIcon =
+            "📍"
+
+        val iconContainer =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.HORIZONTAL
+            }
+
+        val icons =
+            listOf(
+                "📍",
+                "🍴",
+                "🏨",
+                "🏖️",
+                "🏛️",
+                "🌄",
+                "🎯",
+                "🛍️",
+                "☕",
+                "🍺"
+            )
+
+        icons.forEach { icon ->
+
+            val button =
+                Button(this).apply {
+
+                    text = icon
+
+                    textSize = 20f
+
+                    setPadding(
+                        2,
+                        0,
+                        2,
+                        0
+                    )
+
+                    setOnClickListener {
+
+                        selectedIcon =
+                            icon
+
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Icona: $icon",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+
+            iconContainer.addView(
+                button,
+                LinearLayout.LayoutParams(
+                    52,
+                    52
+                ).apply {
+                    rightMargin = 4
+                }
+            )
+        }
+
+        val iconScroll =
+            ScrollView(this).apply {
+
+                isHorizontalScrollBarEnabled =
+                    false
+
+                addView(iconContainer)
+            }
+
+        layout.addView(
+            iconScroll,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                62
+            )
+        )
+
+        val colorTitle =
+            TextView(this).apply {
+
+                text =
+                    "Scegli colore"
+
+                textSize = 14f
+
+                setTextColor(
+                    Color.rgb(
+                        80,
+                        80,
+                        80
+                    )
+                )
+
+                setPadding(
+                    0,
+                    14,
+                    0,
+                    8
+                )
+            }
+
+        layout.addView(colorTitle)
+
+        var selectedColor =
+            Color.rgb(
+                45,
+                105,
+                225
+            )
+
+        val colorContainer =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.HORIZONTAL
+            }
+
+        val colors =
+            listOf(
+                Color.rgb(45, 105, 225),
+                Color.rgb(220, 70, 70),
+                Color.rgb(45, 160, 90),
+                Color.rgb(230, 150, 30),
+                Color.rgb(140, 80, 190),
+                Color.rgb(0, 150, 170),
+                Color.rgb(220, 70, 130),
+                Color.rgb(90, 90, 90)
+            )
+
+        colors.forEach { color ->
+
+            val colorButton =
+                View(this).apply {
+
+                    background =
+                        roundedBackground(
+                            color,
+                            30f
+                        )
+
+                    setOnClickListener {
+
+                        selectedColor =
+                            color
+                    }
+                }
+
+            colorContainer.addView(
+                colorButton,
+                LinearLayout.LayoutParams(
+                    42,
+                    42
+                ).apply {
+                    rightMargin = 8
+                }
+            )
+        }
+
+        layout.addView(colorContainer)
+
+        AlertDialog.Builder(this)
+            .setTitle("Nuova categoria")
+            .setView(layout)
+            .setPositiveButton("CREA") { _, _ ->
+
+                val name =
+                    nameInput.text
+                        .toString()
+                        .trim()
+
+                if (name.isBlank()) {
+
+                    Toast.makeText(
+                        this,
+                        "Inserisci un nome.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@setPositiveButton
+                }
+
+                lifecycleScope.launch {
+
+                    repository.createCategory(
+                        name = name,
+                        colorArgb = selectedColor,
+                        iconKey = selectedIcon
+                    )
+
+                    runOnUiThread {
+
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Categoria creata",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            .setNegativeButton(
+                "ANNULLA",
+                null
+            )
+            .show()
+    }
+
+    // ============================================================
+    // DELETE CATEGORY
+    // ============================================================
+
+    private fun confirmDeleteCategory(
+        category: Category
+    ) {
+
+        AlertDialog.Builder(this)
+            .setTitle("Eliminare categoria?")
+            .setMessage(
+                "La categoria \"${category.name}\" verrà eliminata.\n\n" +
+                        "I luoghi resteranno salvati, ma torneranno senza categoria."
+            )
+            .setPositiveButton("ELIMINA") { _, _ ->
+
+                lifecycleScope.launch {
+
+                    repository.deleteCategory(
+                        category
+                    )
+
+                    runOnUiThread {
+
+                        if (
+                            selectedCategoryId ==
+                            category.id
+                        ) {
+                            selectedCategoryId =
+                                null
+                        }
+
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Categoria eliminata",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            .setNegativeButton(
+                "ANNULLA",
+                null
+            )
+            .show()
+    }
+
+    // ============================================================
+    // OPEN GOOGLE MAPS
+    // ============================================================
+
+    private fun openInGoogleMaps(
+        place: Place
+    ) {
+
+        val uri =
+            Uri.parse(
+                "https://www.google.com/maps/search/?api=1" +
+                        "&query=${place.latitude},${place.longitude}"
+            )
+
+        try {
+
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    uri
+                )
+            )
+
+        } catch (e: Exception) {
+
+            Toast.makeText(
+                this,
+                "Impossibile aprire Google Maps.",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    // ============================================================
+    // BACKGROUND
     // ============================================================
 
     private fun roundedBackground(
@@ -531,10 +1417,12 @@ class MainActivity : ComponentActivity() {
     ): GradientDrawable {
 
         return GradientDrawable().apply {
+
             setColor(color)
+
             cornerRadius =
                 radius *
-                    resources.displayMetrics.density
+                        resources.displayMetrics.density
         }
     }
 
@@ -549,93 +1437,102 @@ class MainActivity : ComponentActivity() {
         importStarted = false
         currentListId = null
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        val backButton = Button(this).apply {
-
-            text = "← TORNA AI MIEI LUOGHI"
-
-            setOnClickListener {
-
-                webView.stopLoading()
-
-                showHome()
+        val root =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
             }
-        }
 
-        outputView = TextView(this).apply {
+        val backButton =
+            Button(this).apply {
 
-            text =
-                "TRAVELPINS NETWORK MONITOR\n\n" +
-                "In attesa del link..."
+                text =
+                    "← TORNA AI MIEI LUOGHI"
 
-            setPadding(
-                16,
-                16,
-                16,
-                16
-            )
+                setOnClickListener {
 
-            textSize = 12f
-        }
+                    webView.stopLoading()
 
-        val logScroll = ScrollView(this).apply {
-
-            addView(outputView)
-
-            layoutParams =
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    0,
-                    0.40f
-                )
-        }
-
-        val copyButton = Button(this).apply {
-
-            text = "COPIA"
-
-            setOnClickListener {
-
-                copyOutputToClipboard()
+                    showHome()
+                }
             }
-        }
 
-        val cleanButton = Button(this).apply {
+        outputView =
+            TextView(this).apply {
 
-            text = "PULISCI"
+                text =
+                    "TRAVELPINS NETWORK MONITOR\n\n" +
+                            "In attesa del link..."
 
-            setOnClickListener {
+                setPadding(
+                    16,
+                    16,
+                    16,
+                    16
+                )
 
-                clearOutput()
+                textSize = 12f
             }
-        }
 
-        val buttonRow = LinearLayout(this).apply {
+        val logScroll =
+            ScrollView(this).apply {
 
-            orientation =
-                LinearLayout.HORIZONTAL
+                addView(outputView)
 
-            addView(
-                copyButton,
-                LinearLayout.LayoutParams(
-                    0,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    1f
+                layoutParams =
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0,
+                        0.40f
+                    )
+            }
+
+        val copyButton =
+            Button(this).apply {
+
+                text =
+                    "COPIA"
+
+                setOnClickListener {
+                    copyOutputToClipboard()
+                }
+            }
+
+        val cleanButton =
+            Button(this).apply {
+
+                text =
+                    "PULISCI"
+
+                setOnClickListener {
+                    clearOutput()
+                }
+            }
+
+        val buttonRow =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.HORIZONTAL
+
+                addView(
+                    copyButton,
+                    LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        1f
+                    )
                 )
-            )
 
-            addView(
-                cleanButton,
-                LinearLayout.LayoutParams(
-                    0,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    1f
+                addView(
+                    cleanButton,
+                    LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        1f
+                    )
                 )
-            )
-        }
+            }
 
         root.addView(
             backButton,
@@ -668,87 +1565,88 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView() {
 
-        webView = WebView(this).apply {
+        webView =
+            WebView(this).apply {
 
-            settings.javaScriptEnabled = true
+                settings.javaScriptEnabled =
+                    true
 
-            settings.domStorageEnabled = true
+                settings.domStorageEnabled =
+                    true
 
-            settings.userAgentString =
-                "Mozilla/5.0 (Linux; Android 10) " +
-                "AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
-        }
+                settings.userAgentString =
+                    "Mozilla/5.0 (Linux; Android 10) " +
+                            "AppleWebKit/537.36 " +
+                            "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+            }
 
-        val bridge = TravelPinsJsBridge(
+        val bridge =
+            TravelPinsJsBridge(
 
-            repository = repository,
+                repository =
+                    repository,
 
-            scope = lifecycleScope,
+                scope =
+                    lifecycleScope,
 
-            getCurrentSourceListId = {
-                currentListId
-            },
+                getCurrentSourceListId = {
+                    currentListId
+                },
 
-            getCurrentSourceListName = {
-                null
-            },
+                getCurrentSourceListName = {
+                    null
+                },
 
-            onImportFinished = { savedCount ->
+                onImportFinished = { savedCount ->
 
-                runOnUiThread {
+                    runOnUiThread {
 
-                    appendOutput(
-                        "\nIMPORTAZIONE COMPLETATA\n\n" +
-                        "Luoghi salvati: $savedCount"
-                    )
+                        appendOutput(
+                            "\nIMPORTAZIONE COMPLETATA\n\n" +
+                                    "Luoghi salvati: $savedCount"
+                        )
 
-                    Toast.makeText(
-                        this,
-                        "Importazione completata: $savedCount luoghi",
-                        Toast.LENGTH_LONG
-                    ).show()
+                        Toast.makeText(
+                            this,
+                            "Importazione completata: $savedCount luoghi",
+                            Toast.LENGTH_LONG
+                        ).show()
 
-                    // ====================================================
-                    // NUOVO:
-                    // dopo il salvataggio torniamo automaticamente
-                    // alla Home.
-                    // ====================================================
+                        // Torna automaticamente alla home.
+                        webView.stopLoading()
 
-                    webView.stopLoading()
+                        showHome()
+                    }
+                },
 
-                    showHome()
-                }
-            },
+                onImportError = { error ->
 
-            onImportError = { error ->
+                    runOnUiThread {
 
-                runOnUiThread {
+                        appendOutput(
+                            "\nERRORE SALVATAGGIO:\n" +
+                                    "${error.message}"
+                        )
 
-                    appendOutput(
-                        "\nERRORE SALVATAGGIO:\n" +
-                        "${error.message}"
-                    )
+                        Toast.makeText(
+                            this,
+                            "Errore salvataggio: ${error.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                },
 
-                    Toast.makeText(
-                        this,
-                        "Errore salvataggio: ${error.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            },
+                onLogMessage = { message ->
 
-            onLogMessage = { message ->
+                    runOnUiThread {
 
-                runOnUiThread {
+                        if (::outputView.isInitialized) {
 
-                    if (::outputView.isInitialized) {
-
-                        appendOutput(message)
+                            appendOutput(message)
+                        }
                     }
                 }
-            }
-        )
+            )
 
         webView.addJavascriptInterface(
             bridge,
@@ -786,6 +1684,10 @@ class MainActivity : ComponentActivity() {
                         null
                     )
 
+                    // ------------------------------------------------
+                    // CONSENSO GOOGLE
+                    // ------------------------------------------------
+
                     if (
                         url.contains(
                             "consent.google.com"
@@ -794,11 +1696,12 @@ class MainActivity : ComponentActivity() {
 
                         if (!consentAttempted) {
 
-                            consentAttempted = true
+                            consentAttempted =
+                                true
 
                             appendOutput(
                                 "CONSENSO GOOGLE RILEVATO\n\n" +
-                                "Tento automaticamente di accettare..."
+                                        "Tento automaticamente di accettare..."
                             )
 
                             view.postDelayed({
@@ -811,6 +1714,10 @@ class MainActivity : ComponentActivity() {
                         return
                     }
 
+                    // ------------------------------------------------
+                    // LISTA GOOGLE
+                    // ------------------------------------------------
+
                     if (
                         GoogleMapsScraperScript
                             .isGoogleListUrl(url)
@@ -821,7 +1728,7 @@ class MainActivity : ComponentActivity() {
 
                         appendOutput(
                             "LISTA GOOGLE MAPS RILEVATA\n\n" +
-                            "URL LISTA:\n$url"
+                                    "URL LISTA:\n$url"
                         )
 
                         if (
@@ -829,7 +1736,8 @@ class MainActivity : ComponentActivity() {
                             !scanStarted
                         ) {
 
-                            scanStarted = true
+                            scanStarted =
+                                true
 
                             appendOutput(
                                 "\nSCANSIONE AUTOMATICA..."
@@ -855,7 +1763,7 @@ class MainActivity : ComponentActivity() {
 
                         appendOutput(
                             "WEBVIEW RENDERER TERMINATO\n\n" +
-                            "CRASH: $detail"
+                                    "CRASH: $detail"
                         )
                     }
 
@@ -871,7 +1779,9 @@ class MainActivity : ComponentActivity() {
                         request.url.toString()
 
                     if (
-                        url.startsWith("intent://")
+                        url.startsWith(
+                            "intent://"
+                        )
                     ) {
 
                         handleGoogleIntent(url)
@@ -957,8 +1867,8 @@ class MainActivity : ComponentActivity() {
 
         appendOutput(
             "SCANSIONE LISTA AVVIATA\n\n" +
-            "Metodo: entitylist/getlist\n\n" +
-            "NON utilizzo il DOM."
+                    "Metodo: entitylist/getlist\n\n" +
+                    "NON utilizzo il DOM."
         )
 
         webView.evaluateJavascript(
@@ -1003,7 +1913,9 @@ class MainActivity : ComponentActivity() {
                 )
 
             val end =
-                value.indexOf("#Intent")
+                value.indexOf(
+                    "#Intent"
+                )
 
             if (end != -1) {
 
@@ -1022,12 +1934,12 @@ class MainActivity : ComponentActivity() {
 
             appendOutput(
                 "GOOGLE INTENT INTERCETTATO\n\n" +
-                "CERCO FALLBACK WEB..."
+                        "CERCO FALLBACK WEB..."
             )
 
             appendOutput(
                 "FALLBACK WEB TROVATO:\n\n" +
-                decoded
+                        decoded
             )
 
             webView.loadUrl(decoded)
@@ -1099,8 +2011,8 @@ class MainActivity : ComponentActivity() {
 
         appendOutput(
             "LINK RICEVUTO\n\n" +
-            "$url\n\n" +
-            "AVVIO GOOGLE MAPS WEB..."
+                    "$url\n\n" +
+                    "AVVIO GOOGLE MAPS WEB..."
         )
 
         webView.loadUrl(url)
@@ -1121,6 +2033,18 @@ class MainActivity : ComponentActivity() {
         outputView.append(
             "\n$section\n"
         )
+
+        val parent =
+            outputView.parent
+
+        if (parent is ScrollView) {
+
+            parent.post {
+                parent.fullScroll(
+                    View.FOCUS_DOWN
+                )
+            }
+        }
     }
 
     private fun copyOutputToClipboard() {
@@ -1157,6 +2081,6 @@ class MainActivity : ComponentActivity() {
 
         outputView.text =
             "TRAVELPINS NETWORK MONITOR\n\n" +
-            "Monitor pulito."
+                    "Monitor pulito."
     }
 }
