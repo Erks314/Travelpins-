@@ -31,6 +31,8 @@ import com.google.android.gms.maps.MapView
 import com.google.android.gms.maps.MapsInitializer
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
@@ -79,8 +81,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        repository =
-            TravelPinsRepository(applicationContext)
+        repository = TravelPinsRepository(applicationContext)
 
         createWebView()
 
@@ -106,27 +107,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-
         mapView?.onStart()
     }
 
     override fun onResume() {
         super.onResume()
-
         mapView?.onResume()
     }
 
     override fun onPause() {
-
         mapView?.onPause()
-
         super.onPause()
     }
 
     override fun onStop() {
-
         mapView?.onStop()
-
         super.onStop()
     }
 
@@ -150,65 +145,61 @@ class MainActivity : ComponentActivity() {
 
     private fun showHome() {
 
-        val root =
-            LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
 
-                orientation =
-                    LinearLayout.VERTICAL
+            orientation = LinearLayout.VERTICAL
 
-                setBackgroundColor(
-                    Color.rgb(248, 249, 250)
-                )
+            setBackgroundColor(
+                Color.rgb(248, 249, 250)
+            )
 
-                setPadding(
-                    20,
-                    28,
-                    20,
-                    20
-                )
-            }
+            setPadding(
+                20,
+                28,
+                20,
+                20
+            )
+        }
 
         // --------------------------------------------------------
         // HEADER
         // --------------------------------------------------------
 
-        val title =
-            TextView(this).apply {
+        val title = TextView(this).apply {
 
-                text = "TRAVELPINS"
+            text = "TRAVELPINS"
 
-                textSize = 30f
+            textSize = 30f
 
-                setTextColor(
-                    Color.rgb(25, 25, 25)
-                )
+            setTextColor(
+                Color.rgb(25, 25, 25)
+            )
 
-                setPadding(
-                    0,
-                    0,
-                    0,
-                    2
-                )
-            }
+            setPadding(
+                0,
+                0,
+                0,
+                2
+            )
+        }
 
-        val subtitle =
-            TextView(this).apply {
+        val subtitle = TextView(this).apply {
 
-                text = "I miei luoghi"
+            text = "I miei luoghi"
 
-                textSize = 18f
+            textSize = 18f
 
-                setTextColor(
-                    Color.rgb(90, 90, 90)
-                )
+            setTextColor(
+                Color.rgb(90, 90, 90)
+            )
 
-                setPadding(
-                    0,
-                    0,
-                    0,
-                    18
-                )
-            }
+            setPadding(
+                0,
+                0,
+                0,
+                18
+            )
+        }
 
         root.addView(title)
         root.addView(subtitle)
@@ -217,67 +208,53 @@ class MainActivity : ComponentActivity() {
         // CONTATORE
         // --------------------------------------------------------
 
-        val countCard =
-            LinearLayout(this).apply {
+        val countCard = LinearLayout(this).apply {
 
-                orientation =
-                    LinearLayout.VERTICAL
+            orientation = LinearLayout.VERTICAL
 
-                setPadding(
-                    20,
-                    18,
-                    20,
-                    18
-                )
+            setPadding(
+                20,
+                18,
+                20,
+                18
+            )
 
-                background =
-                    roundedBackground(
-                        Color.WHITE,
-                        18f
-                    )
-            }
+            background = roundedBackground(
+                Color.WHITE,
+                18f
+            )
+        }
 
-        val countTitle =
-            TextView(this).apply {
+        val countTitle = TextView(this).apply {
 
-                text =
-                    "LUOGHI SALVATI"
+            text = "LUOGHI SALVATI"
 
-                textSize = 12f
+            textSize = 12f
 
-                setTextColor(
-                    Color.rgb(
-                        110,
-                        110,
-                        110
-                    )
-                )
-            }
+            setTextColor(
+                Color.rgb(110, 110, 110)
+            )
+        }
 
-        val countView =
-            TextView(this).apply {
+        val countView = TextView(this).apply {
 
-                tag = "place_count"
+            tag = "place_count"
 
-                text = "0"
+            text = "0"
 
-                textSize = 30f
+            textSize = 30f
 
-                setTextColor(
-                    Color.rgb(
-                        30,
-                        30,
-                        30
-                    )
-                )
+            setTextColor(
+                Color.rgb(30, 30, 30)
+            )
 
-                setPadding(
-                    0,
-                    4,
-                    0,
-                    0
-                )
-            }
+            setPadding(
+                0,
+                4,
+                0,
+                0
+            )
+        }
 
         countCard.addView(countTitle)
         countCard.addView(countView)
@@ -296,46 +273,37 @@ class MainActivity : ComponentActivity() {
         // MAPPA
         // --------------------------------------------------------
 
-        val mapTitle =
-            TextView(this).apply {
+        val mapTitle = TextView(this).apply {
 
-                text =
-                    "MAPPA"
+            text = "MAPPA"
 
-                textSize = 13f
+            textSize = 13f
 
-                setTextColor(
-                    Color.rgb(
-                        100,
-                        100,
-                        100
-                    )
-                )
+            setTextColor(
+                Color.rgb(100, 100, 100)
+            )
 
-                setPadding(
-                    2,
-                    0,
-                    0,
-                    7
-                )
-            }
+            setPadding(
+                2,
+                0,
+                0,
+                7
+            )
+        }
 
         root.addView(mapTitle)
 
-        val mapContainer =
-            LinearLayout(this).apply {
+        val mapContainer = LinearLayout(this).apply {
 
-                orientation =
-                    LinearLayout.VERTICAL
+            orientation = LinearLayout.VERTICAL
 
-                background =
-                    roundedBackground(
-                        Color.WHITE,
-                        18f
-                    )
+            background = roundedBackground(
+                Color.WHITE,
+                18f
+            )
 
-                clipChildren = true
-            }
+            clipChildren = true
+        }
 
         prepareMapView()
 
@@ -345,7 +313,7 @@ class MainActivity : ComponentActivity() {
                 map,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    250
+                    dp(280)
                 )
             )
         }
@@ -354,7 +322,7 @@ class MainActivity : ComponentActivity() {
             mapContainer,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                250
+                dp(280)
             ).apply {
                 bottomMargin = 14
             }
@@ -364,39 +332,30 @@ class MainActivity : ComponentActivity() {
         // IMPORTA
         // --------------------------------------------------------
 
-        val importButton =
-            Button(this).apply {
+        val importButton = Button(this).apply {
 
-                text =
-                    "＋  IMPORTA DA GOOGLE MAPS"
+            text = "＋  IMPORTA DA GOOGLE MAPS"
 
-                textSize = 15f
+            textSize = 15f
 
-                setTextColor(
-                    Color.WHITE
-                )
+            setTextColor(Color.WHITE)
 
-                background =
-                    roundedBackground(
-                        Color.rgb(
-                            45,
-                            105,
-                            225
-                        ),
-                        16f
-                    )
+            background = roundedBackground(
+                Color.rgb(45, 105, 225),
+                16f
+            )
 
-                setPadding(
-                    12,
-                    8,
-                    12,
-                    8
-                )
+            setPadding(
+                12,
+                8,
+                12,
+                8
+            )
 
-                setOnClickListener {
-                    showImporter()
-                }
+            setOnClickListener {
+                showImporter()
             }
+        }
 
         root.addView(
             importButton,
@@ -412,32 +371,25 @@ class MainActivity : ComponentActivity() {
         // CATEGORIE
         // --------------------------------------------------------
 
-        val categoriesButton =
-            Button(this).apply {
+        val categoriesButton = Button(this).apply {
 
-                text =
-                    "📁  CATEGORIE"
+            text = "📁  CATEGORIE"
 
-                textSize = 14f
+            textSize = 14f
 
-                setTextColor(
-                    Color.rgb(
-                        45,
-                        45,
-                        45
-                    )
-                )
+            setTextColor(
+                Color.rgb(45, 45, 45)
+            )
 
-                background =
-                    roundedBackground(
-                        Color.WHITE,
-                        16f
-                    )
+            background = roundedBackground(
+                Color.WHITE,
+                16f
+            )
 
-                setOnClickListener {
-                    showCategoriesDialog()
-                }
+            setOnClickListener {
+                showCategoriesDialog()
             }
+        }
 
         root.addView(
             categoriesButton,
@@ -453,26 +405,19 @@ class MainActivity : ComponentActivity() {
         // FILTRI
         // --------------------------------------------------------
 
-        val filterScroll =
-            ScrollView(this).apply {
+        val filterScroll = ScrollView(this).apply {
 
-                isHorizontalScrollBarEnabled =
-                    false
-            }
+            isHorizontalScrollBarEnabled = false
+        }
 
-        val filterContainer =
-            LinearLayout(this).apply {
+        val filterContainer = LinearLayout(this).apply {
 
-                orientation =
-                    LinearLayout.HORIZONTAL
+            orientation = LinearLayout.HORIZONTAL
 
-                tag =
-                    "filter_container"
-            }
+            tag = "filter_container"
+        }
 
-        filterScroll.addView(
-            filterContainer
-        )
+        filterScroll.addView(filterContainer)
 
         root.addView(
             filterScroll,
@@ -488,29 +433,23 @@ class MainActivity : ComponentActivity() {
         // TITOLO LUOGHI
         // --------------------------------------------------------
 
-        val placesTitle =
-            TextView(this).apply {
+        val placesTitle = TextView(this).apply {
 
-                text =
-                    "LUOGHI"
+            text = "LUOGHI"
 
-                textSize = 13f
+            textSize = 13f
 
-                setTextColor(
-                    Color.rgb(
-                        100,
-                        100,
-                        100
-                    )
-                )
+            setTextColor(
+                Color.rgb(100, 100, 100)
+            )
 
-                setPadding(
-                    2,
-                    0,
-                    0,
-                    8
-                )
-            }
+            setPadding(
+                2,
+                0,
+                0,
+                8
+            )
+        }
 
         root.addView(placesTitle)
 
@@ -518,29 +457,23 @@ class MainActivity : ComponentActivity() {
         // LISTA LUOGHI
         // --------------------------------------------------------
 
-        val placesScroll =
-            ScrollView(this)
+        val placesScroll = ScrollView(this)
 
-        val placesContainer =
-            LinearLayout(this).apply {
+        val placesContainer = LinearLayout(this).apply {
 
-                orientation =
-                    LinearLayout.VERTICAL
+            orientation = LinearLayout.VERTICAL
 
-                tag =
-                    "places_container"
+            tag = "places_container"
 
-                setPadding(
-                    0,
-                    0,
-                    0,
-                    20
-                )
-            }
+            setPadding(
+                0,
+                0,
+                0,
+                20
+            )
+        }
 
-        placesScroll.addView(
-            placesContainer
-        )
+        placesScroll.addView(placesContainer)
 
         root.addView(
             placesScroll,
@@ -564,41 +497,50 @@ class MainActivity : ComponentActivity() {
 
         if (mapView == null) {
 
-            mapView =
-                MapView(this)
+            mapView = MapView(this)
 
             mapView?.onCreate(null)
 
-            MapsInitializer.initialize(
-                this
-            )
+            MapsInitializer.initialize(this)
 
             mapView?.getMapAsync { map ->
 
-                googleMap =
-                    map
+                googleMap = map
 
-                map.uiSettings.isZoomControlsEnabled =
-                    true
+                // ------------------------------------------------
+                // GESTURE
+                // ------------------------------------------------
 
-                map.uiSettings.isMapToolbarEnabled =
-                    true
+                map.uiSettings.apply {
 
-                map.uiSettings.isCompassEnabled =
-                    true
+                    isZoomControlsEnabled = true
+                    isZoomGesturesEnabled = true
+                    isScrollGesturesEnabled = true
+                    isRotateGesturesEnabled = true
+                    isTiltGesturesEnabled = true
+
+                    isMapToolbarEnabled = true
+                    isCompassEnabled = true
+                }
+
+                // ------------------------------------------------
+                // MAPPA PRONTA
+                // ------------------------------------------------
+
+                map.setOnMapLoadedCallback {
+
+                    updateMapMarkers()
+                }
 
                 updateMapMarkers()
             }
 
         } else {
 
-            val parent =
-                mapView?.parent
+            val parent = mapView?.parent
 
             if (parent is ViewGroup) {
-                parent.removeView(
-                    mapView
-                )
+                parent.removeView(mapView)
             }
         }
     }
@@ -609,14 +551,14 @@ class MainActivity : ComponentActivity() {
 
     private fun updateMapMarkers() {
 
-        val map =
-            googleMap
-                ?: return
+        val map = googleMap ?: return
 
-        map.clear()
+        // Evitiamo di aggiornare una mappa non ancora pronta.
+        mapView?.post {
 
-        val placesToShow =
-            when {
+            map.clear()
+
+            val placesToShow = when {
 
                 selectedCategoryId == null ->
                     currentPlaces
@@ -628,130 +570,171 @@ class MainActivity : ComponentActivity() {
 
                 else ->
                     currentPlaces.filter {
-                        it.categoryId ==
-                                selectedCategoryId
+                        it.categoryId == selectedCategoryId
                     }
             }
 
-        if (placesToShow.isEmpty()) {
-            return
-        }
+            if (placesToShow.isEmpty()) {
+                return@post
+            }
 
-        var firstPosition: LatLng? = null
+            val boundsBuilder =
+                LatLngBounds.Builder()
 
-        placesToShow.forEach { place ->
+            placesToShow.forEach { place ->
 
-            val position =
-                LatLng(
+                val position = LatLng(
                     place.latitude,
                     place.longitude
                 )
 
-            if (firstPosition == null) {
-                firstPosition = position
+                boundsBuilder.include(position)
+
+                val category =
+                    currentCategories.firstOrNull {
+                        it.id == place.categoryId
+                    }
+
+                val hue =
+                    if (category != null) {
+                        colorToMarkerHue(
+                            category.colorArgb
+                        )
+                    } else {
+                        BitmapDescriptorFactory.HUE_AZURE
+                    }
+
+                map.addMarker(
+                    MarkerOptions()
+                        .position(position)
+                        .title(place.name)
+                        .snippet(
+                            buildMarkerSnippet(place)
+                        )
+                        .icon(
+                            BitmapDescriptorFactory
+                                .defaultMarker(hue)
+                        )
+                )
             }
 
-            val category =
-                currentCategories.firstOrNull {
-                    it.id ==
-                            place.categoryId
+            // ----------------------------------------------------
+            // CLICK SUL PIN
+            // ----------------------------------------------------
+
+            map.setOnMarkerClickListener { marker ->
+
+                // Restituiamo false:
+                // Google Maps apre normalmente la info window.
+                false
+            }
+
+            // ----------------------------------------------------
+            // CLICK SULLA FINESTRA DEL PIN
+            // ----------------------------------------------------
+
+            map.setOnInfoWindowClickListener { marker ->
+
+                val place =
+                    findPlaceForMarker(marker)
+
+                if (place != null) {
+                    openInGoogleMaps(place)
+                }
+            }
+
+            // ----------------------------------------------------
+            // CAMERA
+            // ----------------------------------------------------
+
+            mapView?.postDelayed({
+
+                try {
+
+                    if (placesToShow.size == 1) {
+
+                        val place =
+                            placesToShow.first()
+
+                        map.animateCamera(
+                            CameraUpdateFactory.newLatLngZoom(
+                                LatLng(
+                                    place.latitude,
+                                    place.longitude
+                                ),
+                                14f
+                            )
+                        )
+
+                    } else {
+
+                        val bounds =
+                            boundsBuilder.build()
+
+                        map.animateCamera(
+                            CameraUpdateFactory.newLatLngBounds(
+                                bounds,
+                                dp(55)
+                            )
+                        )
+                    }
+
+                } catch (_: Exception) {
+
+                    // Se la MapView non è ancora completamente
+                    // misurata, lasciamo semplicemente la mappa
+                    // alla posizione corrente.
                 }
 
-            val hue =
-                if (category != null) {
-                    colorToMarkerHue(
-                        category.colorArgb
-                    )
-                } else {
-                    BitmapDescriptorFactory.HUE_AZURE
-                }
-
-            val marker =
-                MarkerOptions()
-                    .position(position)
-                    .title(place.name)
-                    .snippet(
-                        place.address
-                            ?: "Senza indirizzo"
-                    )
-                    .icon(
-                        BitmapDescriptorFactory
-                            .defaultMarker(hue)
-                    )
-
-            map.addMarker(marker)
+            }, 150)
         }
+    }
 
-        // --------------------------------------------------------
-        // CLICK SU UN PIN
-        // --------------------------------------------------------
+    // ============================================================
+    // MARKER HELPERS
+    // ============================================================
 
-        map.setOnInfoWindowClickListener { marker ->
+    private fun buildMarkerSnippet(
+        place: Place
+    ): String {
 
-            val place =
-                placesToShow.firstOrNull {
-
-                    it.latitude ==
-                            marker.position.latitude &&
-                            it.longitude ==
-                            marker.position.longitude
-                }
-
-            if (place != null) {
-
-                openInGoogleMaps(
-                    place
-                )
-            }
-        }
-
-        // --------------------------------------------------------
-        // POSIZIONE INIZIALE
-        // --------------------------------------------------------
-
-        firstPosition?.let {
-
-            map.moveCamera(
-                CameraUpdateFactory.newLatLngZoom(
-                    it,
-                    12f
-                )
-            )
-        }
-
-        // --------------------------------------------------------
-        // SE CI SONO MOLTI LUOGHI,
-        // CERCHIAMO DI MOSTRARLI TUTTI
-        // --------------------------------------------------------
-
-        if (placesToShow.size > 1) {
-
-            val builder =
-                com.google.android.gms.maps.model.LatLngBounds.Builder()
-
-            placesToShow.forEach { place ->
-
-                builder.include(
-                    LatLng(
-                        place.latitude,
-                        place.longitude
-                    )
-                )
+        val category =
+            currentCategories.firstOrNull {
+                it.id == place.categoryId
             }
 
-            try {
+        return if (category != null) {
 
-                map.moveCamera(
-                    CameraUpdateFactory.newLatLngBounds(
-                        builder.build(),
-                        80
-                    )
-                )
-
-            } catch (_: Exception) {
-                // Evita crash se la mappa non ha
-                // ancora completato la misurazione.
+            if (!place.address.isNullOrBlank()) {
+                "${category.iconKey} ${category.name}\n${place.address}"
+            } else {
+                "${category.iconKey} ${category.name}"
             }
+
+        } else {
+
+            place.address ?: "Senza indirizzo"
+        }
+    }
+
+    private fun findPlaceForMarker(
+        marker: Marker
+    ): Place? {
+
+        return currentPlaces.firstOrNull { place ->
+
+            val samePosition =
+                kotlin.math.abs(
+                    place.latitude -
+                            marker.position.latitude
+                ) < 0.000001 &&
+                        kotlin.math.abs(
+                            place.longitude -
+                                    marker.position.longitude
+                        ) < 0.000001
+
+            samePosition &&
+                    place.name == marker.title
         }
     }
 
@@ -763,8 +746,7 @@ class MainActivity : ComponentActivity() {
         color: Int
     ): Float {
 
-        val hsv =
-            FloatArray(3)
+        val hsv = FloatArray(3)
 
         Color.colorToHSV(
             color,
@@ -784,11 +766,9 @@ class MainActivity : ComponentActivity() {
 
             repository.places.collect { places ->
 
-                currentPlaces =
-                    places
+                currentPlaces = places
 
                 runOnUiThread {
-
                     refreshHome()
                 }
             }
@@ -798,11 +778,9 @@ class MainActivity : ComponentActivity() {
 
             repository.categories.collect { categories ->
 
-                currentCategories =
-                    categories
+                currentCategories = categories
 
                 runOnUiThread {
-
                     refreshHome()
                 }
             }
@@ -822,8 +800,7 @@ class MainActivity : ComponentActivity() {
         val content =
             findViewById<View>(
                 android.R.id.content
-            )
-                ?: return
+            ) ?: return
 
         val countView =
             content.findViewWithTag<TextView>(
@@ -833,13 +810,9 @@ class MainActivity : ComponentActivity() {
         countView?.text =
             currentPlaces.size.toString()
 
-        refreshFilters(
-            content
-        )
+        refreshFilters(content)
 
-        refreshPlaces(
-            content
-        )
+        refreshPlaces(content)
 
         updateMapMarkers()
     }
@@ -855,8 +828,7 @@ class MainActivity : ComponentActivity() {
         val container =
             content.findViewWithTag<LinearLayout>(
                 "filter_container"
-            )
-                ?: return
+            ) ?: return
 
         container.removeAllViews()
 
@@ -889,58 +861,55 @@ class MainActivity : ComponentActivity() {
     ) {
 
         val selected =
-            selectedCategoryId ==
+            selectedCategoryId == categoryId
+
+        val button = Button(this).apply {
+
+            this.text = text
+
+            textSize = 12f
+
+            setTextColor(
+                if (selected) {
+                    Color.WHITE
+                } else {
+                    Color.rgb(
+                        55,
+                        55,
+                        55
+                    )
+                }
+            )
+
+            background =
+                roundedBackground(
+                    if (selected) {
+                        Color.rgb(
+                            45,
+                            105,
+                            225
+                        )
+                    } else {
+                        Color.WHITE
+                    },
+                    14f
+                )
+
+            setPadding(
+                16,
+                0,
+                16,
+                0
+            )
+
+            setOnClickListener {
+
+                selectedCategoryId =
                     categoryId
 
-        val button =
-            Button(this).apply {
-
-                this.text =
-                    text
-
-                textSize = 12f
-
-                setTextColor(
-                    if (selected) {
-                        Color.WHITE
-                    } else {
-                        Color.rgb(
-                            55,
-                            55,
-                            55
-                        )
-                    }
-                )
-
-                background =
-                    roundedBackground(
-                        if (selected) {
-                            Color.rgb(
-                                45,
-                                105,
-                                225
-                            )
-                        } else {
-                            Color.WHITE
-                        },
-                        14f
-                    )
-
-                setPadding(
-                    16,
-                    0,
-                    16,
-                    0
-                )
-
-                setOnClickListener {
-
-                    selectedCategoryId =
-                        categoryId
-
-                    refreshHome()
-                }
+                refreshHome()
             }
+        }
 
         container.addView(
             button,
@@ -964,28 +933,25 @@ class MainActivity : ComponentActivity() {
         val container =
             content.findViewWithTag<LinearLayout>(
                 "places_container"
-            )
-                ?: return
+            ) ?: return
 
         container.removeAllViews()
 
-        val placesToShow =
-            when {
+        val placesToShow = when {
 
-                selectedCategoryId == null ->
-                    currentPlaces
+            selectedCategoryId == null ->
+                currentPlaces
 
-                selectedCategoryId == -1L ->
-                    currentPlaces.filter {
-                        it.categoryId == null
-                    }
+            selectedCategoryId == -1L ->
+                currentPlaces.filter {
+                    it.categoryId == null
+                }
 
-                else ->
-                    currentPlaces.filter {
-                        it.categoryId ==
-                                selectedCategoryId
-                    }
-            }
+            else ->
+                currentPlaces.filter {
+                    it.categoryId == selectedCategoryId
+                }
+        }
 
         if (placesToShow.isEmpty()) {
 
@@ -1016,9 +982,7 @@ class MainActivity : ComponentActivity() {
                 TextView(this).apply {
 
                     text =
-                        if (
-                            currentPlaces.isEmpty()
-                        ) {
+                        if (currentPlaces.isEmpty()) {
                             "Nessun luogo ancora salvato"
                         } else {
                             "Nessun luogo in questa categoria"
@@ -1042,9 +1006,7 @@ class MainActivity : ComponentActivity() {
                 TextView(this).apply {
 
                     text =
-                        if (
-                            currentPlaces.isEmpty()
-                        ) {
+                        if (currentPlaces.isEmpty()) {
                             "Importa una lista da Google Maps\n" +
                                     "per iniziare a organizzare i tuoi luoghi."
                         } else {
@@ -1072,13 +1034,8 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-            emptyCard.addView(
-                emptyTitle
-            )
-
-            emptyCard.addView(
-                emptyText
-            )
+            emptyCard.addView(emptyTitle)
+            emptyCard.addView(emptyText)
 
             container.addView(
                 emptyCard,
@@ -1115,8 +1072,7 @@ class MainActivity : ComponentActivity() {
 
         val category =
             currentCategories.firstOrNull {
-                it.id ==
-                        place.categoryId
+                it.id == place.categoryId
             }
 
         val box =
@@ -1158,10 +1114,9 @@ class MainActivity : ComponentActivity() {
                 setTextColor(
                     Color.rgb(
                         35,
-                        35,
+                                               35,
                         35
                     )
-                )
 
                 setPadding(
                     0,
@@ -1178,8 +1133,7 @@ class MainActivity : ComponentActivity() {
             val categoryView =
                 TextView(this).apply {
 
-                    text =
-                        category.name
+                    text = category.name
 
                     textSize = 12f
 
@@ -1195,17 +1149,14 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-            box.addView(
-                categoryView
-            )
+            box.addView(categoryView)
 
         } else {
 
             val uncategorized =
                 TextView(this).apply {
 
-                    text =
-                        "Senza categoria"
+                    text = "Senza categoria"
 
                     textSize = 12f
 
@@ -1225,9 +1176,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-            box.addView(
-                uncategorized
-            )
+            box.addView(uncategorized)
         }
 
         if (!place.address.isNullOrBlank()) {
@@ -1235,8 +1184,7 @@ class MainActivity : ComponentActivity() {
             val address =
                 TextView(this).apply {
 
-                    text =
-                        place.address
+                    text = place.address
 
                     textSize = 14f
 
@@ -1256,9 +1204,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-            box.addView(
-                address
-            )
+            box.addView(address)
         }
 
         val coordinates =
@@ -1278,9 +1224,7 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-        box.addView(
-            coordinates
-        )
+        box.addView(coordinates)
 
         val actions =
             LinearLayout(this).apply {
@@ -1302,16 +1246,13 @@ class MainActivity : ComponentActivity() {
         val mapsButton =
             Button(this).apply {
 
-                text =
-                    "MAPS"
+                text = "MAPS"
 
                 textSize = 11f
 
                 setOnClickListener {
 
-                    openInGoogleMaps(
-                        place
-                    )
+                    openInGoogleMaps(place)
                 }
             }
 
@@ -1329,9 +1270,7 @@ class MainActivity : ComponentActivity() {
 
                 setOnClickListener {
 
-                    showCategoryPicker(
-                        place
-                    )
+                    showCategoryPicker(place)
                 }
             }
 
@@ -1353,9 +1292,7 @@ class MainActivity : ComponentActivity() {
             )
         )
 
-        box.addView(
-            actions
-        )
+        box.addView(actions)
 
         return box
     }
@@ -1374,27 +1311,17 @@ class MainActivity : ComponentActivity() {
                 "Apri in Google Maps"
             )
 
-        androidx.appcompat.app.AlertDialog.Builder(
-            this
-        )
-            .setTitle(
-                place.name
-            )
-            .setItems(
-                options
-            ) { _, which ->
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(place.name)
+            .setItems(options) { _, which ->
 
                 when (which) {
 
                     0 ->
-                        showCategoryPicker(
-                            place
-                        )
+                        showCategoryPicker(place)
 
                     1 ->
-                        openInGoogleMaps(
-                            place
-                        )
+                        openInGoogleMaps(place)
                 }
             }
             .setNegativeButton(
@@ -1428,9 +1355,7 @@ class MainActivity : ComponentActivity() {
         val items =
             mutableListOf<String>()
 
-        items.add(
-            "⚪  Senza categoria"
-        )
+        items.add("⚪  Senza categoria")
 
         currentCategories.forEach { category ->
 
@@ -1439,9 +1364,7 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        androidx.appcompat.app.AlertDialog.Builder(
-            this
-        )
+        androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(
                 "Categoria di\n${place.name}"
             )
@@ -1501,8 +1424,7 @@ class MainActivity : ComponentActivity() {
 
             val count =
                 currentPlaces.count {
-                    it.categoryId ==
-                            category.id
+                    it.categoryId == category.id
                 }
 
             items.add(
@@ -1514,20 +1436,13 @@ class MainActivity : ComponentActivity() {
             "＋  Crea nuova categoria"
         )
 
-        androidx.appcompat.app.AlertDialog.Builder(
-            this
-        )
-            .setTitle(
-                "Le mie categorie"
-            )
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Le mie categorie")
             .setItems(
                 items.toTypedArray()
             ) { _, which ->
 
-                if (
-                    which ==
-                    currentCategories.size
-                ) {
+                if (which == currentCategories.size) {
 
                     showCreateCategoryDialog()
 
@@ -1553,9 +1468,7 @@ class MainActivity : ComponentActivity() {
         category: Category
     ) {
 
-        androidx.appcompat.app.AlertDialog.Builder(
-            this
-        )
+        androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(
                 "${category.iconKey}  ${category.name}"
             )
@@ -1614,8 +1527,7 @@ class MainActivity : ComponentActivity() {
         val nameInput =
             EditText(this).apply {
 
-                hint =
-                    "Nome categoria"
+                hint = "Nome categoria"
 
                 setSingleLine(true)
             }
@@ -1631,8 +1543,7 @@ class MainActivity : ComponentActivity() {
         val iconTitle =
             TextView(this).apply {
 
-                text =
-                    "Scegli icona"
+                text = "Scegli icona"
 
                 textSize = 14f
 
@@ -1652,12 +1563,9 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-        layout.addView(
-            iconTitle
-        )
+        layout.addView(iconTitle)
 
-        var selectedIcon =
-            "📍"
+        var selectedIcon = "📍"
 
         val iconContainer =
             LinearLayout(this).apply {
@@ -1685,8 +1593,7 @@ class MainActivity : ComponentActivity() {
             val button =
                 Button(this).apply {
 
-                    text =
-                        icon
+                    text = icon
 
                     textSize = 20f
 
@@ -1699,8 +1606,7 @@ class MainActivity : ComponentActivity() {
 
                     setOnClickListener {
 
-                        selectedIcon =
-                            icon
+                        selectedIcon = icon
 
                         Toast.makeText(
                             this@MainActivity,
@@ -1727,9 +1633,7 @@ class MainActivity : ComponentActivity() {
                 isHorizontalScrollBarEnabled =
                     false
 
-                addView(
-                    iconContainer
-                )
+                addView(iconContainer)
             }
 
         layout.addView(
@@ -1743,8 +1647,7 @@ class MainActivity : ComponentActivity() {
         val colorTitle =
             TextView(this).apply {
 
-                text =
-                    "Scegli colore"
+                text = "Scegli colore"
 
                 textSize = 14f
 
@@ -1764,9 +1667,7 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-        layout.addView(
-            colorTitle
-        )
+        layout.addView(colorTitle)
 
         var selectedColor =
             Color.rgb(
@@ -1807,8 +1708,7 @@ class MainActivity : ComponentActivity() {
 
                     setOnClickListener {
 
-                        selectedColor =
-                            color
+                        selectedColor = color
                     }
                 }
 
@@ -1823,22 +1723,12 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        layout.addView(
-            colorContainer
-        )
+        layout.addView(colorContainer)
 
-        androidx.appcompat.app.AlertDialog.Builder(
-            this
-        )
-            .setTitle(
-                "Nuova categoria"
-            )
-            .setView(
-                layout
-            )
-            .setPositiveButton(
-                "CREA"
-            ) { _, _ ->
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Nuova categoria")
+            .setView(layout)
+            .setPositiveButton("CREA") { _, _ ->
 
                 val name =
                     nameInput.text
@@ -1889,25 +1779,17 @@ class MainActivity : ComponentActivity() {
         category: Category
     ) {
 
-        androidx.appcompat.app.AlertDialog.Builder(
-            this
-        )
-            .setTitle(
-                "Eliminare categoria?"
-            )
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Eliminare categoria?")
             .setMessage(
                 "La categoria \"${category.name}\" verrà eliminata.\n\n" +
                         "I luoghi resteranno salvati, ma torneranno senza categoria."
             )
-            .setPositiveButton(
-                "ELIMINA"
-            ) { _, _ ->
+            .setPositiveButton("ELIMINA") { _, _ ->
 
                 lifecycleScope.launch {
 
-                    repository.deleteCategory(
-                        category
-                    )
+                    repository.deleteCategory(category)
 
                     runOnUiThread {
 
@@ -1916,8 +1798,7 @@ class MainActivity : ComponentActivity() {
                             category.id
                         ) {
 
-                            selectedCategoryId =
-                                null
+                            selectedCategoryId = null
                         }
 
                         Toast.makeText(
@@ -1979,14 +1860,26 @@ class MainActivity : ComponentActivity() {
 
         return GradientDrawable().apply {
 
-            setColor(
-                color
-            )
+            setColor(color)
 
             cornerRadius =
                 radius *
                         resources.displayMetrics.density
         }
+    }
+
+    // ============================================================
+    // DP
+    // ============================================================
+
+    private fun dp(
+        value: Int
+    ): Int {
+
+        return (
+                value *
+                        resources.displayMetrics.density
+                ).toInt()
     }
 
     // ============================================================
@@ -2028,8 +1921,7 @@ class MainActivity : ComponentActivity() {
         val title =
             TextView(this).apply {
 
-                text =
-                    "TRAVELPINS"
+                text = "TRAVELPINS"
 
                 textSize = 30f
 
@@ -2041,8 +1933,7 @@ class MainActivity : ComponentActivity() {
                     )
                 )
 
-                gravity =
-                    Gravity.CENTER
+                gravity = Gravity.CENTER
 
                 setPadding(
                     0,
@@ -2057,8 +1948,7 @@ class MainActivity : ComponentActivity() {
         val importTitle =
             TextView(this).apply {
 
-                text =
-                    "Importazione in corso"
+                text = "Importazione in corso"
 
                 textSize = 22f
 
@@ -2070,8 +1960,7 @@ class MainActivity : ComponentActivity() {
                     )
                 )
 
-                gravity =
-                    Gravity.CENTER
+                gravity = Gravity.CENTER
 
                 setPadding(
                     0,
@@ -2086,8 +1975,7 @@ class MainActivity : ComponentActivity() {
         val status =
             TextView(this).apply {
 
-                tag =
-                    "import_status"
+                tag = "import_status"
 
                 text =
                     "Sto leggendo la lista di Google Maps…"
@@ -2102,8 +1990,7 @@ class MainActivity : ComponentActivity() {
                     )
                 )
 
-                gravity =
-                    Gravity.CENTER
+                gravity = Gravity.CENTER
 
                 setPadding(
                     0,
@@ -2116,15 +2003,11 @@ class MainActivity : ComponentActivity() {
         root.addView(status)
 
         val progress =
-            ProgressBar(
-                this
-            ).apply {
+            ProgressBar(this).apply {
 
-                isIndeterminate =
-                    true
+                isIndeterminate = true
 
-                tag =
-                    "import_progress"
+                tag = "import_progress"
             }
 
         root.addView(
@@ -2154,8 +2037,7 @@ class MainActivity : ComponentActivity() {
                     )
                 )
 
-                gravity =
-                    Gravity.CENTER
+                gravity = Gravity.CENTER
 
                 setPadding(
                     10,
@@ -2170,8 +2052,7 @@ class MainActivity : ComponentActivity() {
         val cancelButton =
             Button(this).apply {
 
-                text =
-                    "ANNULLA"
+                text = "ANNULLA"
 
                 textSize = 13f
 
@@ -2221,8 +2102,7 @@ class MainActivity : ComponentActivity() {
                 text =
                     "TRAVELPINS NETWORK MONITOR"
 
-                visibility =
-                    View.GONE
+                visibility = View.GONE
             }
 
         root.addView(
@@ -2256,8 +2136,7 @@ class MainActivity : ComponentActivity() {
                     "import_status"
                 )
 
-            status?.text =
-                message
+            status?.text = message
         }
     }
 
@@ -2271,11 +2150,9 @@ class MainActivity : ComponentActivity() {
         webView =
             WebView(this).apply {
 
-                settings.javaScriptEnabled =
-                    true
+                settings.javaScriptEnabled = true
 
-                settings.domStorageEnabled =
-                    true
+                settings.domStorageEnabled = true
 
                 settings.userAgentString =
                     "Mozilla/5.0 (Linux; Android 10) " +
@@ -2288,11 +2165,9 @@ class MainActivity : ComponentActivity() {
         val bridge =
             TravelPinsJsBridge(
 
-                repository =
-                    repository,
+                repository = repository,
 
-                scope =
-                    lifecycleScope,
+                scope = lifecycleScope,
 
                 getCurrentSourceListId = {
                     currentListId
@@ -2347,9 +2222,7 @@ class MainActivity : ComponentActivity() {
                 onLogMessage = { message ->
 
                     if (::outputView.isInitialized) {
-                        appendOutput(
-                            message
-                        )
+                        appendOutput(message)
                     }
                 }
             )
@@ -2395,8 +2268,7 @@ class MainActivity : ComponentActivity() {
 
                         if (!consentAttempted) {
 
-                            consentAttempted =
-                                true
+                            consentAttempted = true
 
                             updateImportStatus(
                                 "Autorizzazione Google in corso…"
@@ -2434,8 +2306,7 @@ class MainActivity : ComponentActivity() {
                             !scanStarted
                         ) {
 
-                            scanStarted =
-                                true
+                            scanStarted = true
 
                             view.postDelayed({
 
@@ -2477,9 +2348,7 @@ class MainActivity : ComponentActivity() {
                         )
                     ) {
 
-                        handleGoogleIntent(
-                            url
-                        )
+                        handleGoogleIntent(url)
 
                         return true
                     }
@@ -2558,8 +2427,7 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        importStarted =
-            true
+        importStarted = true
 
         updateImportStatus(
             "Lettura dei luoghi in corso…"
@@ -2595,9 +2463,7 @@ class MainActivity : ComponentActivity() {
                 "S.browser_fallback_url="
 
             val start =
-                intentUrl.indexOf(
-                    marker
-                )
+                intentUrl.indexOf(marker)
 
             if (start == -1) {
 
@@ -2614,14 +2480,11 @@ class MainActivity : ComponentActivity() {
 
             var value =
                 intentUrl.substring(
-                    start +
-                            marker.length
+                    start + marker.length
                 )
 
             val end =
-                value.indexOf(
-                    "#Intent"
-                )
+                value.indexOf("#Intent")
 
             if (end != -1) {
 
@@ -2643,9 +2506,7 @@ class MainActivity : ComponentActivity() {
                         "FALLBACK WEB:\n$decoded"
             )
 
-            webView.loadUrl(
-                decoded
-            )
+            webView.loadUrl(decoded)
 
         } catch (e: Exception) {
 
@@ -2706,8 +2567,7 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val url =
-            match.value
+        val url = match.value
 
         consentAttempted = false
         scanStarted = false
@@ -2724,9 +2584,7 @@ class MainActivity : ComponentActivity() {
             "LINK RICEVUTO\n$url"
         )
 
-        webView.loadUrl(
-            url
-        )
+        webView.loadUrl(url)
     }
 
     // ============================================================
