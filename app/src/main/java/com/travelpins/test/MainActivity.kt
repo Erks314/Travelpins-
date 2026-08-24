@@ -19,6 +19,7 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -517,7 +518,8 @@ class MainActivity : ComponentActivity() {
                         )
                     )
 
-                    gravity = Gravity.CENTER
+                    gravity =
+                        Gravity.CENTER
                 }
 
             val emptyText =
@@ -541,7 +543,8 @@ class MainActivity : ComponentActivity() {
                         )
                     )
 
-                    gravity = Gravity.CENTER
+                    gravity =
+                        Gravity.CENTER
 
                     setPadding(
                         0,
@@ -616,10 +619,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-        // --------------------------------------------------------
-        // NOME
-        // --------------------------------------------------------
-
         val name =
             TextView(this).apply {
 
@@ -649,10 +648,6 @@ class MainActivity : ComponentActivity() {
             }
 
         box.addView(name)
-
-        // --------------------------------------------------------
-        // CATEGORIA
-        // --------------------------------------------------------
 
         if (category != null) {
 
@@ -707,10 +702,6 @@ class MainActivity : ComponentActivity() {
             box.addView(uncategorized)
         }
 
-        // --------------------------------------------------------
-        // INDIRIZZO
-        // --------------------------------------------------------
-
         if (!place.address.isNullOrBlank()) {
 
             val address =
@@ -740,10 +731,6 @@ class MainActivity : ComponentActivity() {
             box.addView(address)
         }
 
-        // --------------------------------------------------------
-        // COORDINATE
-        // --------------------------------------------------------
-
         val coordinates =
             TextView(this).apply {
 
@@ -762,10 +749,6 @@ class MainActivity : ComponentActivity() {
             }
 
         box.addView(coordinates)
-
-        // --------------------------------------------------------
-        // AZIONI
-        // --------------------------------------------------------
 
         val actions =
             LinearLayout(this).apply {
@@ -1074,9 +1057,6 @@ class MainActivity : ComponentActivity() {
                 hint =
                     "Nome categoria"
 
-                // CORREZIONE BUILD:
-                // uso il metodo esplicito invece
-                // della proprietà singleLine.
                 setSingleLine(true)
             }
 
@@ -1424,7 +1404,7 @@ class MainActivity : ComponentActivity() {
     }
 
     // ============================================================
-    // IMPORTER
+    // IMPORTER — SCHERMATA PULITA
     // ============================================================
 
     private fun showImporter() {
@@ -1436,15 +1416,213 @@ class MainActivity : ComponentActivity() {
 
         val root =
             LinearLayout(this).apply {
+
                 orientation =
                     LinearLayout.VERTICAL
+
+                gravity =
+                    Gravity.CENTER_HORIZONTAL
+
+                setBackgroundColor(
+                    Color.rgb(
+                        248,
+                        249,
+                        250
+                    )
+
+                setPadding(
+                    28,
+                    80,
+                    28,
+                    40
+                )
             }
 
-        val backButton =
+        // --------------------------------------------------------
+        // TITOLO
+        // --------------------------------------------------------
+
+        val title =
+            TextView(this).apply {
+
+                text =
+                    "TRAVELPINS"
+
+                textSize = 30f
+
+                setTextColor(
+                    Color.rgb(
+                        25,
+                        25,
+                        25
+                    )
+                )
+
+                gravity =
+                    Gravity.CENTER
+
+                setPadding(
+                    0,
+                    0,
+                    0,
+                    12
+                )
+            }
+
+        root.addView(title)
+
+        // --------------------------------------------------------
+        // TITOLO IMPORTAZIONE
+        // --------------------------------------------------------
+
+        val importTitle =
+            TextView(this).apply {
+
+                text =
+                    "Importazione in corso"
+
+                textSize = 22f
+
+                setTextColor(
+                    Color.rgb(
+                        40,
+                        40,
+                        40
+                    )
+                )
+
+                gravity =
+                    Gravity.CENTER
+
+                setPadding(
+                    0,
+                    0,
+                    0,
+                    10
+                )
+            }
+
+        root.addView(importTitle)
+
+        // --------------------------------------------------------
+        // STATO
+        // --------------------------------------------------------
+
+        val status =
+            TextView(this).apply {
+
+                tag = "import_status"
+
+                text =
+                    "Sto leggendo la lista di Google Maps…"
+
+                textSize = 15f
+
+                setTextColor(
+                    Color.rgb(
+                        100,
+                        100,
+                        100
+                    )
+                )
+
+                gravity =
+                    Gravity.CENTER
+
+                setPadding(
+                    0,
+                    0,
+                    0,
+                    24
+                )
+            }
+
+        root.addView(status)
+
+        // --------------------------------------------------------
+        // PROGRESS BAR
+        // --------------------------------------------------------
+
+        val progress =
+            ProgressBar(
+                this
+            ).apply {
+
+                isIndeterminate =
+                    true
+
+                tag = "import_progress"
+            }
+
+        root.addView(
+            progress,
+            LinearLayout.LayoutParams(
+                60,
+                60
+            ).apply {
+                bottomMargin = 24
+            }
+        )
+
+        // --------------------------------------------------------
+        // MESSAGGIO
+        // --------------------------------------------------------
+
+        val info =
+            TextView(this).apply {
+
+                text =
+                    "Non chiudere TravelPins.\n" +
+                            "L'importazione potrebbe richiedere alcuni secondi."
+
+                textSize = 14f
+
+                setTextColor(
+                    Color.rgb(
+                        120,
+                        120,
+                        120
+                    )
+                )
+
+                gravity =
+                    Gravity.CENTER
+
+                setPadding(
+                    10,
+                    0,
+                    10,
+                    30
+                )
+            }
+
+        root.addView(info)
+
+        // --------------------------------------------------------
+        // ANNULLA
+        // --------------------------------------------------------
+
+        val cancelButton =
             Button(this).apply {
 
                 text =
-                    "← TORNA AI MIEI LUOGHI"
+                    "ANNULLA"
+
+                textSize = 13f
+
+                setTextColor(
+                    Color.rgb(
+                        70,
+                        70,
+                        70
+                    )
+                )
+
+                background =
+                    roundedBackground(
+                        Color.WHITE,
+                        14f
+                    )
 
                 setOnClickListener {
 
@@ -1454,105 +1632,80 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-        outputView =
-            TextView(this).apply {
-
-                text =
-                    "TRAVELPINS NETWORK MONITOR\n\n" +
-                            "In attesa del link..."
-
-                setPadding(
-                    16,
-                    16,
-                    16,
-                    16
-                )
-
-                textSize = 12f
-            }
-
-        val logScroll =
-            ScrollView(this).apply {
-
-                addView(outputView)
-
-                layoutParams =
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        0,
-                        0.40f
-                    )
-            }
-
-        val copyButton =
-            Button(this).apply {
-
-                text =
-                    "COPIA"
-
-                setOnClickListener {
-                    copyOutputToClipboard()
-                }
-            }
-
-        val cleanButton =
-            Button(this).apply {
-
-                text =
-                    "PULISCI"
-
-                setOnClickListener {
-                    clearOutput()
-                }
-            }
-
-        val buttonRow =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.HORIZONTAL
-
-                addView(
-                    copyButton,
-                    LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1f
-                    )
-                )
-
-                addView(
-                    cleanButton,
-                    LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1f
-                    )
-                )
-            }
-
         root.addView(
-            backButton,
+            cancelButton,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                52
             )
         )
+
+        // --------------------------------------------------------
+        // WEBVIEW INVISIBILE
+        //
+        // IMPORTANTE:
+        // il WebView continua a fare il lavoro di Google Maps,
+        // ma NON viene più mostrato all'utente.
+        // --------------------------------------------------------
+
+        webView.alpha = 0f
 
         root.addView(
             webView,
             LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                0.60f
+                1,
+                1
             )
         )
 
-        root.addView(logScroll)
+        // --------------------------------------------------------
+        // LOG TECNICO NASCOSTO
+        // --------------------------------------------------------
 
-        root.addView(buttonRow)
+        outputView =
+            TextView(this).apply {
+
+                text =
+                    "TRAVELPINS NETWORK MONITOR"
+
+                visibility =
+                    View.GONE
+            }
+
+        root.addView(
+            outputView,
+            LinearLayout.LayoutParams(
+                1,
+                1
+            )
+        )
 
         setContentView(root)
+    }
+
+    // ============================================================
+    // AGGIORNA STATO IMPORTAZIONE
+    // ============================================================
+
+    private fun updateImportStatus(
+        message: String
+    ) {
+
+        runOnUiThread {
+
+            val content =
+                findViewById<View>(
+                    android.R.id.content
+                )
+
+            val status =
+                content.findViewWithTag<TextView>(
+                    "import_status"
+                )
+
+            status?.text =
+                message
+        }
     }
 
     // ============================================================
@@ -1575,6 +1728,10 @@ class MainActivity : ComponentActivity() {
                     "Mozilla/5.0 (Linux; Android 10) " +
                             "AppleWebKit/537.36 " +
                             "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+
+                // La WebView non deve essere visibile durante
+                // l'importazione.
+                alpha = 0f
             }
 
         val bridge =
@@ -1598,21 +1755,26 @@ class MainActivity : ComponentActivity() {
 
                     runOnUiThread {
 
-                        appendOutput(
-                            "\nIMPORTAZIONE COMPLETATA\n\n" +
-                                    "Luoghi salvati: $savedCount"
+                        updateImportStatus(
+                            "Importazione completata.\n" +
+                                    "$savedCount luoghi salvati."
                         )
 
                         Toast.makeText(
                             this,
-                            "Importazione completata: $savedCount luoghi",
-                            Toast.LENGTH_LONG
+                            "$savedCount luoghi importati",
+                            Toast.LENGTH_SHORT
                         ).show()
 
-                        // Torna automaticamente alla home.
                         webView.stopLoading()
 
-                        showHome()
+                        // Piccola pausa per permettere
+                        // all'utente di vedere il completamento.
+                        webView.postDelayed({
+
+                            showHome()
+
+                        }, 700)
                     }
                 },
 
@@ -1620,14 +1782,14 @@ class MainActivity : ComponentActivity() {
 
                     runOnUiThread {
 
-                        appendOutput(
-                            "\nERRORE SALVATAGGIO:\n" +
+                        updateImportStatus(
+                            "Si è verificato un errore.\n\n" +
                                     "${error.message}"
                         )
 
                         Toast.makeText(
                             this,
-                            "Errore salvataggio: ${error.message}",
+                            "Errore durante l'importazione",
                             Toast.LENGTH_LONG
                         ).show()
                     }
@@ -1635,12 +1797,11 @@ class MainActivity : ComponentActivity() {
 
                 onLogMessage = { message ->
 
-                    runOnUiThread {
+                    // Il log tecnico continua ad esistere
+                    // internamente, ma NON viene mostrato.
+                    if (::outputView.isInitialized) {
 
-                        if (::outputView.isInitialized) {
-
-                            appendOutput(message)
-                        }
+                        appendOutput(message)
                     }
                 }
             )
@@ -1668,12 +1829,9 @@ class MainActivity : ComponentActivity() {
                         url
                     )
 
-                    if (::outputView.isInitialized) {
-
-                        appendOutput(
-                            "PAGINA CARICATA: $url"
-                        )
-                    }
+                    appendOutput(
+                        "PAGINA CARICATA: $url"
+                    )
 
                     view.evaluateJavascript(
                         GoogleMapsScraperScript
@@ -1696,9 +1854,8 @@ class MainActivity : ComponentActivity() {
                             consentAttempted =
                                 true
 
-                            appendOutput(
-                                "CONSENSO GOOGLE RILEVATO\n\n" +
-                                        "Tento automaticamente di accettare..."
+                            updateImportStatus(
+                                "Autorizzazione Google in corso…"
                             )
 
                             view.postDelayed({
@@ -1724,8 +1881,12 @@ class MainActivity : ComponentActivity() {
                             extractListId(url)
 
                         appendOutput(
-                            "LISTA GOOGLE MAPS RILEVATA\n\n" +
-                                    "URL LISTA:\n$url"
+                            "LISTA GOOGLE MAPS RILEVATA\n$url"
+                        )
+
+                        updateImportStatus(
+                            "Lista trovata.\n" +
+                                    "Lettura dei luoghi in corso…"
                         )
 
                         if (
@@ -1735,10 +1896,6 @@ class MainActivity : ComponentActivity() {
 
                             scanStarted =
                                 true
-
-                            appendOutput(
-                                "\nSCANSIONE AUTOMATICA..."
-                            )
 
                             view.postDelayed({
 
@@ -1754,15 +1911,14 @@ class MainActivity : ComponentActivity() {
                     detail: RenderProcessGoneDetail
                 ): Boolean {
 
-                    if (
-                        ::outputView.isInitialized
-                    ) {
+                    appendOutput(
+                        "WEBVIEW RENDERER TERMINATO\n" +
+                                "CRASH: $detail"
+                    )
 
-                        appendOutput(
-                            "WEBVIEW RENDERER TERMINATO\n\n" +
-                                    "CRASH: $detail"
-                        )
-                    }
+                    updateImportStatus(
+                        "Google Maps ha interrotto l'importazione."
+                    )
 
                     return true
                 }
@@ -1835,8 +1991,8 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        appendOutput(
-            "AVVIO ACCETTAZIONE GOOGLE"
+        updateImportStatus(
+            "Autorizzazione Google…"
         )
 
         webView.evaluateJavascript(
@@ -1845,7 +2001,7 @@ class MainActivity : ComponentActivity() {
         ) { result ->
 
             appendOutput(
-                "CONSENSO RISULTATO\n\n$result"
+                "CONSENSO RISULTATO\n$result"
             )
         }
     }
@@ -1860,12 +2016,16 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        importStarted = true
+        importStarted =
+            true
+
+        updateImportStatus(
+            "Lettura dei luoghi in corso…"
+        )
 
         appendOutput(
-            "SCANSIONE LISTA AVVIATA\n\n" +
-                    "Metodo: entitylist/getlist\n\n" +
-                    "NON utilizzo il DOM."
+            "SCANSIONE LISTA AVVIATA\n" +
+                    "Metodo: entitylist/getlist"
         )
 
         webView.evaluateJavascript(
@@ -1874,7 +2034,7 @@ class MainActivity : ComponentActivity() {
         ) { result ->
 
             appendOutput(
-                "CALLBACK GETLIST\n\n$result"
+                "CALLBACK GETLIST\n$result"
             )
         }
     }
@@ -1896,6 +2056,10 @@ class MainActivity : ComponentActivity() {
                 intentUrl.indexOf(marker)
 
             if (start == -1) {
+
+                updateImportStatus(
+                    "Impossibile aprire la lista Google Maps."
+                )
 
                 appendOutput(
                     "FALLBACK URL NON TROVATO"
@@ -1930,13 +2094,8 @@ class MainActivity : ComponentActivity() {
                 )
 
             appendOutput(
-                "GOOGLE INTENT INTERCETTATO\n\n" +
-                        "CERCO FALLBACK WEB..."
-            )
-
-            appendOutput(
-                "FALLBACK WEB TROVATO:\n\n" +
-                        decoded
+                "GOOGLE INTENT INTERCETTATO\n" +
+                        "FALLBACK WEB:\n$decoded"
             )
 
             webView.loadUrl(decoded)
@@ -1945,6 +2104,10 @@ class MainActivity : ComponentActivity() {
 
             appendOutput(
                 "ERRORE PARSING INTENT:\n$e"
+            )
+
+            updateImportStatus(
+                "Errore durante l'apertura della lista."
             )
         }
     }
@@ -2006,17 +2169,19 @@ class MainActivity : ComponentActivity() {
 
         showImporter()
 
+        updateImportStatus(
+            "Apertura della lista Google Maps…"
+        )
+
         appendOutput(
-            "LINK RICEVUTO\n\n" +
-                    "$url\n\n" +
-                    "AVVIO GOOGLE MAPS WEB..."
+            "LINK RICEVUTO\n$url"
         )
 
         webView.loadUrl(url)
     }
 
     // ============================================================
-    // LOG
+    // LOG INTERNO
     // ============================================================
 
     private fun appendOutput(
@@ -2030,19 +2195,11 @@ class MainActivity : ComponentActivity() {
         outputView.append(
             "\n$section\n"
         )
-
-        val parent =
-            outputView.parent
-
-        if (parent is ScrollView) {
-
-            parent.post {
-                parent.fullScroll(
-                    View.FOCUS_DOWN
-                )
-            }
-        }
     }
+
+    // ============================================================
+    // COPIA LOG
+    // ============================================================
 
     private fun copyOutputToClipboard() {
 
@@ -2069,6 +2226,10 @@ class MainActivity : ComponentActivity() {
             Toast.LENGTH_SHORT
         ).show()
     }
+
+    // ============================================================
+    // PULISCI LOG
+    // ============================================================
 
     private fun clearOutput() {
 
