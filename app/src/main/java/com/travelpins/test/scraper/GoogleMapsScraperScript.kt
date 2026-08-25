@@ -1,5 +1,3 @@
-package com.travelpins.test.scraper
-
 object GoogleMapsScraperScript {
 
 fun isGoogleListUrl(url: String): Boolean {
@@ -125,30 +123,44 @@ try {
      * TITOLO DELLA LISTA GOOGLE MAPS
      * ========================================================
      *
-     * Google Maps mette il nome dell'elenco nel titolo della
-     * pagina della lista.
+     * Google Maps aggiorna document.title in modo asincrono,
+     * spesso proprio mentre carica i dati della lista. Se lo
+     * leggiamo una volta sola e basta, rischiamo di leggere
+     * ancora il titolo generico ("Google Maps").
      *
-     * Esempio:
-     * "Ristoranti Roma - Google Maps"
-     *
-     * Manteniamo il titolo reale dell'elenco e rimuoviamo
-     * solamente il suffisso generico di Google Maps.
+     * Per questo aspettiamo (con un limite massimo) finché non
+     * compare un titolo che non sia quello generico.
      */
+
+    function cleanTitle(raw) {
+        var t = (raw || '').trim();
+        t = t.replace(/\s*-\s*Google Maps\s*$/i, '').trim();
+        return t;
+    }
+
+    function isGenericTitle(t) {
+        if (!t) return true;
+        var lower = t.toLowerCase();
+        return lower === 'google maps' || lower === 'maps';
+    }
+
+    function wait(ms) {
+        return new Promise(function(resolve) {
+            setTimeout(resolve, ms);
+        });
+    }
 
     var sourceListName = '';
 
-    try {
-        sourceListName = (
-            document.title || ''
-        ).trim();
+    for (var attempt = 0; attempt < 8; attempt++) {
+        var candidate = cleanTitle(document.title);
 
-        sourceListName =
-            sourceListName
-                .replace(/\s*-\s*Google Maps\s*$/i, '')
-                .trim();
+        if (!isGenericTitle(candidate)) {
+            sourceListName = candidate;
+            break;
+        }
 
-    } catch(e) {
-        sourceListName = '';
+        await wait(400);
     }
 
     if (!sourceListName) {
@@ -711,3 +723,11 @@ try {
 })();
 """.trimIndent()
 }
+SCRIPT_EOF
+python3 -c "
+c = open('/home/claude/travelpins/final/GoogleMapsScraperScript.kt').read()
+print('starts with package:', c.startswith('package com.travelpins.test.scraper'))
+print('ends correctly:', c.rstrip().endswith('}'))
+print('lines:', c.count(chr(10))+1)
+"
+cp /home/claude/travelpins/final/GoogleMapsScraperScript.
