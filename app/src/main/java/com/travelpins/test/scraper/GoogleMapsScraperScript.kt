@@ -465,12 +465,57 @@ try {
 
             findId(envelope);
 
+            /*
+             * ====================================================
+             * LINK DIRETTO ALLA SCHEDA DEL LUOGO (con foto/recensioni)
+             * ====================================================
+             *
+             * Google include, per ogni luogo, una coppia di ID
+             * (es. ["5213690538307142171","-9202193626830073640"]).
+             * Il secondo valore, convertito da intero 64bit con
+             * segno a intero 64bit SENZA segno, e' il "cid" che
+             * Google Maps usa nei link diretti:
+             * https://www.google.com/maps?cid=<numero>
+             *
+             * Se per qualche motivo non riusciamo a calcolarlo,
+             * mapsUrl resta vuoto e l'app ripiega su una ricerca
+             * per coordinate (comportamento precedente).
+             */
+
+            var mapsUrl = '';
+
+            try {
+
+                var featurePair = envelope[6];
+
+                if (
+                    Array.isArray(featurePair) &&
+                    featurePair.length >= 2 &&
+                    typeof featurePair[1] !== 'undefined'
+                ) {
+
+                    var rawCid = BigInt(featurePair[1]);
+
+                    if (rawCid < 0n) {
+                        rawCid = rawCid + (1n << 64n);
+                    }
+
+                    mapsUrl =
+                        'https://www.google.com/maps?cid=' +
+                        rawCid.toString();
+                }
+
+            } catch(e) {
+                mapsUrl = '';
+            }
+
             places.push({
                 name: name,
                 address: address,
                 lat: lat,
                 lng: lng,
-                placeId: placeId
+                placeId: placeId,
+                mapsUrl: mapsUrl
             });
 
         } catch(e) {}
