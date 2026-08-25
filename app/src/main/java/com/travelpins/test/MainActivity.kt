@@ -1055,9 +1055,16 @@ class MainActivity : ComponentActivity() {
     // ============================================================
 
     private fun openInGoogleMaps(place: Place) {
-        val uri = Uri.parse(
-            "https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}"
-        )
+        // Se abbiamo un link diretto alla scheda del luogo (con foto e
+        // recensioni), usiamo quello. Altrimenti ripieghiamo su una
+        // semplice ricerca per coordinate.
+        val uri = if (!place.mapsUrl.isNullOrBlank()) {
+            Uri.parse(place.mapsUrl)
+        } else {
+            Uri.parse(
+                "https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}"
+            )
+        }
 
         try {
             startActivity(Intent(Intent.ACTION_VIEW, uri))
