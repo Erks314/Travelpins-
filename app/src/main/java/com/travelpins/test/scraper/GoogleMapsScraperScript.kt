@@ -1,3 +1,4 @@
+package com.travelpins.test.scraper
 object GoogleMapsScraperScript {
 
 fun isGoogleListUrl(url: String): Boolean {
@@ -723,11 +724,3 @@ try {
 })();
 """.trimIndent()
 }
-SCRIPT_EOF
-python3 -c "
-c = open('/home/claude/travelpins/final/GoogleMapsScraperScript.kt').read()
-print('starts with package:', c.startswith('package com.travelpins.test.scraper'))
-print('ends correctly:', c.rstrip().endswith('}'))
-print('lines:', c.count(chr(10))+1)
-"
-cp /home/claude/travelpins/final/GoogleMapsScraperScript.
