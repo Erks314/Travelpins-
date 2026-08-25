@@ -29,6 +29,7 @@ object PlaceJsonParser {
                         latitude = obj.optDouble("lat"),
                         longitude = obj.optDouble("lng"),
                         placeId = obj.optString("placeId").ifBlank { null },
+                        mapsUrl = obj.optString("mapsUrl").ifBlank { null },
                         sourceListId = sourceListId,
                         sourceListName = sourceListName
                     )
