@@ -286,9 +286,9 @@ try {
     }
 
     TravelPins.log(
-        'GETLIST RAW START:\n' +
-        raw.substring(0, 3500)
-    );
+    '===== GETLIST RAW COMPLETO =====\n' +
+    raw
+);
 
     /*
      * ========================================================
