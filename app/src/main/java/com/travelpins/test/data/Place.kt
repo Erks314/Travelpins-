@@ -38,6 +38,11 @@ data class Place(
 
     val placeId: String? = null,
 
+    // Link diretto alla scheda Google Maps del luogo (con foto, recensioni,
+    // orari). Costruito a partire dal "cid" trovato nella risposta di
+    // Google. Se assente, si ripiega su una ricerca per coordinate.
+    val mapsUrl: String? = null,
+
     val note: String? = null,
 
     val sourceListId: String? = null,
