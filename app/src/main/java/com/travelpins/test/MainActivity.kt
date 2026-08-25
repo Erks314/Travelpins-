@@ -187,6 +187,16 @@ class MainActivity : ComponentActivity() {
 
         root.addView(listsTitle)
 
+        val debugLogButton = TextView(this).apply {
+            text = "🐞 Mostra log diagnostica"
+            textSize = 12f
+            setTextColor(Color.rgb(140, 140, 140))
+            setPadding(2, 4, 0, 10)
+            setOnClickListener { showDebugLogDialog() }
+        }
+
+        root.addView(debugLogButton)
+
         val listsScroll = ScrollView(this)
 
         val listsContainer = LinearLayout(this).apply {
@@ -1434,5 +1444,34 @@ class MainActivity : ComponentActivity() {
     private fun clearOutput() {
         if (!::outputView.isInitialized) return
         outputView.text = "TRAVELPINS NETWORK MONITOR\n\nMonitor pulito."
+    }
+
+    // ============================================================
+    // LOG DIAGNOSTICA (visibile per debug/supporto)
+    // ============================================================
+
+    private fun showDebugLogDialog() {
+        val logText = if (::outputView.isInitialized) {
+            outputView.text.toString().takeIf { it.isNotBlank() }
+                ?: "Nessun log disponibile ancora.\nImporta un elenco prima di aprire questo log."
+        } else {
+            "Nessun log disponibile ancora.\nImporta un elenco prima di aprire questo log."
+        }
+
+        val scroll = ScrollView(this)
+        val textView = TextView(this).apply {
+            text = logText
+            textSize = 11f
+            setPadding(24, 16, 24, 16)
+            setTextIsSelectable(true)
+        }
+        scroll.addView(textView)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Log diagnostica")
+            .setView(scroll)
+            .setPositiveButton("COPIA") { _, _ -> copyOutputToClipboard() }
+            .setNegativeButton("CHIUDI", null)
+            .show()
     }
 }
