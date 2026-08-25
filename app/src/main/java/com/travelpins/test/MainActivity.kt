@@ -986,7 +986,7 @@ class MainActivity : ComponentActivity() {
     private fun showPlaceMenu(place: Place) {
         val options = arrayOf("Cambia categoria", "Apri in Google Maps")
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle(place.name)
             .setItems(options) { _, which ->
                 when (which) {
@@ -1016,7 +1016,7 @@ class MainActivity : ComponentActivity() {
             items.add("${category.iconKey}  ${category.name}")
         }
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("Categoria di\n${place.name}")
             .setItems(items.toTypedArray()) { _, which ->
                 val categoryId = if (which == 0) null else currentCategories[which - 1].id
@@ -1047,7 +1047,7 @@ class MainActivity : ComponentActivity() {
 
         items.add("＋  Crea nuova categoria")
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("Le mie categorie")
             .setItems(items.toTypedArray()) { _, which ->
                 if (which == currentCategories.size) {
@@ -1065,7 +1065,7 @@ class MainActivity : ComponentActivity() {
     // ============================================================
 
     private fun showCategoryOptions(category: Category) {
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("${category.iconKey}  ${category.name}")
             .setItems(arrayOf("Filtra per questa categoria", "Elimina categoria")) { _, which ->
                 when (which) {
@@ -1092,6 +1092,8 @@ class MainActivity : ComponentActivity() {
 
         val nameInput = EditText(this).apply {
             hint = "Nome categoria"
+            setHintTextColor(COLOR_TEXT_MUTED)
+            setTextColor(COLOR_TEXT_PRIMARY)
             setSingleLine(true)
         }
 
@@ -1106,7 +1108,7 @@ class MainActivity : ComponentActivity() {
         val iconTitle = TextView(this).apply {
             text = "Scegli icona"
             textSize = 14f
-            setTextColor(Color.rgb(80, 80, 80))
+            setTextColor(COLOR_TEXT_SECONDARY)
             setPadding(0, 18, 0, 8)
         }
 
@@ -1148,7 +1150,7 @@ class MainActivity : ComponentActivity() {
         val colorTitle = TextView(this).apply {
             text = "Scegli colore"
             textSize = 14f
-            setTextColor(Color.rgb(80, 80, 80))
+            setTextColor(COLOR_TEXT_SECONDARY)
             setPadding(0, 14, 0, 8)
         }
 
@@ -1183,7 +1185,7 @@ class MainActivity : ComponentActivity() {
 
         layout.addView(colorContainer)
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("Nuova categoria")
             .setView(layout)
             .setPositiveButton("CREA") { _, _ ->
@@ -1214,7 +1216,7 @@ class MainActivity : ComponentActivity() {
     // ============================================================
 
     private fun confirmDeleteCategory(category: Category) {
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("Eliminare categoria?")
             .setMessage(
                 "La categoria \"${category.name}\" verrà eliminata.\n\n" +
@@ -1651,12 +1653,13 @@ class MainActivity : ComponentActivity() {
         val textView = TextView(this).apply {
             text = logText
             textSize = 11f
+            setTextColor(COLOR_TEXT_PRIMARY)
             setPadding(24, 16, 24, 16)
             setTextIsSelectable(true)
         }
         scroll.addView(textView)
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("Log diagnostica")
             .setView(scroll)
             .setPositiveButton("COPIA") { _, _ -> copyOutputToClipboard() }
