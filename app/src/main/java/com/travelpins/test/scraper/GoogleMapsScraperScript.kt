@@ -1,4 +1,5 @@
 package com.travelpins.test.scraper
+
 object GoogleMapsScraperScript {
 
 fun isGoogleListUrl(url: String): Boolean {
@@ -118,73 +119,6 @@ try {
     TravelPins.log(
         'URL ANALIZZATO: ' + currentUrl
     );
-
-    /*
-     * ========================================================
-     * TITOLO DELLA LISTA GOOGLE MAPS
-     * ========================================================
-     *
-     * Google Maps aggiorna document.title in modo asincrono,
-     * spesso proprio mentre carica i dati della lista. Se lo
-     * leggiamo una volta sola e basta, rischiamo di leggere
-     * ancora il titolo generico ("Google Maps").
-     *
-     * Per questo aspettiamo (con un limite massimo) finché non
-     * compare un titolo che non sia quello generico.
-     */
-
-    function cleanTitle(raw) {
-        var t = (raw || '').trim();
-        t = t.replace(/\s*-\s*Google Maps\s*$/i, '').trim();
-        return t;
-    }
-
-    function isGenericTitle(t) {
-        if (!t) return true;
-        var lower = t.toLowerCase();
-        return lower === 'google maps' || lower === 'maps';
-    }
-
-    function wait(ms) {
-        return new Promise(function(resolve) {
-            setTimeout(resolve, ms);
-        });
-    }
-
-    var sourceListName = '';
-
-    for (var attempt = 0; attempt < 8; attempt++) {
-        var candidate = cleanTitle(document.title);
-
-        if (!isGenericTitle(candidate)) {
-            sourceListName = candidate;
-            break;
-        }
-
-        await wait(400);
-    }
-
-    if (!sourceListName) {
-        sourceListName = 'Lista Google Maps';
-    }
-
-    TravelPins.log(
-        'NOME LISTA: ' + sourceListName
-    );
-
-    /*
-     * Invia subito il nome della lista al bridge Kotlin.
-     */
-    try {
-        TravelPinsBridge.onListTitleExtracted(
-            sourceListName
-        );
-    } catch(e) {
-        TravelPins.log(
-            'ERRORE INVIO TITOLO LISTA: ' +
-            e.message
-        );
-    }
 
     /*
      * ========================================================
@@ -338,6 +272,54 @@ try {
         );
 
         return;
+    }
+
+    /*
+     * ========================================================
+     * TITOLO DELLA LISTA GOOGLE MAPS
+     * ========================================================
+     *
+     * Il titolo NON e' nel document.title della pagina (Google
+     * Maps non lo aggiorna in questo contesto). E' invece dentro
+     * la risposta getlist stessa, in posizione fissa:
+     * data[0][4] (es. "Irlanda").
+     */
+
+    var sourceListName = '';
+
+    try {
+        if (
+            Array.isArray(data) &&
+            Array.isArray(data[0]) &&
+            typeof data[0][4] === 'string' &&
+            data[0][4].trim() !== ''
+        ) {
+            sourceListName = data[0][4].trim();
+        }
+    } catch(e) {}
+
+    if (!sourceListName) {
+        var fallbackTitle = (document.title || '')
+            .trim()
+            .replace(/\s*-\s*Google Maps\s*$/i, '')
+            .trim();
+
+        sourceListName = fallbackTitle || 'Lista Google Maps';
+    }
+
+    TravelPins.log(
+        'NOME LISTA: ' + sourceListName
+    );
+
+    try {
+        TravelPinsBridge.onListTitleExtracted(
+            sourceListName
+        );
+    } catch(e) {
+        TravelPins.log(
+            'ERRORE INVIO TITOLO LISTA: ' +
+            e.message
+        );
     }
 
     /*
