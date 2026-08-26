@@ -216,10 +216,19 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        navBar.addView(buildNavItem("🏠", "Home", NavTab.HOME))
-        navBar.addView(buildNavItem("🔖", "Elenchi", NavTab.ELENCHI))
-        navBar.addView(buildNavItem("🗺️", "Mappa", NavTab.MAPPA))
-        navBar.addView(buildNavItem("👤", "Profilo", NavTab.PROFILO))
+        val items = listOf(
+            Triple("🏠", "Home", NavTab.HOME),
+            Triple("🔖", "Elenchi", NavTab.ELENCHI),
+            Triple("🗺️", "Mappa", NavTab.MAPPA),
+            Triple("👤", "Profilo", NavTab.PROFILO)
+        )
+
+        items.forEach { (icon, label, tab) ->
+            navBar.addView(
+                buildNavItem(icon, label, tab),
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+            )
+        }
 
         return navBar
     }
@@ -240,9 +249,12 @@ class MainActivity : ComponentActivity() {
                         if (content is FrameLayout) {
                             val old = content.getChildAt(1) as? LinearLayout
                             if (old != null) {
+                                // Reinserita ALLA STESSA POSIZIONE (indice 1), non in fondo:
+                                // altrimenti finisce sopra il FAB e gli ruba i tap.
                                 content.removeViewAt(1)
                                 content.addView(
                                     buildBottomNav(),
+                                    1,
                                     FrameLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT,
                                         dp(72),
@@ -279,10 +291,13 @@ class MainActivity : ComponentActivity() {
     private fun refreshContent() {
         if (!::repository.isInitialized) return
         val content = findViewById<View>(android.R.id.content) ?: return
-        val contentContainer = content.findViewWithTag<FrameLayout>("content_container") ?: return
 
         when (currentScreen) {
             Screen.HOME -> {
+                // Il tag "content_container" esiste SOLO nella shell Home (bottom nav + FAB).
+                // Va cercato solo in questo ramo, altrimenti nel dettaglio elenco (che non
+                // ha questo tag) la funzione usciva subito e la lista luoghi restava vuota.
+                val contentContainer = content.findViewWithTag<FrameLayout>("content_container") ?: return
                 when (currentNavTab) {
                     NavTab.HOME, NavTab.ELENCHI -> renderListsTab(contentContainer)
                     NavTab.MAPPA -> renderPlaceholderTab(contentContainer, "🗺️", "Mappa generale", "Presto disponibile: tutti i tuoi luoghi su un'unica mappa.")
