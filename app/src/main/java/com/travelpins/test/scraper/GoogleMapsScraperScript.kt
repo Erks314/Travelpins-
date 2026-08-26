@@ -16,6 +16,57 @@ return 'ALREADY_INSTALLED';
 }
 window.__travelpins_hooked = true;
 
+/*
+ * ============================================================
+ * FILTRO RUMORE
+ * ============================================================
+ *
+ * Le richieste verso /maps/vt (tile della mappa) e
+ * /maps/preview/log204 (telemetria interna di Google) sono
+ * altissime in numero e non contengono mai dati utili per noi
+ * (foto, recensioni, rating). Le escludiamo dal log per non
+ * intasarlo, ma la richiesta originale viene comunque eseguita
+ * normalmente: qui filtriamo solo COSA logghiamo, non cosa
+ * viene effettivamente chiamato dalla pagina.
+ */
+function isNoiseUrl(url) {
+    return url.indexOf('/maps/vt') !== -1 ||
+        url.indexOf('/maps/preview/log204') !== -1;
+}
+
+/*
+ * ============================================================
+ * URL DI INTERESSE PER FOTO/RECENSIONI
+ * ============================================================
+ *
+ * Al momento l'unico endpoint individuato che sembra portare i
+ * dettagli del singolo luogo (diverso da getlist, che porta solo
+ * i dati della lista) e' /maps/preview/place. Per questo endpoint
+ * catturiamo anche il CORPO della risposta, non solo l'URL.
+ */
+function isPlaceDetailUrl(url) {
+    return url.indexOf('/maps/preview/place') !== -1;
+}
+
+function logPlaceResponse(url, text) {
+    try {
+        var preview = text.substring(0, 20000);
+        TravelPins.log(
+            '===== RISPOSTA /maps/preview/place =====\n' +
+            'URL: ' + url + '\n' +
+            'LUNGHEZZA TOTALE: ' + text.length + '\n' +
+            'CONTENUTO (troncato a 20000 caratteri):\n' +
+            preview
+        );
+    } catch(e) {
+        try {
+            TravelPins.log(
+                'ERRORE LOG RISPOSTA PLACE: ' + e.message
+            );
+        } catch(e2) {}
+    }
+}
+
 var originalFetch = window.fetch;
 window.fetch = async function() {
     var input = arguments[0];
@@ -23,10 +74,34 @@ window.fetch = async function() {
     var url = typeof input === 'string' ? input : input.url;
     var method = options.method || (typeof input !== 'string' ? input.method : 'GET') || 'GET';
     var body = options.body || '';
-    try {
-        TravelPins.network('FETCH_REQUEST', method, url, body);
-    } catch(e) {}
-    return originalFetch.apply(this, arguments);
+
+    if (!isNoiseUrl(url)) {
+        try {
+            TravelPins.network('FETCH_REQUEST', method, url, body);
+        } catch(e) {}
+    }
+
+    var response = await originalFetch.apply(this, arguments);
+
+    if (isPlaceDetailUrl(url)) {
+        try {
+            response
+                .clone()
+                .text()
+                .then(function(text) {
+                    logPlaceResponse(url, text);
+                })
+                .catch(function(e) {
+                    try {
+                        TravelPins.log(
+                            'ERRORE LETTURA RISPOSTA PLACE (fetch): ' + e.message
+                        );
+                    } catch(e2) {}
+                });
+        } catch(e) {}
+    }
+
+    return response;
 };
 
 var originalOpen = XMLHttpRequest.prototype.open;
@@ -40,19 +115,39 @@ XMLHttpRequest.prototype.open = function(method, url) {
 
 XMLHttpRequest.prototype.send = function(body) {
     var xhr = this;
-    try {
-        TravelPins.network(
-            'XHR_REQUEST',
-            xhr.__tp_method || 'GET',
-            xhr.__tp_url || '',
-            body || ''
-        );
-    } catch(e) {}
+    var url = xhr.__tp_url || '';
+    var method = xhr.__tp_method || 'GET';
+
+    if (!isNoiseUrl(url)) {
+        try {
+            TravelPins.network(
+                'XHR_REQUEST',
+                method,
+                url,
+                body || ''
+            );
+        } catch(e) {}
+    }
+
+    if (isPlaceDetailUrl(url)) {
+        xhr.addEventListener('load', function() {
+            try {
+                logPlaceResponse(url, xhr.responseText || '');
+            } catch(e) {
+                try {
+                    TravelPins.log(
+                        'ERRORE LETTURA RISPOSTA PLACE (xhr): ' + e.message
+                    );
+                } catch(e2) {}
+            }
+        });
+    }
+
     return originalSend.apply(this, arguments);
 };
 
 try {
-    TravelPins.log('NETWORK HOOK INSTALLATO');
+    TravelPins.log('NETWORK HOOK INSTALLATO (v2: filtro rumore + cattura risposta /maps/preview/place)');
 } catch(e) {}
 
 return 'HOOK_INSTALLED';
