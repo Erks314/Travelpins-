@@ -35,6 +35,16 @@ class TravelPinsJsBridge(
             "TravelPinsNetwork",
             "$type $method $url"
         )
+
+        // NOTA: prima questo messaggio finiva solo su Logcat e non era
+        // visibile nel log diagnostico copiabile dall'app. Ora viene
+        // inoltrato anche a onLogMessage, cosi' possiamo vedere dal
+        // telefono quali richieste di rete (fetch/XHR) vengono fatte
+        // da Google Maps, ad esempio quando si apre la pagina di un
+        // singolo luogo (utile per individuare endpoint di foto/recensioni).
+        onLogMessage(
+            "$type $method $url"
+        )
     }
 
     @JavascriptInterface
