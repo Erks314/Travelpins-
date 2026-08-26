@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
         private val COLOR_FAVORITE = Color.parseColor("#FF6B6B")
     }
 
-    private enum class Screen { HOME, LIST_DETAIL }
+    private enum class Screen { HOME, LIST_DETAIL, LIST_MAP }
     private enum class NavTab { HOME, ELENCHI, MAPPA, PROFILO }
 
     private lateinit var webView: WebView
@@ -112,10 +112,10 @@ class MainActivity : ComponentActivity() {
 
     @Suppress("DEPRECATION", "MissingSuperCall")
     override fun onBackPressed() {
-        if (currentScreen == Screen.LIST_DETAIL) {
-            showAppShell(NavTab.HOME)
-        } else {
-            super.onBackPressed()
+        when (currentScreen) {
+            Screen.LIST_MAP -> showListDetail(viewingListId, viewingListName)
+            Screen.LIST_DETAIL -> showAppShell(NavTab.HOME)
+            else -> super.onBackPressed()
         }
     }
 
@@ -308,7 +308,10 @@ class MainActivity : ComponentActivity() {
                 val listPlaces = placesInCurrentList()
                 refreshFilters(content)
                 refreshPlaces(content, listPlaces)
-                updateMapMarkers(listPlaces)
+            }
+            Screen.LIST_MAP -> {
+                refreshFilters(content)
+                updateMapMarkers(placesInCurrentList())
             }
         }
     }
@@ -523,9 +526,12 @@ class MainActivity : ComponentActivity() {
         viewingListName = listName
         selectedCategoryId = null
 
+        val outer = FrameLayout(this).apply {
+            setBackgroundColor(COLOR_BG)
+        }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(COLOR_BG)
             setPadding(20, 28, 20, 20)
         }
 
@@ -554,49 +560,33 @@ class MainActivity : ComponentActivity() {
 
         root.addView(title)
 
-        val mapTitle = TextView(this).apply {
-            text = "MAPPA"
-            textSize = 13f
-            setTextColor(COLOR_TEXT_MUTED)
-            setPadding(2, 0, 0, 7)
+        // Bottone grande per aprire la mappa a schermo intero (al posto della mini-mappa incorporata)
+        val mapButton = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            background = roundedBackground(COLOR_ACCENT, 16f)
+            setOnClickListener { showListMap(viewingListId, viewingListName) }
         }
 
-        root.addView(mapTitle)
-
-        val mapContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = roundedBackground(COLOR_SURFACE, 18f)
-            clipChildren = true
+        val mapIcon = TextView(this).apply {
+            text = "🗺️"
+            textSize = 18f
+            setPadding(0, 0, 10, 0)
         }
 
-        prepareMapView()
-
-        mapView?.let { map ->
-            mapContainer.addView(
-                map,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260))
-            )
+        val mapLabel = TextView(this).apply {
+            text = "VEDI SU MAPPA"
+            textSize = 15f
+            setTextColor(Color.WHITE)
         }
+
+        mapButton.addView(mapIcon)
+        mapButton.addView(mapLabel)
 
         root.addView(
-            mapContainer,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260)).apply {
-                bottomMargin = 14
-            }
-        )
-
-        val categoriesButton = Button(this).apply {
-            text = "📁  CATEGORIE"
-            textSize = 14f
-            setTextColor(COLOR_TEXT_PRIMARY)
-            background = roundedBackground(COLOR_SURFACE, 16f)
-            setOnClickListener { showCategoriesDialog() }
-        }
-
-        root.addView(
-            categoriesButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 52).apply {
-                bottomMargin = 14
+            mapButton,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)).apply {
+                bottomMargin = 18
             }
         )
 
@@ -630,13 +620,117 @@ class MainActivity : ComponentActivity() {
         val placesContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             tag = "places_container"
-            setPadding(0, 0, 0, 20)
+            setPadding(0, 0, 0, 90)
         }
 
         placesScroll.addView(placesContainer)
 
         root.addView(
             placesScroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
+
+        outer.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+
+        // FAB "+" in basso a destra: tap = crea categoria, pressione lunga = gestisci categorie
+        val categoryFab = TextView(this).apply {
+            text = "＋"
+            textSize = 26f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = roundedBackground(COLOR_ACCENT, 28f)
+            setOnClickListener { showCreateCategoryDialog() }
+            setOnLongClickListener {
+                showCategoriesDialog()
+                true
+            }
+        }
+
+        outer.addView(
+            categoryFab,
+            FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.END).apply {
+                bottomMargin = dp(24)
+                rightMargin = dp(24)
+            }
+        )
+
+        setContentView(outer)
+        refreshContent()
+    }
+
+    // ============================================================
+    // MAPPA A SCHERMO INTERO (per UN elenco)
+    // ============================================================
+
+    private fun showListMap(listId: String?, listName: String?) {
+        currentScreen = Screen.LIST_MAP
+        viewingListId = listId
+        viewingListName = listName
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(COLOR_BG)
+            setPadding(20, 28, 20, 20)
+        }
+
+        val backButton = TextView(this).apply {
+            text = "←"
+            textSize = 18f
+            setTextColor(COLOR_TEXT_PRIMARY)
+            gravity = Gravity.CENTER
+            background = roundedBackground(COLOR_SURFACE, 20f)
+            setOnClickListener { showListDetail(listId, listName) }
+        }
+
+        root.addView(
+            backButton,
+            LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+                bottomMargin = 14
+            }
+        )
+
+        val title = TextView(this).apply {
+            text = listName?.takeIf { it.isNotBlank() } ?: "Elenco senza titolo"
+            textSize = 22f
+            setTextColor(COLOR_TEXT_PRIMARY)
+            setPadding(0, 0, 0, 14)
+        }
+
+        root.addView(title)
+
+        val filterScroll = ScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+
+        val filterContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            tag = "filter_container"
+        }
+
+        filterScroll.addView(filterContainer)
+
+        root.addView(
+            filterScroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 48).apply {
+                bottomMargin = 14
+            }
+        )
+
+        val mapContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(COLOR_SURFACE, 18f)
+            clipChildren = true
+        }
+
+        prepareMapView()
+
+        mapView?.let { map ->
+            mapContainer.addView(
+                map,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            )
+        }
+
+        root.addView(
+            mapContainer,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         )
 
@@ -683,7 +777,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateMapMarkers(scopedPlaces: List<Place> = placesInCurrentList()) {
-        if (currentScreen != Screen.LIST_DETAIL) return
+        if (currentScreen != Screen.LIST_MAP) return
 
         val map = googleMap ?: return
 
@@ -1099,110 +1193,172 @@ class MainActivity : ComponentActivity() {
     // CREATE CATEGORY
     // ============================================================
 
+    // Palette professionale (stile Tailwind), 20 colori distinti e ben distinguibili
+    private val categoryColorPalette = listOf(
+        Color.parseColor("#EF4444"), Color.parseColor("#F97316"), Color.parseColor("#F59E0B"),
+        Color.parseColor("#EAB308"), Color.parseColor("#84CC16"), Color.parseColor("#22C55E"),
+        Color.parseColor("#10B981"), Color.parseColor("#14B8A6"), Color.parseColor("#06B6D4"),
+        Color.parseColor("#0EA5E9"), Color.parseColor("#3B82F6"), Color.parseColor("#6366F1"),
+        Color.parseColor("#8B5CF6"), Color.parseColor("#A855F7"), Color.parseColor("#D946EF"),
+        Color.parseColor("#EC4899"), Color.parseColor("#F43F5E"), Color.parseColor("#64748B"),
+        Color.parseColor("#6B7280"), Color.parseColor("#78716C")
+    )
+
+    private val categoryIconPalette = listOf(
+        "📍", "🍴", "🏨", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "🍺", "🚗", "🎭"
+    )
+
     private fun showCreateCategoryDialog() {
+        var selectedIcon = categoryIconPalette.first()
+        var selectedColor = categoryColorPalette.first()
+
+        val scroll = ScrollView(this)
+
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 8, 24, 0)
+            setPadding(30, 10, 30, 0)
         }
 
+        // ---- Anteprima live ----
+        val previewBadge = TextView(this).apply {
+            text = selectedIcon
+            textSize = 30f
+            gravity = Gravity.CENTER
+            background = roundedBackground(selectedColor, 40f)
+        }
+
+        val previewRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, 4, 0, 22)
+        }
+
+        previewRow.addView(previewBadge, LinearLayout.LayoutParams(dp(72), dp(72)))
+        layout.addView(previewRow)
+
+        fun refreshPreview() {
+            previewBadge.text = selectedIcon
+            previewBadge.background = roundedBackground(selectedColor, 40f)
+        }
+
+        // ---- Nome ----
         val nameInput = EditText(this).apply {
             hint = "Nome categoria"
             setHintTextColor(COLOR_TEXT_MUTED)
             setTextColor(COLOR_TEXT_PRIMARY)
             setSingleLine(true)
+            background = roundedBackground(COLOR_SURFACE_ALT, 12f)
+            setPadding(24, 20, 24, 20)
         }
 
         layout.addView(
             nameInput,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = 24
+            }
         )
 
+        // ---- Icone (griglia grande) ----
         val iconTitle = TextView(this).apply {
-            text = "Scegli icona"
-            textSize = 14f
-            setTextColor(COLOR_TEXT_SECONDARY)
-            setPadding(0, 18, 0, 8)
+            text = "ICONA"
+            textSize = 12f
+            setTextColor(COLOR_TEXT_MUTED)
+            setPadding(2, 0, 0, 10)
         }
-
         layout.addView(iconTitle)
 
-        var selectedIcon = "📍"
+        val iconViews = mutableListOf<Pair<String, TextView>>()
 
-        val iconContainer = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun iconBackground(icon: String) =
+            roundedBackground(if (icon == selectedIcon) COLOR_ACCENT else COLOR_SURFACE_ALT, 16f)
 
-        val icons = listOf("📍", "🍴", "🏨", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "🍺")
+        val iconGrid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        icons.forEach { icon ->
-            val button = Button(this).apply {
-                text = icon
-                textSize = 20f
-                setPadding(2, 0, 2, 0)
-                setOnClickListener {
-                    selectedIcon = icon
-                    Toast.makeText(this@MainActivity, "Icona: $icon", Toast.LENGTH_SHORT).show()
+        categoryIconPalette.chunked(4).forEach { rowIcons ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
+            rowIcons.forEach { icon ->
+                val iconView = TextView(this).apply {
+                    text = icon
+                    textSize = 26f
+                    gravity = Gravity.CENTER
+                    background = iconBackground(icon)
+                    setOnClickListener {
+                        selectedIcon = icon
+                        iconViews.forEach { (i, v) -> v.background = iconBackground(i) }
+                        refreshPreview()
+                    }
                 }
+                iconViews.add(icon to iconView)
+
+                row.addView(
+                    iconView,
+                    LinearLayout.LayoutParams(dp(60), dp(60)).apply {
+                        rightMargin = 10
+                        bottomMargin = 10
+                    }
+                )
             }
 
-            iconContainer.addView(
-                button,
-                LinearLayout.LayoutParams(52, 52).apply { rightMargin = 4 }
-            )
+            iconGrid.addView(row)
         }
 
-        val iconScroll = ScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(iconContainer)
-        }
+        layout.addView(iconGrid)
 
-        layout.addView(
-            iconScroll,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 62)
-        )
-
+        // ---- Colore (palette professionale) ----
         val colorTitle = TextView(this).apply {
-            text = "Scegli colore"
-            textSize = 14f
-            setTextColor(COLOR_TEXT_SECONDARY)
-            setPadding(0, 14, 0, 8)
+            text = "COLORE"
+            textSize = 12f
+            setTextColor(COLOR_TEXT_MUTED)
+            setPadding(2, 20, 0, 10)
         }
-
         layout.addView(colorTitle)
 
-        var selectedColor = COLOR_ACCENT
+        val colorViews = mutableListOf<Pair<Int, View>>()
 
-        val colorContainer = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-
-        val colors = listOf(
-            COLOR_ACCENT,
-            Color.rgb(220, 70, 70),
-            Color.rgb(45, 160, 90),
-            Color.rgb(230, 150, 30),
-            Color.rgb(140, 80, 190),
-            Color.rgb(0, 150, 170),
-            Color.rgb(220, 70, 130),
-            Color.rgb(90, 90, 90)
-        )
-
-        colors.forEach { color ->
-            val colorButton = View(this).apply {
-                background = roundedBackground(color, 30f)
-                setOnClickListener { selectedColor = color }
+        fun colorBackground(color: Int) = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(color)
+            if (color == selectedColor) {
+                setStroke(dp(3), Color.WHITE)
             }
-
-            colorContainer.addView(
-                colorButton,
-                LinearLayout.LayoutParams(42, 42).apply { rightMargin = 8 }
-            )
         }
 
-        layout.addView(colorContainer)
+        val colorGrid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        categoryColorPalette.chunked(5).forEach { rowColors ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
+            rowColors.forEach { color ->
+                val colorView = View(this).apply {
+                    background = colorBackground(color)
+                    setOnClickListener {
+                        selectedColor = color
+                        colorViews.forEach { (c, v) -> v.background = colorBackground(c) }
+                        refreshPreview()
+                    }
+                }
+                colorViews.add(color to colorView)
+
+                row.addView(
+                    colorView,
+                    LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+                        rightMargin = 12
+                        bottomMargin = 12
+                    }
+                )
+            }
+
+            colorGrid.addView(row)
+        }
+
+        layout.addView(colorGrid)
+
+        scroll.addView(layout)
 
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("Nuova categoria")
-            .setView(layout)
+            .setView(scroll)
             .setPositiveButton("CREA") { _, _ ->
                 val name = nameInput.text.toString().trim()
 
