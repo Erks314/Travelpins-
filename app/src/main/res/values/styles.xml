@@ -2,11 +2,25 @@
 
 <resources>
 
+    <!-- Tema principale dell'app — ora scuro, coerente con la palette di MainActivity.kt -->
     <style name="Theme.TravelPinsTest"
-        parent="android:style/Theme.Material.Light.NoActionBar">
+        parent="Theme.AppCompat.NoActionBar">
 
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#3F51B5</item>
+
+        <item name="colorPrimary">#6C5CE7</item>
+        <item name="colorPrimaryDark">#5847C9</item>
+        <item name="colorAccent">#6C5CE7</item>
+
+        <item name="android:windowBackground">#12121A</item>
+        <item name="android:colorBackground">#12121A</item>
+
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:textColorSecondary">#9A9AB0</item>
+
+        <item name="android:statusBarColor">#12121A</item>
+        <item name="android:navigationBarColor">#12121A</item>
+        <item name="android:windowLightStatusBar">false</item>
 
     </style>
 
