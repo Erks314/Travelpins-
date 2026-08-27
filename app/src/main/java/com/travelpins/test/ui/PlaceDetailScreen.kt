@@ -648,7 +648,7 @@ fun PlaceDetailScreen(
 
     // ---------- DIALOGS ----------
     if (showCategoryPicker && place != null) {
-        CategoryPickerDialog(
+        PlaceDetailCategoryPickerDialog(
             categories = categories,
             onPick = { categoryId ->
                 onChangeCategory(place, categoryId)
@@ -663,7 +663,7 @@ fun PlaceDetailScreen(
     }
 
     if (showCreateCategory) {
-        CreateCategoryDialog(
+        PlaceDetailCreateCategoryDialog(
             onCreate = { name, color, icon ->
                 onCreateCategory(name, color, icon)
                 showCreateCategory = false
@@ -831,7 +831,7 @@ fun ReviewCard(review: PlaceReview) {
 // ============================================================
 
 @Composable
-fun CategoryPickerDialog(
+fun PlaceDetailCategoryPickerDialog(
     categories: List<Category>,
     onPick: (Long?) -> Unit,
     onCreateNew: () -> Unit,
@@ -874,7 +874,7 @@ private val categoryIconPalette = listOf(
 )
 
 @Composable
-fun CreateCategoryDialog(
+fun PlaceDetailCreateCategoryDialog(
     onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit,
     onDismiss: () -> Unit
 ) {
