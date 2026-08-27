@@ -12,7 +12,6 @@ object GoogleMapsScraperScript {
 
     // ============================================================
     // PARSER CONDIVISO DELLA RISPOSTA /maps/preview/place
-    // (definito come funzione JS globale, riusato da hook e fetch)
     // ============================================================
 
     private val PLACE_DETAILS_PARSER_JS = """
@@ -250,9 +249,10 @@ function parsePlaceDetails(text) {
 
     walkPhotos(data);
 
-    out.photos = realPhotos
-        .concat(svPhotos)
-        .slice(0, 20);
+    /* SOLO foto reali: i panorami Street View non si
+     * renderizzano con i parametri dimensione semplici
+     * e comparirebbero come pagine nere in galleria. */
+    out.photos = realPhotos.slice(0, 20);
 
     var reviewSeen = {};
 
@@ -325,7 +325,7 @@ function parsePlaceDetails(text) {
 """.trimIndent()
 
     // ============================================================
-    // HOOK DI RETE (installato sulle pagine caricate nel WebView)
+    // HOOK DI RETE
     // ============================================================
 
     val NETWORK_HOOK_SCRIPT = PLACE_DETAILS_PARSER_JS + """
@@ -468,7 +468,7 @@ XMLHttpRequest.prototype.send = function(body) {
 };
 
 try {
-    TravelPins.log('NETWORK HOOK INSTALLATO (v4: parser condiviso)');
+    TravelPins.log('NETWORK HOOK INSTALLATO (v5: solo foto reali)');
 } catch(e) {}
 
 return 'HOOK_INSTALLED';
@@ -526,9 +526,7 @@ var elements = document.querySelectorAll(
 """.trimIndent()
 
     // ============================================================
-    // FETCH DIRETTO DEI DETTAGLI (per arricchimento in background)
-    // Replica la richiesta /maps/preview/place osservata nei log
-    // reali, sostituendo riferimento luogo e coordinate.
+    // FETCH DIRETTO DEI DETTAGLI (arricchimento in background)
     // ============================================================
 
     fun detailsFetchScript(
@@ -647,12 +645,6 @@ try {
         'URL ANALIZZATO: ' + currentUrl
     );
 
-    /*
-     * ========================================================
-     * LIST ID
-     * ========================================================
-     */
-
     var listId = '';
 
     var match = currentUrl.match(
@@ -698,12 +690,6 @@ try {
 
         return;
     }
-
-    /*
-     * ========================================================
-     * GETLIST
-     * ========================================================
-     */
 
     var pb =
         '!1m4' +
@@ -764,12 +750,6 @@ try {
     raw
 );
 
-    /*
-     * ========================================================
-     * RIMOZIONE PREFISSO ANTI-XSSI
-     * ========================================================
-     */
-
     var cleaned = raw;
 
     if (cleaned.indexOf(")]}'") === 0) {
@@ -800,12 +780,6 @@ try {
 
         return;
     }
-
-    /*
-     * ========================================================
-     * TITOLO DELLA LISTA GOOGLE MAPS
-     * ========================================================
-     */
 
     var sourceListName = '';
 
@@ -843,12 +817,6 @@ try {
             e.message
         );
     }
-
-    /*
-     * ========================================================
-     * ESTRAZIONE PLACES
-     * ========================================================
-     */
 
     var places = [];
 
@@ -987,12 +955,6 @@ try {
 
             findId(envelope);
 
-            /*
-             * ====================================================
-             * LINK DIRETTO ALLA SCHEDA DEL LUOGO
-             * ====================================================
-             */
-
             var mapsUrl = '';
             var hexPair = '';
 
@@ -1016,10 +978,6 @@ try {
                         'https://www.google.com/maps?cid=' +
                         rawCid.toString();
 
-                    /*
-                     * Coppia hex 0x...:0x... per il fetch diretto
-                     * dei dettagli (arricchimento in background).
-                     */
                     try {
                         var a = BigInt(featurePair[0]);
                         var b = BigInt(featurePair[1]);
@@ -1083,12 +1041,6 @@ try {
     }
 
     walk(data);
-
-    /*
-     * ========================================================
-     * RIMOZIONE DUPLICATI
-     * ========================================================
-     */
 
     var unique = [];
     var seen = {};
@@ -1169,12 +1121,6 @@ try {
         return;
     }
 
-    /*
-     * ========================================================
-     * OUTPUT DIAGNOSTICO
-     * ========================================================
-     */
-
     var output = '';
 
     output +=
@@ -1249,12 +1195,6 @@ try {
 
     window.__travelpins_places =
         places;
-
-    /*
-     * ========================================================
-     * INVIO DATI AL BRIDGE KOTLIN
-     * ========================================================
-     */
 
     try {
 
