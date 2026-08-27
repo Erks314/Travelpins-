@@ -70,6 +70,9 @@ interface PlaceDao {
     @Query("UPDATE places SET detailsFetchedAt = NULL WHERE id = :placeId")
     suspend fun clearDetailsFetched(placeId: Long)
 
+    @Query("DELETE FROM places")
+    suspend fun deleteAll()
+
     @Delete
     suspend fun delete(place: Place)
 
