@@ -198,14 +198,28 @@ function parsePlaceDetails(text) {
 
                 if (!photoSeen[key]) {
 
-                    var isSv = false;
+                    var skip = false;
+
+                    /* Esclude i panorami Street View */
                     for (var s = 0; s < node.length; s++) {
                         if (node[s] === 'Street View') {
-                            isSv = true;
+                            skip = true;
                         }
                     }
 
-                    if (!isSv) {
+                    /* Esclude il nodo copertina-contatore
+                     * (caption tipo "27092 foto" / "18 photos"):
+                     * non e' una foto reale e il suo URL
+                     * non renderizza in galleria. */
+                    var caption = '';
+                    if (typeof meta[1] === 'string') {
+                        caption = meta[1].trim();
+                    }
+                    if (/^[\d.,]+\s*(foto|photos?|recension)/i.test(caption)) {
+                        skip = true;
+                    }
+
+                    if (!skip) {
                         photoSeen[key] = true;
 
                         var pw = null;
@@ -434,7 +448,7 @@ XMLHttpRequest.prototype.send = function(body) {
 };
 
 try {
-    TravelPins.log('NETWORK HOOK INSTALLATO (v6: tetto 10 foto + ref)');
+    TravelPins.log('NETWORK HOOK INSTALLATO (v7: filtro nodo contatore)');
 } catch(e) {}
 
 return 'HOOK_INSTALLED';
@@ -558,11 +572,16 @@ try {
         );
     } catch(e) {}
 
-    try {
-        TravelPinsBridge.onPlaceDetailsExtracted(
-            JSON.stringify(parsed)
-        );
-    } catch(e) {}
+    /* Invia al bridge SOLO se ci sono foto reali:
+     * una risposta senza foto non deve marcare il
+     * luogo come arricchito. */
+    if (parsed.photos.length > 0) {
+        try {
+            TravelPinsBridge.onPlaceDetailsExtracted(
+                JSON.stringify(parsed)
+            );
+        } catch(e) {}
+    }
 
     return 'OK foto=' + parsed.photos.length;
 
