@@ -1,6 +1,7 @@
 package com.travelpins.test.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +19,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,6 +35,7 @@ import com.travelpins.test.data.PlacePhoto
 @Composable
 fun GalleryScreen(
     photos: List<PlacePhoto>,
+    startIndex: Int = 0,
     title: String,
     onBack: () -> Unit
 ) {
@@ -43,7 +44,11 @@ fun GalleryScreen(
         return
     }
 
-    val pagerState = rememberPagerState(pageCount = { photos.size })
+    val initialPage = startIndex.coerceIn(0, photos.size - 1)
+    val pagerState = rememberPagerState(
+        initialPage = initialPage,
+        pageCount = { photos.size }
+    )
     val current = pagerState.currentPage
 
     Column(
@@ -95,22 +100,24 @@ fun GalleryScreen(
 @Composable
 fun ZoomableImage(model: String) {
     var scale by remember { mutableFloatStateOf(1f) }
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
 
+    // Strategia:
+    // - Pinch zoom (due dita) per zoom in/out
+    // - Doppio tap per reset a 1x
+    // - Nessuno swipe/pan: lo swipe orizzontale passa al HorizontalPager
     Box(
         Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(1f, 4f)
-                    if (newScale > 1f) {
-                        offsetX += pan.x
-                        offsetY += pan.y
-                    } else {
-                        offsetX = 0f
-                        offsetY = 0f
+                detectTapGestures(
+                    onDoubleTap = {
+                        scale = if (scale > 1f) 1f else 2.5f
                     }
+                )
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures { _, _, zoom, _ ->
+                    val newScale = (scale * zoom).coerceIn(1f, 4f)
                     scale = newScale
                 }
             }
@@ -124,8 +131,6 @@ fun ZoomableImage(model: String) {
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
-                    translationX = offsetX
-                    translationY = offsetY
                 }
         )
     }
