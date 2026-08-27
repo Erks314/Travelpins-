@@ -106,6 +106,7 @@ interface PlaceDao {
                 "description = :description, " +
                 "websiteUrl = :websiteUrl, " +
                 "types = :types, " +
+                "mapsPlaceRef = :mapsPlaceRef, " +
                 "detailsFetchedAt = :detailsFetchedAt " +
                 "WHERE id = :placeId"
     )
@@ -116,6 +117,7 @@ interface PlaceDao {
         description: String?,
         websiteUrl: String?,
         types: String?,
+        mapsPlaceRef: String?,
         detailsFetchedAt: Long
     )
 
