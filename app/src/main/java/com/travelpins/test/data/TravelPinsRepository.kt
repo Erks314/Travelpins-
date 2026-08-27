@@ -60,7 +60,8 @@ class TravelPinsRepository(context: Context) {
         reviewCount: Int?,
         description: String?,
         websiteUrl: String?,
-        types: String?
+        types: String?,
+        mapsPlaceRef: String?
     ) {
         placeDao.updateDetails(
             placeId = placeId,
@@ -69,14 +70,11 @@ class TravelPinsRepository(context: Context) {
             description = description,
             websiteUrl = websiteUrl,
             types = types,
+            mapsPlaceRef = mapsPlaceRef,
             detailsFetchedAt = System.currentTimeMillis()
         )
     }
 
-    /**
-     * Sostituisce le foto esistenti con quelle nuove
-     * (solo se la nuova lista non e' vuota).
-     */
     suspend fun savePhotos(
         placeId: Long,
         photos: List<PlacePhoto>
@@ -87,10 +85,6 @@ class TravelPinsRepository(context: Context) {
         return inserted.count { it != -1L }
     }
 
-    /**
-     * Sostituisce le recensioni esistenti con quelle nuove
-     * (solo se la nuova lista non e' vuota).
-     */
     suspend fun saveReviews(
         placeId: Long,
         reviews: List<PlaceReview>
