@@ -5,6 +5,8 @@ import android.content.Context
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.scraper.GoogleMapsScraperScript
@@ -36,6 +38,14 @@ object EnrichmentManager {
         val running: Boolean = false
     )
 
+    /** Log diagnostica leggibile dalla UI (menu della scheda). */
+    val debugLog: SnapshotStateList<String> = mutableStateListOf()
+
+    private fun addDebug(msg: String) {
+        if (debugLog.size > 99) debugLog.removeAt(0)
+        debugLog.add(msg)
+    }
+
     private var started = false
     private var repository: TravelPinsRepository? = null
     private var appContext: Context? = null
@@ -49,10 +59,10 @@ object EnrichmentManager {
 
     private var currentId: Long? = null
     private var currentDeferred: CompletableDeferred<Boolean>? = null
+    private var sessionDeferred: CompletableDeferred<Boolean>? = null
 
-    private var throttleMs = 1200L
+    private var throttleMs = 800L
     private var consentAttempted = false
-    private var sessionWarmed = false
 
     private val _status = MutableStateFlow(EnrichStatus())
     val status: StateFlow<EnrichStatus> = _status
@@ -64,16 +74,18 @@ object EnrichmentManager {
         appContext = context.applicationContext
         this.repository = repository
 
-        // Reset una-tantum v7: riparte l'arricchimento completo
-        // con la logica corretta (il fetch diretto senza foto
-        // non marca piu' il luogo come arricchito).
+        addDebug("Manager avviato")
+
+        // Reset una-tantum v8: ripulisce le cache vecchie
+        // (foto-copertina rotta inclusa) e ri-arricchisce tutto.
         val prefs = appContext!!.getSharedPreferences(
             "travelpins", Context.MODE_PRIVATE
         )
-        if (!prefs.getBoolean("cleanup_v7_done", false)) {
+        if (!prefs.getBoolean("cleanup_v8_done", false)) {
             scope.launch {
+                addDebug("Reset v8: ri-arricchimento completo")
                 repository.resetAllDetailsFetched()
-                prefs.edit().putBoolean("cleanup_v7_done", true).apply()
+                prefs.edit().putBoolean("cleanup_v8_done", true).apply()
             }
         }
 
@@ -84,9 +96,11 @@ object EnrichmentManager {
                     .map { it.id }
                     .toSet()
 
+                var added = 0
                 for (id in pendingIds) {
                     if (queued.add(id)) {
                         queue.addLast(id)
+                        added++
                     }
                 }
 
@@ -97,6 +111,10 @@ object EnrichmentManager {
                         it.remove()
                         queued.remove(id)
                     }
+                }
+
+                if (added > 0) {
+                    addDebug("Coda: +$added nuovi, totale ${queue.size}")
                 }
 
                 _status.value = EnrichStatus(
@@ -115,10 +133,12 @@ object EnrichmentManager {
             val repo = repository ?: return@launch
             if (force) {
                 repo.clearDetailsFetched(placeId)
+                addDebug("Forzato re-arricchimento placeId=$placeId")
             }
             queue.remove(placeId)
             queue.addFirst(placeId)
             queued.add(placeId)
+            addDebug("Priorità a placeId=$placeId (coda=${queue.size})")
             ensureProcessing()
         }
     }
@@ -149,15 +169,13 @@ object EnrichmentManager {
                 ensureWebView()
                 val wv = webView ?: break
 
-                if (!sessionWarmed) {
-                    sessionWarmed = true
-                    withContext(Dispatchers.Main) {
-                        wv.loadUrl("https://www.google.com/maps")
-                    }
-                    delay(3500)
-                }
+                waitSessionReady(wv)
+
+                addDebug("→ ${place.name} (ref=${place.mapsPlaceRef != null || place.placeId?.let { HEX_PAIR_REGEX.matches(it) } ?: false})")
 
                 val ok = enrichPlace(wv, place, deferred)
+
+                addDebug(if (ok) "✓ ${place.name} salvato" else "✗ ${place.name} fallito")
 
                 queue.removeFirst()
                 queued.remove(id)
@@ -165,17 +183,32 @@ object EnrichmentManager {
                 currentDeferred = null
 
                 throttleMs = if (ok) {
-                    maxOf(1000, throttleMs - 200)
+                    maxOf(800, throttleMs - 200)
                 } else {
                     minOf(5000, throttleMs + 800)
                 }
 
                 delay(throttleMs)
             }
+            addDebug("Coda vuota, pausa")
         } finally {
             processing = false
             _status.value = _status.value.copy(running = false)
         }
+    }
+
+    private suspend fun waitSessionReady(wv: WebView) {
+        val sd = sessionDeferred
+        if (sd != null) {
+            withTimeoutOrNull(10000) { sd.await() }
+            return
+        }
+        val d = CompletableDeferred<Boolean>()
+        sessionDeferred = d
+        withContext(Dispatchers.Main) {
+            wv.loadUrl("https://www.google.com/maps")
+        }
+        withTimeoutOrNull(10000) { d.await() }
     }
 
     private suspend fun enrichPlace(
@@ -209,9 +242,8 @@ object EnrichmentManager {
             }
 
             val clean = result.trim().trim('"')
+            addDebug("  fetch diretto: $clean")
 
-            /* Accetta il fetch diretto SOLO se ha prodotto
-             * foto reali: altrimenti si passa al fallback. */
             val fastPhotos =
                 clean.removePrefix("OK foto=").toIntOrNull() ?: -1
 
@@ -221,7 +253,7 @@ object EnrichmentManager {
         }
 
         if (!ok) {
-            // Fallback collaudato: caricamento pagina del luogo
+            addDebug("  fallback pagina: ${place.name}")
             val url = place.mapsUrl
                 ?: "https://www.google.com/maps/search/?api=1&query=" +
                     "${place.latitude},${place.longitude}"
@@ -229,7 +261,8 @@ object EnrichmentManager {
             withContext(Dispatchers.Main) {
                 wv.loadUrl(url)
             }
-            ok = withTimeoutOrNull(20000) { deferred.await() } ?: false
+            ok = withTimeoutOrNull(15000) { deferred.await() } ?: false
+            if (!ok) addDebug("  fallback timeout: ${place.name}")
         }
 
         return ok
@@ -239,6 +272,8 @@ object EnrichmentManager {
     private fun ensureWebView() {
         if (webView != null) return
         val ctx = appContext ?: return
+
+        addDebug("Creazione WebView dedicato")
 
         val wv = WebView(ctx)
         wv.settings.javaScriptEnabled = true
@@ -254,10 +289,12 @@ object EnrichmentManager {
             onImportError = { },
             onLogMessage = { },
             getEnrichmentPlaceId = { currentId },
-            onDetailsFinished = { _, _, _ ->
+            onDetailsFinished = { _, photos, reviews ->
+                addDebug("  salvati foto=$photos recensioni=$reviews")
                 currentDeferred?.complete(true)
             },
-            onDetailsError = {
+            onDetailsError = { e ->
+                addDebug("  errore bridge: ${e.message}")
                 currentDeferred?.complete(false)
             }
         )
@@ -270,6 +307,8 @@ object EnrichmentManager {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
 
+                sessionDeferred?.complete(true)
+
                 view.evaluateJavascript(
                     GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT,
                     null
@@ -278,6 +317,7 @@ object EnrichmentManager {
                 if (url.contains("consent.google.com")) {
                     if (!consentAttempted) {
                         consentAttempted = true
+                        addDebug("Consenso Google rilevato, accetto")
                         view.postDelayed({
                             view.evaluateJavascript(
                                 GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT,
