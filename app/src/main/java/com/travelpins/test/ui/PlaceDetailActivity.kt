@@ -11,12 +11,10 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.lifecycleScope
-import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
-import com.travelpins.test.data.PlacePhoto
-import com.travelpins.test.data.PlaceReview
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.importer.TravelPinsJsBridge
 import com.travelpins.test.scraper.GoogleMapsScraperScript
@@ -43,6 +41,7 @@ class PlaceDetailActivity : ComponentActivity() {
 
     private val webViewState = mutableStateOf<WebView?>(null)
     private val enrichmentState = mutableStateOf(EnrichmentState.Idle)
+    private val debugMessages = mutableStateListOf<String>()
 
     private var consentAttempted = false
     private var enrichmentStarted = false
@@ -66,6 +65,7 @@ class PlaceDetailActivity : ComponentActivity() {
                     placeId = placeId,
                     webViewState = webViewState,
                     enrichmentState = enrichmentState.value,
+                    debugMessages = debugMessages,
                     onBack = { finish() },
                     onStartEnrichmentIfNeeded = { place ->
                         startEnrichmentIfNeeded(place)
@@ -104,12 +104,16 @@ class PlaceDetailActivity : ComponentActivity() {
         if (enrichmentStarted) return
         enrichmentStarted = true
         enrichmentState.value = EnrichmentState.Loading
+        debugMessages.clear()
+        debugMessages.add("Avvio arricchimento per placeId=$currentPlaceId")
         ensureWebView(place, reload = false)
     }
 
     private fun forceRefresh(place: Place) {
         enrichmentStarted = true
         enrichmentState.value = EnrichmentState.Loading
+        debugMessages.clear()
+        debugMessages.add("Forzatura refresh per placeId=$currentPlaceId")
         ensureWebView(place, reload = true)
     }
 
@@ -120,10 +124,13 @@ class PlaceDetailActivity : ComponentActivity() {
             ?: "https://www.google.com/maps/search/?api=1&query=" +
                 "${place.latitude},${place.longitude}"
 
+        debugMessages.add("URL destinazione: $url")
+
         val existing = webViewState.value
         if (existing != null) {
             if (reload) {
                 consentAttempted = false
+                debugMessages.add("Reload del WebView")
                 existing.loadUrl(url)
                 scheduleTimeout(existing)
             }
@@ -143,11 +150,19 @@ class PlaceDetailActivity : ComponentActivity() {
             getCurrentSourceListName = { null },
             onImportFinished = { },
             onImportError = { },
-            onLogMessage = { },
+            onLogMessage = { msg ->
+                runOnUiThread {
+                    if (debugMessages.size > 50) {
+                        debugMessages.removeAt(0)
+                    }
+                    debugMessages.add(msg)
+                }
+            },
             getEnrichmentPlaceId = { currentPlaceId },
             onDetailsFinished = { _, photosSaved, reviewsSaved ->
                 runOnUiThread {
                     enrichmentState.value = EnrichmentState.Done
+                    debugMessages.add("TERMINATO: foto=$photosSaved recensioni=$reviewsSaved")
                     webViewState.value?.stopLoading()
                     Toast.makeText(
                         this,
@@ -156,9 +171,10 @@ class PlaceDetailActivity : ComponentActivity() {
                     ).show()
                 }
             },
-            onDetailsError = {
+            onDetailsError = { error ->
                 runOnUiThread {
                     enrichmentState.value = EnrichmentState.Failed
+                    debugMessages.add("ERRORE: ${error.message}")
                 }
             }
         )
@@ -170,6 +186,7 @@ class PlaceDetailActivity : ComponentActivity() {
 
             override fun onPageFinished(view: WebView, pageUrl: String) {
                 super.onPageFinished(view, pageUrl)
+                debugMessages.add("PAGINA CARICATA: $pageUrl")
 
                 view.evaluateJavascript(
                     GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT,
@@ -179,6 +196,7 @@ class PlaceDetailActivity : ComponentActivity() {
                 if (pageUrl.contains("consent.google.com")) {
                     if (!consentAttempted) {
                         consentAttempted = true
+                        debugMessages.add("CONSENSO: invio script accept")
                         view.postDelayed({
                             view.evaluateJavascript(
                                 GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT,
@@ -195,13 +213,18 @@ class PlaceDetailActivity : ComponentActivity() {
             ): Boolean {
                 val reqUrl = request.url.toString()
                 if (reqUrl.startsWith("intent://")) {
-                    extractFallbackUrl(reqUrl)?.let { view.loadUrl(it) }
+                    debugMessages.add("INTERCETTATO intent://")
+                    extractFallbackUrl(reqUrl)?.let {
+                        debugMessages.add("Fallback: $it")
+                        view.loadUrl(it)
+                    }
                     return true
                 }
                 return false
             }
         }
 
+        debugMessages.add("WebView creato, carico URL")
         webViewState.value = wv
         wv.loadUrl(url)
         scheduleTimeout(wv)
@@ -210,7 +233,10 @@ class PlaceDetailActivity : ComponentActivity() {
     private fun scheduleTimeout(wv: WebView) {
         wv.postDelayed({
             if (enrichmentState.value == EnrichmentState.Loading) {
-                enrichmentState.value = EnrichmentState.Failed
+                runOnUiThread {
+                    enrichmentState.value = EnrichmentState.Failed
+                    debugMessages.add("TIMEOUT dopo 20s - arricchimento fallito")
+                }
                 wv.stopLoading()
             }
         }, 20000)
