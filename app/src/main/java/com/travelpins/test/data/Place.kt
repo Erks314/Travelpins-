@@ -50,5 +50,13 @@ data class Place(
 
     val categoryId: Long? = null,
 
-    val importedAt: Long = System.currentTimeMillis()
+    val importedAt: Long = System.currentTimeMillis(),
+
+    // ===== NUOVI CAMPI PER DETTAGLI LUOGO (da /maps/preview/place) =====
+    val rating: Double? = null,
+    val reviewCount: Int? = null,
+    val description: String? = null,
+    val websiteUrl: String? = null,
+    val types: String? = null, // comma-separated, es. "Ristorante,Cucina italiana"
+    val detailsFetchedAt: Long? = null
 )
