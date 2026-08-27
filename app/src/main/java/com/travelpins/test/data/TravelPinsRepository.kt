@@ -41,47 +41,33 @@ class TravelPinsRepository(context: Context) {
                 placeDao.findByPlaceId(placeId) == null
             }
         }
-        if (newPlaces.isEmpty()) {
-            return 0
-        }
+        if (newPlaces.isEmpty()) return 0
         val inserted = placeDao.insertAll(newPlaces)
         return inserted.count { it != -1L }
     }
 
     suspend fun createCategory(name: String, colorArgb: Int, iconKey: String): Long =
-        categoryDao.insert(
-            Category(
-                name = name,
-                colorArgb = colorArgb,
-                iconKey = iconKey
-            )
-        )
+        categoryDao.insert(Category(name = name, colorArgb = colorArgb, iconKey = iconKey))
 
     suspend fun assignPlaceToCategory(placeId: Long, categoryId: Long?) =
         placeDao.assignCategory(placeId, categoryId)
 
-    suspend fun deletePlace(place: Place) =
-        placeDao.delete(place)
+    suspend fun deletePlace(place: Place) = placeDao.delete(place)
 
-    suspend fun deleteCategory(category: Category) =
-        categoryDao.delete(category)
+    suspend fun deleteCategory(category: Category) = categoryDao.delete(category)
 
-    suspend fun resetAllDetailsFetched() =
-        placeDao.resetAllDetailsFetched()
+    suspend fun resetAllDetailsFetched() = placeDao.resetAllDetailsFetched()
 
-    suspend fun clearDetailsFetched(placeId: Long) =
-        placeDao.clearDetailsFetched(placeId)
+    suspend fun clearDetailsFetched(placeId: Long) = placeDao.clearDetailsFetched(placeId)
 
     suspend fun insertPhotos(photos: List<PlacePhoto>): Int {
         if (photos.isEmpty()) return 0
-        val inserted = placePhotoDao.insertAll(photos)
-        return inserted.count { it != -1L }
+        return placePhotoDao.insertAll(photos).count { it != -1L }
     }
 
     suspend fun insertReviews(reviews: List<PlaceReview>): Int {
         if (reviews.isEmpty()) return 0
-        val inserted = placeReviewDao.insertAll(reviews)
-        return inserted.count { it != -1L }
+        return placeReviewDao.insertAll(reviews).count { it != -1L }
     }
 
     suspend fun updatePlaceDetails(
@@ -93,14 +79,6 @@ class TravelPinsRepository(context: Context) {
         types: String?,
         detailsFetchedAt: Long
     ) {
-        placeDao.updateDetails(
-            placeId = placeId,
-            rating = rating,
-            reviewCount = reviewCount,
-            description = description,
-            websiteUrl = websiteUrl,
-            types = types,
-            detailsFetchedAt = detailsFetchedAt
-        )
+        placeDao.updateDetails(placeId, rating, reviewCount, description, websiteUrl, types, detailsFetchedAt)
     }
 }
