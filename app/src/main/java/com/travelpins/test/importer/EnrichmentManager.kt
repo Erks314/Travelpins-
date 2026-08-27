@@ -9,6 +9,7 @@ import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.scraper.GoogleMapsScraperScript
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,21 +21,14 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URLDecoder
 import kotlin.coroutines.resume
 
-/**
- * Coda di arricchimento in background.
- *
- * - Un WebView dedicato (con sessione Google Maps) esegue per ogni luogo
- *   in coda un fetch diretto di /maps/preview/place (~1-2 s/luogo).
- * - Se il fetch diretto fallisce, fallback: caricamento della pagina
- *   del luogo (metodo vecchio, piu' lento ma collaudato).
- * - Throttle adattivo: aumenta le pause se arrivano errori.
- * - Il luogo aperto dall'utente salta in testa alla coda.
- */
 object EnrichmentManager {
 
     private const val USER_AGENT =
         "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+
+    private val HEX_PAIR_REGEX =
+        Regex("^0x[0-9a-f]+:0x[0-9a-f]+$", RegexOption.IGNORE_CASE)
 
     data class EnrichStatus(
         val done: Int = 0,
@@ -70,16 +64,15 @@ object EnrichmentManager {
         appContext = context.applicationContext
         this.repository = repository
 
-        // Pulizia una-tantum: ri-arricchisce i luoghi importati
-        // con le versioni precedenti (rimuove foto Street View
-        // e dati parziali salvati in cache).
+        // Reset una-tantum v6: ri-arricchisce tutti i luoghi con
+        // le regole nuove (max 10 foto reali, niente Street View).
         val prefs = appContext!!.getSharedPreferences(
             "travelpins", Context.MODE_PRIVATE
         )
-        if (!prefs.getBoolean("cleanup_v5_done", false)) {
+        if (!prefs.getBoolean("cleanup_v6_done", false)) {
             scope.launch {
                 repository.resetAllDetailsFetched()
-                prefs.edit().putBoolean("cleanup_v5_done", true).apply()
+                prefs.edit().putBoolean("cleanup_v6_done", true).apply()
             }
         }
 
@@ -116,11 +109,6 @@ object EnrichmentManager {
         }
     }
 
-    /**
-     * Mette il luogo in testa alla coda.
-     * Con force = true lo reimposta come "da arricchire"
-     * (usato da "Aggiorna dati Google").
-     */
     fun prioritize(placeId: Long, force: Boolean = false) {
         scope.launch {
             val repo = repository ?: return@launch
@@ -162,7 +150,7 @@ object EnrichmentManager {
 
                 if (!sessionWarmed) {
                     sessionWarmed = true
-                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         wv.loadUrl("https://www.google.com/maps")
                     }
                     delay(3500)
@@ -181,7 +169,6 @@ object EnrichmentManager {
                     minOf(5000, throttleMs + 800)
                 }
 
-                _status.value = _status.value.copy(running = true)
                 delay(throttleMs)
             }
         } finally {
@@ -198,7 +185,10 @@ object EnrichmentManager {
 
         var ok = false
 
+        // Ref esplicito, oppure placeId gia' in formato hex pair
         val ref = place.mapsPlaceRef
+            ?: place.placeId?.takeIf { HEX_PAIR_REGEX.matches(it) }
+
         if (!ref.isNullOrBlank()) {
             val query = place.name +
                 (place.address?.let { ", $it" } ?: "")
@@ -210,7 +200,7 @@ object EnrichmentManager {
                 lng = place.longitude
             )
 
-            val result = withContext(kotlinx.coroutines.Dispatchers.Main) {
+            val result = withContext(Dispatchers.Main) {
                 suspendCancellableCoroutine<String> { cont ->
                     wv.evaluateJavascript(script) { r ->
                         cont.resume(r ?: "")
@@ -230,7 +220,7 @@ object EnrichmentManager {
                 ?: "https://www.google.com/maps/search/?api=1&query=" +
                     "${place.latitude},${place.longitude}"
 
-            withContext(kotlinx.coroutines.Dispatchers.Main) {
+            withContext(Dispatchers.Main) {
                 wv.loadUrl(url)
             }
             ok = withTimeoutOrNull(20000) { deferred.await() } ?: false
