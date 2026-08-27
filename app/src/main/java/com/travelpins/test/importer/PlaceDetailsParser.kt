@@ -2,12 +2,9 @@ package com.travelpins.test.importer
 
 import org.json.JSONObject
 
-/**
- * Risultato del parsing della risposta /maps/preview/place,
- * gia' pulita e strutturata dallo script JavaScript.
- */
 data class PlaceDetails(
     val name: String,
+    val ref: String?,
     val rating: Double?,
     val reviewCount: Int?,
     val description: String?,
@@ -39,6 +36,9 @@ object PlaceDetailsParser {
             val obj = JSONObject(json)
 
             val name = obj.optString("name", "")
+
+            val ref = obj.optString("ref", "")
+                .takeIf { it.isNotBlank() }
 
             val rating = if (obj.isNull("rating")) null
             else obj.optDouble("rating", Double.NaN)
@@ -107,6 +107,7 @@ object PlaceDetailsParser {
 
             PlaceDetails(
                 name = name,
+                ref = ref,
                 rating = rating,
                 reviewCount = reviewCount,
                 description = description,
