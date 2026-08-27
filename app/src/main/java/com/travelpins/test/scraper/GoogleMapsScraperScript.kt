@@ -1,5 +1,7 @@
 package com.travelpins.test.scraper
 
+import org.json.JSONObject
+
 object GoogleMapsScraperScript {
 
     fun isGoogleListUrl(url: String): Boolean {
@@ -8,48 +10,13 @@ object GoogleMapsScraperScript {
             url.contains("!11m2!2s")
     }
 
-    val NETWORK_HOOK_SCRIPT = """
+    // ============================================================
+    // PARSER CONDIVISO DELLA RISPOSTA /maps/preview/place
+    // (definito come funzione JS globale, riusato da hook e fetch)
+    // ============================================================
 
-(function() {
-if (window.__travelpins_hooked) {
-return 'ALREADY_INSTALLED';
-}
-window.__travelpins_hooked = true;
+    private val PLACE_DETAILS_PARSER_JS = """
 
-/*
- * ============================================================
- * FILTRO RUMORE
- * ============================================================
- */
-function isNoiseUrl(url) {
-    return url.indexOf('/maps/vt') !== -1 ||
-        url.indexOf('/maps/preview/log204') !== -1;
-}
-
-/*
- * ============================================================
- * URL DI INTERESSE: /maps/preview/place
- * ============================================================
- *
- * Questo endpoint porta i dettagli del singolo luogo:
- * foto, rating, recensioni, descrizione, sito web, tipi.
- * La risposta viene parsata e inoltrata al bridge Kotlin.
- */
-function isPlaceDetailUrl(url) {
-    return url.indexOf('/maps/preview/place') !== -1;
-}
-
-/*
- * ============================================================
- * PARSER RISPOSTA /maps/preview/place
- * ============================================================
- *
- * Estrae dalla risposta (formato array annidati di Google):
- * - nome, tipi, sito web, descrizione
- * - rating e numero recensioni
- * - foto (URL reali lh3.googleusercontent.com)
- * - recensioni (se presenti nel payload)
- */
 function parsePlaceDetails(text) {
 
     var cleaned = text;
@@ -83,10 +50,6 @@ function parsePlaceDetails(text) {
         reviews: []
     };
 
-    /* ---------- BLOCCO PRINCIPALE ----------
-     * E' l'array che contiene il cid hex
-     * "0x4843358a982620cb:0xb50e4529f57483f3"
-     */
     var main = null;
     var cidIndex = -1;
 
@@ -113,12 +76,10 @@ function parsePlaceDetails(text) {
 
     if (main) {
 
-        /* nome: subito dopo il cid hex */
         if (typeof main[cidIndex + 1] === 'string') {
             out.name = main[cidIndex + 1];
         }
 
-        /* tipi: primo array di stringhe brevi dopo il nome */
         for (var t = cidIndex + 2; t < Math.min(main.length, cidIndex + 6); t++) {
             var cand = main[t];
             if (Array.isArray(cand) && cand.length > 0) {
@@ -136,7 +97,6 @@ function parsePlaceDetails(text) {
             }
         }
 
-        /* sito web: primo array il cui [0] e' un URL esterno */
         for (var w = 0; w < main.length; w++) {
             var wb = main[w];
             if (Array.isArray(wb) &&
@@ -149,9 +109,6 @@ function parsePlaceDetails(text) {
             }
         }
 
-        /* rating + conteggio recensioni:
-         * array che contiene una stringa "recensioni/reviews"
-         */
         function containsReviewText(arr) {
             for (var i = 0; i < arr.length; i++) {
                 var v = arr[i];
@@ -198,7 +155,6 @@ function parsePlaceDetails(text) {
             }
         }
 
-        /* descrizione: coppia [breve, estesa] */
         function findDescription(node, depth) {
             if (out.description || !Array.isArray(node) || depth > 5) {
                 return;
@@ -223,9 +179,6 @@ function parsePlaceDetails(text) {
         findDescription(main, 0);
     }
 
-    /* ---------- FOTO ----------
-     * Nodo foto: [0] = key, [6] = [url, caption, [w,h], ...]
-     */
     var photoSeen = {};
     var realPhotos = [];
     var svPhotos = [];
@@ -301,12 +254,6 @@ function parsePlaceDetails(text) {
         .concat(svPhotos)
         .slice(0, 20);
 
-    /* ---------- RECENSIONI ----------
-     * Euristica: array che contiene insieme
-     * - testo lungo (>= 60 caratteri)
-     * - stelle intere 1-5
-     * - eventuale autore / foto profilo / data
-     */
     var reviewSeen = {};
 
     function walkReviews(node) {
@@ -336,7 +283,6 @@ function parsePlaceDetails(text) {
                     text = v;
                 }
                 else if (!time && v.length < 40 &&
-                    (/(fa|ago|hour|day|week|month|year)/i.test(v)) &&
                     (/(settiman|mese|mesi|anno|anni|giorn|ora|ore)/i.test(v) ||
                      / (fa|ago)$/i.test(v))) {
                     time = v;
@@ -376,12 +322,29 @@ function parsePlaceDetails(text) {
 
     return out;
 }
+""".trimIndent()
 
-/*
- * ============================================================
- * INOLTRO AL BRIDGE
- * ============================================================
- */
+    // ============================================================
+    // HOOK DI RETE (installato sulle pagine caricate nel WebView)
+    // ============================================================
+
+    val NETWORK_HOOK_SCRIPT = PLACE_DETAILS_PARSER_JS + """
+
+(function() {
+if (window.__travelpins_hooked) {
+return 'ALREADY_INSTALLED';
+}
+window.__travelpins_hooked = true;
+
+function isNoiseUrl(url) {
+    return url.indexOf('/maps/vt') !== -1 ||
+        url.indexOf('/maps/preview/log204') !== -1;
+}
+
+function isPlaceDetailUrl(url) {
+    return url.indexOf('/maps/preview/place') !== -1;
+}
+
 function handlePlaceResponse(url, text) {
     try {
         if (window.__travelpins_details_sent) {
@@ -505,7 +468,7 @@ XMLHttpRequest.prototype.send = function(body) {
 };
 
 try {
-    TravelPins.log('NETWORK HOOK INSTALLATO (v3: parsing /maps/preview/place + inoltro details al bridge)');
+    TravelPins.log('NETWORK HOOK INSTALLATO (v4: parser condiviso)');
 } catch(e) {}
 
 return 'HOOK_INSTALLED';
@@ -561,6 +524,117 @@ var elements = document.querySelectorAll(
 
 })();
 """.trimIndent()
+
+    // ============================================================
+    // FETCH DIRETTO DEI DETTAGLI (per arricchimento in background)
+    // Replica la richiesta /maps/preview/place osservata nei log
+    // reali, sostituendo riferimento luogo e coordinate.
+    // ============================================================
+
+    fun detailsFetchScript(
+        query: String,
+        ref: String,
+        lat: Double,
+        lng: Double
+    ): String {
+        val qJson = JSONObject.quote(query)
+        val refJson = JSONObject.quote(ref)
+
+        return PLACE_DETAILS_PARSER_JS + "\n" + """
+(async function() {
+try {
+
+    var q = $qJson;
+    var ref = $refJson;
+    var lat = $lat;
+    var lng = $lng;
+
+    var pb =
+        '!1m10!1s' + encodeURIComponent(ref) +
+        '!3m8!1m3!1d2435!2d' + lng + '!3d' + lat +
+        '!3m2!1i1024!2i768!4f13.1' +
+        '!12m4!2m3!1i-40!2i120!4i8' +
+        '!13m35!3m1!2i9!6m6!1m2!1i0!2i0!1m2!1i0!2i0' +
+        '!7m24!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3' +
+        '!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!9b0' +
+        '!14m6!7e140!24m1!2e1' +
+        '!15m39!1m2!18m1!17b1!4b1!11m2!3e1!3e0!17b1!20m2!1e3!1e1' +
+        '!24b1!29b1!72m18!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b0' +
+        '!8m6!1m2!4m1!1e1!3sother_user_google_review_posts' +
+        '!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!122m1!1b1' +
+        '!30m3!6m2!1b1!2b1!37i792';
+
+    var url =
+        '/maps/preview/place?gl=it&hl=it&q=' +
+        encodeURIComponent(q) +
+        '&pb=' + pb;
+
+    try {
+        TravelPins.log('DETAILS FETCH: ' + url.substring(0, 200));
+    } catch(e) {}
+
+    var resp = await fetch(
+        url,
+        {
+            method: 'GET',
+            credentials: 'include',
+            cache: 'no-store'
+        }
+    );
+
+    try {
+        TravelPins.log('DETAILS FETCH HTTP: ' + resp.status);
+    } catch(e) {}
+
+    var raw = await resp.text();
+
+    try {
+        TravelPins.log('DETAILS FETCH LENGTH: ' + raw.length);
+    } catch(e) {}
+
+    if (!raw || raw.length < 10) {
+        return 'EMPTY';
+    }
+
+    var parsed = parsePlaceDetails(raw);
+
+    if (!parsed) {
+        try {
+            TravelPins.log('DETAILS FETCH: parse fallito');
+        } catch(e) {}
+        return 'PARSE_FAIL';
+    }
+
+    try {
+        TravelPins.log(
+            'DETAILS FETCH PARSED: foto=' + parsed.photos.length +
+            ' recensioni=' + parsed.reviews.length +
+            ' rating=' + parsed.rating
+        );
+    } catch(e) {}
+
+    try {
+        TravelPinsBridge.onPlaceDetailsExtracted(
+            JSON.stringify(parsed)
+        );
+    } catch(e) {
+        try {
+            TravelPins.log('DETAILS FETCH ERRORE INVIO: ' + e.message);
+        } catch(e2) {}
+    }
+
+    return 'OK foto=' + parsed.photos.length;
+
+} catch(e) {
+    try {
+        TravelPins.log('DETAILS FETCH ERROR: ' + e.message);
+    } catch(e2) {}
+    return 'ERROR';
+}
+
+})();
+"""
+    }
 
     val GETLIST_SCRIPT = """
 
@@ -731,11 +805,6 @@ try {
      * ========================================================
      * TITOLO DELLA LISTA GOOGLE MAPS
      * ========================================================
-     *
-     * Il titolo NON e' nel document.title della pagina (Google
-     * Maps non lo aggiorna in questo contesto). E' invece dentro
-     * la risposta getlist stessa, in posizione fissa:
-     * data[0][4] (es. "Irlanda").
      */
 
     var sourceListName = '';
@@ -920,22 +989,12 @@ try {
 
             /*
              * ====================================================
-             * LINK DIRETTO ALLA SCHEDA DEL LUOGO (con foto/recensioni)
+             * LINK DIRETTO ALLA SCHEDA DEL LUOGO
              * ====================================================
-             *
-             * Google include, per ogni luogo, una coppia di ID
-             * (es. ["5213690538307142171","-9202193626830073640"]).
-             * Il secondo valore, convertito da intero 64bit con
-             * segno a intero 64bit SENZA segno, e' il "cid" che
-             * Google Maps usa nei link diretti:
-             * https://www.google.com/maps?cid=<numero>
-             *
-             * Se per qualche motivo non riusciamo a calcolarlo,
-             * mapsUrl resta vuoto e l'app ripiega su una ricerca
-             * per coordinate (comportamento precedente).
              */
 
             var mapsUrl = '';
+            var hexPair = '';
 
             try {
 
@@ -956,10 +1015,27 @@ try {
                     mapsUrl =
                         'https://www.google.com/maps?cid=' +
                         rawCid.toString();
+
+                    /*
+                     * Coppia hex 0x...:0x... per il fetch diretto
+                     * dei dettagli (arricchimento in background).
+                     */
+                    try {
+                        var a = BigInt(featurePair[0]);
+                        var b = BigInt(featurePair[1]);
+                        if (a < 0n) a = a + (1n << 64n);
+                        if (b < 0n) b = b + (1n << 64n);
+                        hexPair =
+                            '0x' + a.toString(16) +
+                            ':0x' + b.toString(16);
+                    } catch(eHex) {
+                        hexPair = '';
+                    }
                 }
 
             } catch(e) {
                 mapsUrl = '';
+                hexPair = '';
             }
 
             places.push({
@@ -968,7 +1044,8 @@ try {
                 lat: lat,
                 lng: lng,
                 placeId: placeId,
-                mapsUrl: mapsUrl
+                mapsUrl: mapsUrl,
+                hexPair: hexPair
             });
 
         } catch(e) {}
