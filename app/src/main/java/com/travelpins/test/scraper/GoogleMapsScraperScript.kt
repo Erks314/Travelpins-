@@ -200,17 +200,12 @@ function parsePlaceDetails(text) {
 
                     var skip = false;
 
-                    /* Esclude i panorami Street View */
                     for (var s = 0; s < node.length; s++) {
                         if (node[s] === 'Street View') {
                             skip = true;
                         }
                     }
 
-                    /* Esclude il nodo copertina-contatore
-                     * (caption tipo "27092 foto" / "18 photos"):
-                     * non e' una foto reale e il suo URL
-                     * non renderizza in galleria. */
                     var caption = '';
                     if (typeof meta[1] === 'string') {
                         caption = meta[1].trim();
@@ -258,7 +253,6 @@ function parsePlaceDetails(text) {
 
     walkPhotos(data);
 
-    /* Tetto fisso: massimo 10 foto reali */
     out.photos = realPhotos.slice(0, 10);
 
     var reviewSeen = {};
@@ -448,7 +442,7 @@ XMLHttpRequest.prototype.send = function(body) {
 };
 
 try {
-    TravelPins.log('NETWORK HOOK INSTALLATO (v7: filtro nodo contatore)');
+    TravelPins.log('NETWORK HOOK INSTALLATO (v9: fix fetch diretto)');
 } catch(e) {}
 
 return 'HOOK_INSTALLED';
@@ -523,6 +517,10 @@ try {
     var lat = $lat;
     var lng = $lng;
 
+    try {
+        TravelPins.log('FETCH DIRETTO: avvio per ' + q);
+    } catch(e) {}
+
     var pb =
         '!1m10!1s' + encodeURIComponent(ref) +
         '!3m8!1m3!1d2435!2d' + lng + '!3d' + lat +
@@ -543,50 +541,91 @@ try {
         encodeURIComponent(q) +
         '&pb=' + pb;
 
-    var resp = await fetch(
-        url,
-        {
-            method: 'GET',
-            credentials: 'include',
-            cache: 'no-store'
-        }
-    );
+    try {
+        TravelPins.log('FETCH DIRETTO: URL costruito, lunghezza ' + url.length);
+    } catch(e) {}
 
-    var raw = await resp.text();
+    var resp;
+    try {
+        resp = await fetch(
+            url,
+            {
+                method: 'GET',
+                credentials: 'include',
+                cache: 'no-store'
+            }
+        );
+        try {
+            TravelPins.log('FETCH DIRETTO: HTTP ' + resp.status);
+        } catch(e) {}
+    } catch(fetchErr) {
+        try {
+            TravelPins.log('FETCH DIRETTO: errore fetch ' + fetchErr.message);
+        } catch(e) {}
+        return 'FETCH_ERROR';
+    }
+
+    var raw;
+    try {
+        raw = await resp.text();
+        try {
+            TravelPins.log('FETCH DIRETTO: risposta lunghezza ' + raw.length);
+        } catch(e) {}
+    } catch(textErr) {
+        try {
+            TravelPins.log('FETCH DIRETTO: errore text() ' + textErr.message);
+        } catch(e) {}
+        return 'TEXT_ERROR';
+    }
 
     if (!raw || raw.length < 10) {
         return 'EMPTY';
     }
 
-    var parsed = parsePlaceDetails(raw);
+    var parsed;
+    try {
+        parsed = parsePlaceDetails(raw);
+    } catch(parseErr) {
+        try {
+            TravelPins.log('FETCH DIRETTO: errore parse ' + parseErr.message);
+        } catch(e) {}
+        return 'PARSE_ERROR';
+    }
 
     if (!parsed) {
-        return 'PARSE_FAIL';
+        try {
+            TravelPins.log('FETCH DIRETTO: parse restituito null');
+        } catch(e) {}
+        return 'PARSE_NULL';
     }
 
     try {
         TravelPins.log(
-            'DETAILS FETCH PARSED: foto=' + parsed.photos.length +
+            'FETCH DIRETTO: foto=' + parsed.photos.length +
             ' recensioni=' + parsed.reviews.length +
             ' rating=' + parsed.rating
         );
     } catch(e) {}
 
-    /* Invia al bridge SOLO se ci sono foto reali:
-     * una risposta senza foto non deve marcare il
-     * luogo come arricchito. */
     if (parsed.photos.length > 0) {
         try {
             TravelPinsBridge.onPlaceDetailsExtracted(
                 JSON.stringify(parsed)
             );
-        } catch(e) {}
+        } catch(bridgeErr) {
+            try {
+                TravelPins.log('FETCH DIRETTO: errore bridge ' + bridgeErr.message);
+            } catch(e) {}
+        }
     }
 
     return 'OK foto=' + parsed.photos.length;
 
 } catch(e) {
-    return 'ERROR';
+    try {
+        TravelPins.log('FETCH DIRETTO: errore generale ' + e.message);
+    } catch(e2) {}
+    return 'GENERAL_ERROR';
 }
 
 })();
