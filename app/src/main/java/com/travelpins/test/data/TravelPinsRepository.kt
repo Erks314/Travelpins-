@@ -23,112 +23,32 @@ class TravelPinsRepository(context: Context) {
     fun observePlaceById(placeId: Long): Flow<Place?> =
         placeDao.observeById(placeId)
 
+    suspend fun getPlaceById(placeId: Long): Place? =
+        placeDao.getPlaceById(placeId)
+
     fun observePhotosByPlace(placeId: Long): Flow<List<PlacePhoto>> =
         placePhotoDao.observeByPlace(placeId)
 
     fun observeReviewsByPlace(placeId: Long): Flow<List<PlaceReview>> =
         placeReviewDao.observeByPlace(placeId)
 
-    suspend fun saveImportedPlaces(
-        places: List<Place>
-    ): Int {
-
+    suspend fun saveImportedPlaces(places: List<Place>): Int {
         val newPlaces = places.filter { place ->
-
             val placeId = place.placeId
-
             if (placeId.isNullOrBlank()) {
                 true
             } else {
                 placeDao.findByPlaceId(placeId) == null
             }
         }
-
         if (newPlaces.isEmpty()) {
             return 0
         }
-
-        val inserted =
-            placeDao.insertAll(newPlaces)
-
+        val inserted = placeDao.insertAll(newPlaces)
         return inserted.count { it != -1L }
     }
 
-    suspend fun savePlaceDetails(
-        placeId: Long,
-        rating: Double?,
-        reviewCount: Int?,
-        description: String?,
-        websiteUrl: String?,
-        types: String?,
-        mapsPlaceRef: String?
-    ) {
-        placeDao.updateDetails(
-            placeId = placeId,
-            rating = rating,
-            reviewCount = reviewCount,
-            description = description,
-            websiteUrl = websiteUrl,
-            types = types,
-            mapsPlaceRef = mapsPlaceRef,
-            detailsFetchedAt = System.currentTimeMillis()
-        )
-    }
-
-    suspend fun savePhotos(
-        placeId: Long,
-        photos: List<PlacePhoto>
-    ): Int {
-        if (photos.isEmpty()) return 0
-        placePhotoDao.deleteByPlace(placeId)
-        val inserted = placePhotoDao.insertAll(photos)
-        return inserted.count { it != -1L }
-    }
-
-    suspend fun saveReviews(
-        placeId: Long,
-        reviews: List<PlaceReview>
-    ): Int {
-        if (reviews.isEmpty()) return 0
-        placeReviewDao.deleteByPlace(placeId)
-        val inserted = placeReviewDao.insertAll(reviews)
-        return inserted.count { it != -1L }
-    }
-
-    suspend fun deletePlacePhotos(placeId: Long) {
-        placePhotoDao.deleteByPlace(placeId)
-    }
-
-    suspend fun deletePlaceReviews(placeId: Long) {
-        placeReviewDao.deleteByPlace(placeId)
-    }
-
-    suspend fun getPlaceById(placeId: Long): Place? =
-        placeDao.findById(placeId)
-
-    suspend fun getPhotosByPlace(placeId: Long): List<PlacePhoto> =
-        placePhotoDao.getByPlace(placeId)
-
-    suspend fun getReviewsByPlace(placeId: Long): List<PlaceReview> =
-        placeReviewDao.getByPlace(placeId)
-
-    suspend fun countPhotosByPlace(placeId: Long): Int =
-        placePhotoDao.countByPlace(placeId)
-
-    suspend fun countReviewsByPlace(placeId: Long): Int =
-        placeReviewDao.countByPlace(placeId)
-
-    suspend fun clearDetailsFetched(placeId: Long) =
-        placeDao.clearDetailsFetched(placeId)
-
-    suspend fun resetAllDetailsFetched() =
-        placeDao.clearAllDetailsFetched()
-
-    suspend fun createCategory(
-        name: String,
-        colorArgb: Int,
-        iconKey: String
-    ): Long =
+    suspend fun createCategory(name: String, colorArgb: Int, iconKey: String): Long =
         categoryDao.insert(
             Category(
                 name = name,
@@ -137,22 +57,50 @@ class TravelPinsRepository(context: Context) {
             )
         )
 
-    suspend fun assignPlaceToCategory(
-        placeId: Long,
-        categoryId: Long?
-    ) =
-        placeDao.assignCategory(
-            placeId,
-            categoryId
-        )
+    suspend fun assignPlaceToCategory(placeId: Long, categoryId: Long?) =
+        placeDao.assignCategory(placeId, categoryId)
 
-    suspend fun deletePlace(
-        place: Place
-    ) =
+    suspend fun deletePlace(place: Place) =
         placeDao.delete(place)
 
-    suspend fun deleteCategory(
-        category: Category
-    ) =
+    suspend fun deleteCategory(category: Category) =
         categoryDao.delete(category)
+
+    suspend fun resetAllDetailsFetched() =
+        placeDao.resetAllDetailsFetched()
+
+    suspend fun clearDetailsFetched(placeId: Long) =
+        placeDao.clearDetailsFetched(placeId)
+
+    suspend fun insertPhotos(photos: List<PlacePhoto>): Int {
+        if (photos.isEmpty()) return 0
+        val inserted = placePhotoDao.insertAll(photos)
+        return inserted.count { it != -1L }
+    }
+
+    suspend fun insertReviews(reviews: List<PlaceReview>): Int {
+        if (reviews.isEmpty()) return 0
+        val inserted = placeReviewDao.insertAll(reviews)
+        return inserted.count { it != -1L }
+    }
+
+    suspend fun updatePlaceDetails(
+        placeId: Long,
+        rating: Double?,
+        reviewCount: Int?,
+        description: String?,
+        websiteUrl: String?,
+        types: String?,
+        detailsFetchedAt: Long
+    ) {
+        placeDao.updateDetails(
+            placeId = placeId,
+            rating = rating,
+            reviewCount = reviewCount,
+            description = description,
+            websiteUrl = websiteUrl,
+            types = types,
+            detailsFetchedAt = detailsFetchedAt
+        )
+    }
 }
