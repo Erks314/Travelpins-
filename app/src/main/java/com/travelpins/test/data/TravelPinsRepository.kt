@@ -73,20 +73,30 @@ class TravelPinsRepository(context: Context) {
         )
     }
 
+    /**
+     * Sostituisce le foto esistenti con quelle nuove
+     * (solo se la nuova lista non e' vuota).
+     */
     suspend fun savePhotos(
         placeId: Long,
         photos: List<PlacePhoto>
     ): Int {
         if (photos.isEmpty()) return 0
+        placePhotoDao.deleteByPlace(placeId)
         val inserted = placePhotoDao.insertAll(photos)
         return inserted.count { it != -1L }
     }
 
+    /**
+     * Sostituisce le recensioni esistenti con quelle nuove
+     * (solo se la nuova lista non e' vuota).
+     */
     suspend fun saveReviews(
         placeId: Long,
         reviews: List<PlaceReview>
     ): Int {
         if (reviews.isEmpty()) return 0
+        placeReviewDao.deleteByPlace(placeId)
         val inserted = placeReviewDao.insertAll(reviews)
         return inserted.count { it != -1L }
     }
@@ -113,6 +123,12 @@ class TravelPinsRepository(context: Context) {
 
     suspend fun countReviewsByPlace(placeId: Long): Int =
         placeReviewDao.countByPlace(placeId)
+
+    suspend fun clearDetailsFetched(placeId: Long) =
+        placeDao.clearDetailsFetched(placeId)
+
+    suspend fun resetAllDetailsFetched() =
+        placeDao.clearAllDetailsFetched()
 
     suspend fun createCategory(
         name: String,
