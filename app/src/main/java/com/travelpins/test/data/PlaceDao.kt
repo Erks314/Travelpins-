@@ -59,6 +59,24 @@ interface PlaceDao {
         sourceListId: String
     ): Place?
 
+    @Query(
+        "SELECT * FROM places " +
+                "WHERE id = :placeId " +
+                "LIMIT 1"
+    )
+    suspend fun findById(
+        placeId: Long
+    ): Place?
+
+    @Query(
+        "SELECT * FROM places " +
+                "WHERE id = :placeId " +
+                "LIMIT 1"
+    )
+    fun observeById(
+        placeId: Long
+    ): Flow<Place?>
+
     @Insert(
         onConflict = OnConflictStrategy.IGNORE
     )
@@ -79,6 +97,26 @@ interface PlaceDao {
     suspend fun assignCategory(
         placeId: Long,
         categoryId: Long?
+    )
+
+    @Query(
+        "UPDATE places " +
+                "SET rating = :rating, " +
+                "reviewCount = :reviewCount, " +
+                "description = :description, " +
+                "websiteUrl = :websiteUrl, " +
+                "types = :types, " +
+                "detailsFetchedAt = :detailsFetchedAt " +
+                "WHERE id = :placeId"
+    )
+    suspend fun updateDetails(
+        placeId: Long,
+        rating: Double?,
+        reviewCount: Int?,
+        description: String?,
+        websiteUrl: String?,
+        types: String?,
+        detailsFetchedAt: Long
     )
 
     @Delete
