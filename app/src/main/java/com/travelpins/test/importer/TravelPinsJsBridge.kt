@@ -16,8 +16,6 @@ class TravelPinsJsBridge(
     private val onImportFinished: (savedCount: Int) -> Unit,
     private val onImportError: (Throwable) -> Unit,
     private val onLogMessage: (String) -> Unit = {},
-    // ID del Place (riga DB) da arricchire con foto/recensioni.
-    // Null = nessun arricchimento in corso (i details vengono ignorati).
     private val getEnrichmentPlaceId: () -> Long? = { null },
     private val onDetailsFinished: (placeId: Long, photosSaved: Int, reviewsSaved: Int) -> Unit = { _, _, _ -> },
     private val onDetailsError: (Throwable) -> Unit = {}
@@ -120,12 +118,6 @@ class TravelPinsJsBridge(
         }
     }
 
-    /**
-     * Riceve dallo script JS i dettagli del singolo luogo
-     * (foto, rating, recensioni, descrizione, sito, tipi)
-     * e li salva nel database, associandoli al Place
-     * indicato da getEnrichmentPlaceId().
-     */
     @JavascriptInterface
     fun onPlaceDetailsExtracted(rawJson: String) {
 
@@ -162,7 +154,8 @@ class TravelPinsJsBridge(
                     reviewCount = details.reviewCount,
                     description = details.description,
                     websiteUrl = details.websiteUrl,
-                    types = details.types.joinToString(",")
+                    types = details.types.joinToString(","),
+                    mapsPlaceRef = details.ref
                 )
 
                 val photos = details.photos.mapIndexed { index, p ->
@@ -193,10 +186,6 @@ class TravelPinsJsBridge(
 
                 val reviewsSaved =
                     repository.saveReviews(placeId, reviews)
-
-                onLogMessage(
-                    "SALVATI: foto=$photosSaved recensioni=$reviewsSaved"
-                )
 
                 onDetailsFinished(
                     placeId,
