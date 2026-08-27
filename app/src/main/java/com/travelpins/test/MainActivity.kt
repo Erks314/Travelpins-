@@ -40,6 +40,7 @@ import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.importer.TravelPinsJsBridge
 import com.travelpins.test.scraper.GoogleMapsScraperScript
+import com.travelpins.test.ui.PlaceDetailActivity
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
 
@@ -135,8 +136,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        mapView?.onStop()
         super.onStop()
+        mapView?.onStop()
     }
 
     override fun onDestroy() {
@@ -991,7 +992,7 @@ class MainActivity : ComponentActivity() {
     }
 
     // ============================================================
-    // PLACE CARD
+    // PLACE CARD — il tap apre la SCHEDA DEL LUOGO
     // ============================================================
 
     private fun createPlaceView(place: Place): View {
@@ -1001,7 +1002,11 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(18, 16, 18, 16)
             background = roundedBackground(COLOR_SURFACE, 18f)
-            setOnClickListener { showPlaceMenu(place) }
+            setOnClickListener {
+                startActivity(
+                    PlaceDetailActivity.newIntent(this@MainActivity, place.id)
+                )
+            }
         }
 
         val name = TextView(this).apply {
@@ -1086,25 +1091,6 @@ class MainActivity : ComponentActivity() {
         box.addView(actions)
 
         return box
-    }
-
-    // ============================================================
-    // PLACE MENU
-    // ============================================================
-
-    private fun showPlaceMenu(place: Place) {
-        val options = arrayOf("Cambia categoria", "Apri in Google Maps")
-
-        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
-            .setTitle(place.name)
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showCategoryPicker(place)
-                    1 -> openInGoogleMaps(place)
-                }
-            }
-            .setNegativeButton("Annulla", null)
-            .show()
     }
 
     // ============================================================
@@ -1205,7 +1191,7 @@ class MainActivity : ComponentActivity() {
     )
 
     private val categoryIconPalette = listOf(
-        "📍", "🍴", "🏨", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "🍺", "🚗", "🎭"
+        "📍", "", "", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "", "", "🎭"
     )
 
     private fun showCreateCategoryDialog() {
