@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.NearMe
@@ -38,7 +39,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -49,6 +49,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -128,6 +130,7 @@ fun PlaceDetailRoot(
     placeId: Long,
     webViewState: MutableState<WebView?>,
     enrichmentState: PlaceDetailActivity.EnrichmentState,
+    debugMessages: MutableList<String>,
     onBack: () -> Unit,
     onStartEnrichmentIfNeeded: (Place) -> Unit,
     onForceRefresh: (Place) -> Unit,
@@ -147,6 +150,7 @@ fun PlaceDetailRoot(
         .collectAsState(initial = emptyList())
 
     var screen by remember { mutableStateOf(DetailScreen.Detail) }
+    var galleryStartIndex by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(place?.id, place?.detailsFetchedAt) {
         val p = place
@@ -171,6 +175,7 @@ fun PlaceDetailRoot(
                 reviews = reviews,
                 categories = categories,
                 enrichmentState = enrichmentState,
+                debugMessages = debugMessages,
                 onBack = onBack,
                 onChangeCategory = { p, categoryId ->
                     onAssignCategory(p.id, categoryId)
@@ -179,7 +184,10 @@ fun PlaceDetailRoot(
                 onOpenMapInternal = { screen = DetailScreen.Map },
                 onOpenGoogleMaps = onOpenGoogleMaps,
                 onShare = onShare,
-                onOpenGallery = { screen = DetailScreen.Gallery },
+                onOpenGallery = { index ->
+                    galleryStartIndex = index
+                    screen = DetailScreen.Gallery
+                },
                 onOpenReviews = { screen = DetailScreen.Reviews },
                 onForceRefresh = onForceRefresh,
                 onDelete = onDelete
@@ -187,6 +195,7 @@ fun PlaceDetailRoot(
 
             DetailScreen.Gallery -> GalleryScreen(
                 photos = photos,
+                startIndex = galleryStartIndex,
                 title = place?.name ?: "",
                 onBack = { screen = DetailScreen.Detail }
             )
@@ -231,13 +240,14 @@ fun PlaceDetailScreen(
     reviews: List<PlaceReview>,
     categories: List<Category>,
     enrichmentState: PlaceDetailActivity.EnrichmentState,
+    debugMessages: MutableList<String>,
     onBack: () -> Unit,
     onChangeCategory: (Place, Long?) -> Unit,
     onCreateCategory: (String, Int, String) -> Unit,
     onOpenMapInternal: () -> Unit,
     onOpenGoogleMaps: (Place) -> Unit,
     onShare: (Place) -> Unit,
-    onOpenGallery: () -> Unit,
+    onOpenGallery: (Int) -> Unit,
     onOpenReviews: () -> Unit,
     onForceRefresh: (Place) -> Unit,
     onDelete: (Place) -> Unit
@@ -322,6 +332,36 @@ fun PlaceDetailScreen(
                 onDismissRequest = { showMenu = false }
             ) {
                 if (place != null) {
+                    if (photos.isNotEmpty()) {
+                        DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Image,
+                                    contentDescription = null
+                                )
+                            },
+                            text = { Text("Galleria (${photos.size})") },
+                            onClick = {
+                                showMenu = false
+                                onOpenGallery(0)
+                            }
+                        )
+                    }
+                    if (reviews.isNotEmpty()) {
+                        DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Star,
+                                    contentDescription = null
+                                )
+                            },
+                            text = { Text("Recensioni (${reviews.size})") },
+                            onClick = {
+                                showMenu = false
+                                onOpenReviews()
+                            }
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Aggiorna dati Google") },
                         onClick = {
@@ -439,7 +479,7 @@ fun PlaceDetailScreen(
                 )
             }
 
-            // Rating
+            // Rating + conteggio (SOLO media e numero, come richiesto)
             if (place.rating != null) {
                 Row(
                     Modifier.padding(top = 10.dp),
@@ -478,10 +518,18 @@ fun PlaceDetailScreen(
                 )
             }
 
-            // Stato arricchimento
-            if (enrichmentState == PlaceDetailActivity.EnrichmentState.Loading &&
-                photos.isEmpty()
-            ) {
+            // Sito web
+            if (!place.websiteUrl.isNullOrBlank()) {
+                Text(
+                    "🌐  ${place.websiteUrl}",
+                    color = TPColors.Accent,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+
+            // Stato arricchimento + DEBUG
+            if (enrichmentState == PlaceDetailActivity.EnrichmentState.Loading) {
                 Row(
                     Modifier.padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -497,6 +545,33 @@ fun PlaceDetailScreen(
                         color = TPColors.TextMuted,
                         fontSize = 12.sp
                     )
+                }
+
+                if (debugMessages.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(TPColors.SurfaceAlt)
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            "DEBUG (${debugMessages.size} messaggi):",
+                            color = TPColors.TextMuted,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        debugMessages.takeLast(5).forEach { msg ->
+                            Text(
+                                msg,
+                                color = TPColors.TextSecondary,
+                                fontSize = 9.sp,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -567,7 +642,7 @@ fun PlaceDetailScreen(
                         "Vedi tutte (${photos.size})",
                         color = TPColors.Accent,
                         fontSize = 13.sp,
-                        modifier = Modifier.clickable { onOpenGallery() }
+                        modifier = Modifier.clickable { onOpenGallery(0) }
                     )
                 }
 
@@ -585,7 +660,7 @@ fun PlaceDetailScreen(
                                 .aspectRatio(1f)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(TPColors.SurfaceAlt)
-                                .clickable { onOpenGallery() }
+                                .clickable { onOpenGallery(index) }
                         ) {
                             AsyncImage(
                                 model = photo.sizedUrl(300, 300),
@@ -610,35 +685,6 @@ fun PlaceDetailScreen(
                             }
                         }
                     }
-                }
-            }
-
-            // ---------- RECENSIONI ----------
-            if (reviews.isNotEmpty()) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 26.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Recensioni",
-                        color = TPColors.TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        "Vedi tutte",
-                        color = TPColors.Accent,
-                        fontSize = 13.sp,
-                        modifier = Modifier.clickable { onOpenReviews() }
-                    )
-                }
-
-                reviews.take(3).forEach { review ->
-                    Spacer(Modifier.height(12.dp))
-                    ReviewCard(review)
                 }
             }
 
@@ -827,7 +873,7 @@ fun ReviewCard(review: PlaceReview) {
 }
 
 // ============================================================
-// DIALOG CATEGORIE (stesso sistema di MainActivity)
+// DIALOG CATEGORIE
 // ============================================================
 
 @Composable
