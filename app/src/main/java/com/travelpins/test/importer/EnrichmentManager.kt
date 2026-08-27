@@ -38,7 +38,6 @@ object EnrichmentManager {
         val running: Boolean = false
     )
 
-    /** Log diagnostica leggibile dalla UI (menu della scheda). */
     val debugLog: SnapshotStateList<String> = mutableStateListOf()
 
     private fun addDebug(msg: String) {
@@ -76,16 +75,14 @@ object EnrichmentManager {
 
         addDebug("Manager avviato")
 
-        // Reset una-tantum v8: ripulisce le cache vecchie
-        // (foto-copertina rotta inclusa) e ri-arricchisce tutto.
         val prefs = appContext!!.getSharedPreferences(
             "travelpins", Context.MODE_PRIVATE
         )
-        if (!prefs.getBoolean("cleanup_v8_done", false)) {
+        if (!prefs.getBoolean("cleanup_v9_done", false)) {
             scope.launch {
-                addDebug("Reset v8: ri-arricchimento completo")
+                addDebug("Reset v9: ri-arricchimento completo")
                 repository.resetAllDetailsFetched()
-                prefs.edit().putBoolean("cleanup_v8_done", true).apply()
+                prefs.edit().putBoolean("cleanup_v9_done", true).apply()
             }
         }
 
@@ -171,11 +168,18 @@ object EnrichmentManager {
 
                 waitSessionReady(wv)
 
-                addDebug("→ ${place.name} (ref=${place.mapsPlaceRef != null || place.placeId?.let { HEX_PAIR_REGEX.matches(it) } ?: false})")
+                val hasRef = place.mapsPlaceRef != null ||
+                    place.placeId?.let { HEX_PAIR_REGEX.matches(it) } == true
+
+                addDebug("→ ${place.name} (ref=$hasRef)")
 
                 val ok = enrichPlace(wv, place, deferred)
 
-                addDebug(if (ok) "✓ ${place.name} salvato" else "✗ ${place.name} fallito")
+                if (ok) {
+                    addDebug("✓ ${place.name} salvato")
+                } else {
+                    addDebug("✗ ${place.name} fallito")
+                }
 
                 queue.removeFirst()
                 queued.remove(id)
@@ -248,7 +252,7 @@ object EnrichmentManager {
                 clean.removePrefix("OK foto=").toIntOrNull() ?: -1
 
             if (fastPhotos > 0) {
-                ok = withTimeoutOrNull(10000) { deferred.await() } ?: false
+                ok = withTimeoutOrNull(8000) { deferred.await() } ?: false
             }
         }
 
@@ -261,8 +265,10 @@ object EnrichmentManager {
             withContext(Dispatchers.Main) {
                 wv.loadUrl(url)
             }
-            ok = withTimeoutOrNull(15000) { deferred.await() } ?: false
-            if (!ok) addDebug("  fallback timeout: ${place.name}")
+            ok = withTimeoutOrNull(10000) { deferred.await() } ?: false
+            if (!ok) {
+                addDebug("  fallback timeout: ${place.name}")
+            }
         }
 
         return ok
