@@ -2,21 +2,20 @@ package com.travelpins.test.importer
 
 import android.util.Log
 import android.webkit.JavascriptInterface
-import androidx.lifecycle.LifecycleCoroutineScope
 import com.travelpins.test.data.PlacePhoto
 import com.travelpins.test.data.PlaceReview
 import com.travelpins.test.data.TravelPinsRepository
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 class TravelPinsJsBridge(
     private val repository: TravelPinsRepository,
-    private val scope: LifecycleCoroutineScope,
+    private val scope: CoroutineScope,
     private val getCurrentSourceListId: () -> String?,
     private val getCurrentSourceListName: () -> String?,
     private val onImportFinished: (savedCount: Int) -> Unit,
     private val onImportError: (Throwable) -> Unit,
     private val onLogMessage: (String) -> Unit = {},
-    // ===== NUOVI PARAMETRI PER ARRICCHIMENTO DETTAGLI =====
     // ID del Place (riga DB) da arricchire con foto/recensioni.
     // Null = nessun arricchimento in corso (i details vengono ignorati).
     private val getEnrichmentPlaceId: () -> Long? = { null },
@@ -93,20 +92,20 @@ class TravelPinsJsBridge(
                         sourceListName = sourceListName
                     )
 
-                    onLogMessage(
-                        "LUOGHI PARSATI: ${places.size}"
+                onLogMessage(
+                    "LUOGHI PARSATI: ${places.size}"
+                )
+
+                onLogMessage(
+                    "ELENCO: ${sourceListName ?: "Senza nome"}"
+                )
+
+                val saved =
+                    repository.saveImportedPlaces(
+                        places
                     )
 
-                    onLogMessage(
-                        "ELENCO: ${sourceListName ?: "Senza nome"}"
-                    )
-
-                    val saved =
-                        repository.saveImportedPlaces(
-                            places
-                        )
-
-                    onImportFinished(saved)
+                onImportFinished(saved)
 
             } catch (t: Throwable) {
 
