@@ -2,15 +2,15 @@ package com.travelpins.test.importer
 
 import android.util.Log
 import android.webkit.JavascriptInterface
-import androidx.lifecycle.LifecycleCoroutineScope
 import com.travelpins.test.data.PlacePhoto
 import com.travelpins.test.data.PlaceReview
 import com.travelpins.test.data.TravelPinsRepository
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 class TravelPinsJsBridge(
     private val repository: TravelPinsRepository,
-    private val scope: LifecycleCoroutineScope,
+    private val scope: CoroutineScope, // <-- Modificato qui
     private val getCurrentSourceListId: () -> String?,
     private val getCurrentSourceListName: () -> String?,
     private val onImportFinished: (savedCount: Int) -> Unit,
