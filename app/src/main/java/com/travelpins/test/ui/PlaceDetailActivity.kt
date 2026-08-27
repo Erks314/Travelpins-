@@ -1,13 +1,9 @@
 package com.travelpins.test.ui
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,10 +12,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.lifecycleScope
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
-import com.travelpins.test.importer.TravelPinsJsBridge
-import com.travelpins.test.scraper.GoogleMapsScraperScript
+import com.travelpins.test.importer.EnrichmentManager
 import kotlinx.coroutines.launch
-import java.net.URLDecoder
 
 class PlaceDetailActivity : ComponentActivity() {
 
@@ -28,10 +22,6 @@ class PlaceDetailActivity : ComponentActivity() {
     companion object {
         const val EXTRA_PLACE_ID = "extra_place_id"
 
-        private const val USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
-
         fun newIntent(context: Context, placeId: Long): Intent =
             Intent(context, PlaceDetailActivity::class.java)
                 .putExtra(EXTRA_PLACE_ID, placeId)
@@ -39,12 +29,12 @@ class PlaceDetailActivity : ComponentActivity() {
 
     private lateinit var repository: TravelPinsRepository
 
-    private val webViewState = mutableStateOf<WebView?>(null)
+    // Stati mantenuti per compatibilita' con la UI:
+    // con il manager in background restano Idle.
+    private val webViewState = mutableStateOf<android.webkit.WebView?>(null)
     private val enrichmentState = mutableStateOf(EnrichmentState.Idle)
     private val debugMessages = mutableStateListOf<String>()
 
-    private var consentAttempted = false
-    private var enrichmentStarted = false
     private var currentPlaceId: Long = -1L
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +48,11 @@ class PlaceDetailActivity : ComponentActivity() {
         }
         currentPlaceId = placeId
 
+        // Avvia il manager (idempotente) e mette questo
+        // luogo in testa alla coda di arricchimento.
+        EnrichmentManager.start(applicationContext, repository)
+        EnrichmentManager.prioritize(placeId)
+
         setContent {
             TravelPinsDarkTheme {
                 PlaceDetailRoot(
@@ -68,9 +63,16 @@ class PlaceDetailActivity : ComponentActivity() {
                     debugMessages = debugMessages,
                     onBack = { finish() },
                     onStartEnrichmentIfNeeded = { place ->
-                        startEnrichmentIfNeeded(place)
+                        EnrichmentManager.prioritize(place.id)
                     },
-                    onForceRefresh = { place -> forceRefresh(place) },
+                    onForceRefresh = { place ->
+                        EnrichmentManager.prioritize(place.id, force = true)
+                        Toast.makeText(
+                            this,
+                            "Aggiornamento dati Google avviato",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
                     onShare = { place -> sharePlace(place) },
                     onOpenGoogleMaps = { place -> openInGoogleMaps(place) },
                     onDelete = { place -> deletePlace(place) },
@@ -86,176 +88,6 @@ class PlaceDetailActivity : ComponentActivity() {
                     }
                 )
             }
-        }
-    }
-
-    override fun onDestroy() {
-        webViewState.value?.stopLoading()
-        webViewState.value?.destroy()
-        webViewState.value = null
-        super.onDestroy()
-    }
-
-    // ============================================================
-    // ARRICCHIMENTO DETTAGLI (foto/recensioni da Google Maps)
-    // ============================================================
-
-    private fun startEnrichmentIfNeeded(place: Place) {
-        if (enrichmentStarted) return
-        enrichmentStarted = true
-        enrichmentState.value = EnrichmentState.Loading
-        debugMessages.clear()
-        debugMessages.add("Avvio arricchimento per placeId=$currentPlaceId")
-        ensureWebView(place, reload = false)
-    }
-
-    private fun forceRefresh(place: Place) {
-        enrichmentStarted = true
-        enrichmentState.value = EnrichmentState.Loading
-        debugMessages.clear()
-        debugMessages.add("Forzatura refresh per placeId=$currentPlaceId")
-        ensureWebView(place, reload = true)
-    }
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun ensureWebView(place: Place, reload: Boolean) {
-
-        val url = place.mapsUrl
-            ?: "https://www.google.com/maps/search/?api=1&query=" +
-                "${place.latitude},${place.longitude}"
-
-        debugMessages.add("URL destinazione: $url")
-
-        val existing = webViewState.value
-        if (existing != null) {
-            if (reload) {
-                consentAttempted = false
-                debugMessages.add("Reload del WebView")
-                existing.loadUrl(url)
-                scheduleTimeout(existing)
-            }
-            return
-        }
-
-        val wv = WebView(this)
-        wv.settings.javaScriptEnabled = true
-        wv.settings.domStorageEnabled = true
-        wv.settings.userAgentString = USER_AGENT
-        wv.alpha = 0f
-
-        val bridge = TravelPinsJsBridge(
-            repository = repository,
-            scope = lifecycleScope,
-            getCurrentSourceListId = { null },
-            getCurrentSourceListName = { null },
-            onImportFinished = { },
-            onImportError = { },
-            onLogMessage = { msg ->
-                runOnUiThread {
-                    if (debugMessages.size > 50) {
-                        debugMessages.removeAt(0)
-                    }
-                    debugMessages.add(msg)
-                }
-            },
-            getEnrichmentPlaceId = { currentPlaceId },
-            onDetailsFinished = { _, photosSaved, reviewsSaved ->
-                runOnUiThread {
-                    enrichmentState.value = EnrichmentState.Done
-                    debugMessages.add("TERMINATO: foto=$photosSaved recensioni=$reviewsSaved")
-                    webViewState.value?.stopLoading()
-                    Toast.makeText(
-                        this,
-                        "Dettagli aggiornati: $photosSaved foto, $reviewsSaved recensioni",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            },
-            onDetailsError = { error ->
-                runOnUiThread {
-                    enrichmentState.value = EnrichmentState.Failed
-                    debugMessages.add("ERRORE: ${error.message}")
-                }
-            }
-        )
-
-        wv.addJavascriptInterface(bridge, TravelPinsJsBridge.NAME)
-        wv.addJavascriptInterface(bridge, TravelPinsJsBridge.BRIDGE_NAME)
-
-        wv.webViewClient = object : WebViewClient() {
-
-            override fun onPageFinished(view: WebView, pageUrl: String) {
-                super.onPageFinished(view, pageUrl)
-                debugMessages.add("PAGINA CARICATA: $pageUrl")
-
-                view.evaluateJavascript(
-                    GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT,
-                    null
-                )
-
-                if (pageUrl.contains("consent.google.com")) {
-                    if (!consentAttempted) {
-                        consentAttempted = true
-                        debugMessages.add("CONSENSO: invio script accept")
-                        view.postDelayed({
-                            view.evaluateJavascript(
-                                GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT,
-                                null
-                            )
-                        }, 700)
-                    }
-                }
-            }
-
-            override fun shouldOverrideUrlLoading(
-                view: WebView,
-                request: WebResourceRequest
-            ): Boolean {
-                val reqUrl = request.url.toString()
-                if (reqUrl.startsWith("intent://")) {
-                    debugMessages.add("INTERCETTATO intent://")
-                    extractFallbackUrl(reqUrl)?.let {
-                        debugMessages.add("Fallback: $it")
-                        view.loadUrl(it)
-                    }
-                    return true
-                }
-                return false
-            }
-        }
-
-        debugMessages.add("WebView creato, carico URL")
-        webViewState.value = wv
-        wv.loadUrl(url)
-        scheduleTimeout(wv)
-    }
-
-    private fun scheduleTimeout(wv: WebView) {
-        wv.postDelayed({
-            if (enrichmentState.value == EnrichmentState.Loading) {
-                runOnUiThread {
-                    enrichmentState.value = EnrichmentState.Failed
-                    debugMessages.add("TIMEOUT dopo 20s - arricchimento fallito")
-                }
-                wv.stopLoading()
-            }
-        }, 20000)
-    }
-
-    private fun extractFallbackUrl(intentUrl: String): String? {
-        return try {
-            val marker = "S.browser_fallback_url="
-            val start = intentUrl.indexOf(marker)
-            if (start == -1) return null
-
-            var value = intentUrl.substring(start + marker.length)
-            val end = value.indexOf("#Intent")
-            if (end != -1) {
-                value = value.substring(0, end)
-            }
-            URLDecoder.decode(value, "UTF-8")
-        } catch (e: Exception) {
-            null
         }
     }
 
