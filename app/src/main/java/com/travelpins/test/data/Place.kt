@@ -43,6 +43,11 @@ data class Place(
     // Google. Se assente, si ripiega su una ricerca per coordinate.
     val mapsUrl: String? = null,
 
+    // Riferimento "0x<featureId>:0x<cid>" estratto da getlist.
+    // Serve al fetch diretto di /maps/preview/place per
+    // l'arricchimento in background (foto, recensioni, rating...).
+    val mapsPlaceRef: String? = null,
+
     val note: String? = null,
 
     val sourceListId: String? = null,
@@ -52,7 +57,7 @@ data class Place(
 
     val importedAt: Long = System.currentTimeMillis(),
 
-    // ===== NUOVI CAMPI PER DETTAGLI LUOGO (da /maps/preview/place) =====
+    // ===== CAMPI PER DETTAGLI LUOGO (da /maps/preview/place) =====
     val rating: Double? = null,
     val reviewCount: Int? = null,
     val description: String? = null,
