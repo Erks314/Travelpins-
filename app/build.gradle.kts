@@ -62,4 +62,7 @@ dependencies {
     // Google Maps
     implementation("com.google.android.gms:play-services-maps:20.0.0")
     implementation("com.google.maps.android:maps-compose:6.12.0")
+
+    // Coil (caricamento immagini da URL)
+    implementation("io.coil-kt:coil-compose:2.7.0")
 }
