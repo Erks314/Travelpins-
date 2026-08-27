@@ -30,6 +30,7 @@ object PlaceJsonParser {
                         longitude = obj.optDouble("lng"),
                         placeId = obj.optString("placeId").ifBlank { null },
                         mapsUrl = obj.optString("mapsUrl").ifBlank { null },
+                        mapsPlaceRef = obj.optString("hexPair").ifBlank { null },
                         sourceListId = sourceListId,
                         sourceListName = sourceListName
                     )
