@@ -1,8 +1,10 @@
 package com.travelpins.test.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -97,28 +99,62 @@ fun GalleryScreen(
     }
 }
 
+/**
+ * Immagine con zoom.
+ *
+ * Regole di consumo dei tocchi (fondamentali per lo swipe):
+ * - 1 dito a scala 1x  -> NON consumo: lo swipe passa al HorizontalPager
+ * - 2 dita (pinch)     -> consumo e applico zoom
+ * - 1 dito a scala >1x -> consumo e applico pan sull'immagine zoomata
+ * - doppio tap         -> toggle zoom 1x / 2.5x
+ */
 @Composable
 fun ZoomableImage(model: String) {
     var scale by remember { mutableFloatStateOf(1f) }
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
 
-    // Strategia:
-    // - Pinch zoom (due dita) per zoom in/out
-    // - Doppio tap per reset a 1x
-    // - Nessuno swipe/pan: lo swipe orizzontale passa al HorizontalPager
     Box(
         Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
-                        scale = if (scale > 1f) 1f else 2.5f
+                        if (scale > 1f) {
+                            scale = 1f
+                            offsetX = 0f
+                            offsetY = 0f
+                        } else {
+                            scale = 2.5f
+                        }
                     }
                 )
             }
             .pointerInput(Unit) {
-                detectTransformGestures { _, _, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(1f, 4f)
-                    scale = newScale
+                awaitEachGesture {
+                    awaitFirstDown()
+                    do {
+                        val event = awaitPointerEvent()
+                        val changes = event.changes
+
+                        if (changes.size >= 2) {
+                            // PINCH: zoom
+                            val zoomChange = event.calculateZoom()
+                            scale = (scale * zoomChange).coerceIn(1f, 4f)
+                            if (scale <= 1.01f) {
+                                offsetX = 0f
+                                offsetY = 0f
+                            }
+                            changes.forEach { it.consume() }
+                        } else if (scale > 1f && changes.size == 1) {
+                            // PAN su immagine zoomata
+                            val c = changes[0]
+                            offsetX += c.position.x - c.previousPosition.x
+                            offsetY += c.position.y - c.previousPosition.y
+                            c.consume()
+                        }
+                        // altrimenti: nessun consume -> il pager scorre
+                    } while (event.changes.any { it.pressed })
                 }
             }
     ) {
@@ -131,6 +167,8 @@ fun ZoomableImage(model: String) {
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
+                    translationX = offsetX
+                    translationY = offsetY
                 }
         )
     }
