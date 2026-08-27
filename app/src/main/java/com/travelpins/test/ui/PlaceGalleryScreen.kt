@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -99,15 +100,6 @@ fun GalleryScreen(
     }
 }
 
-/**
- * Immagine con zoom.
- *
- * Regole di consumo dei tocchi (fondamentali per lo swipe):
- * - 1 dito a scala 1x  -> NON consumo: lo swipe passa al HorizontalPager
- * - 2 dita (pinch)     -> consumo e applico zoom
- * - 1 dito a scala >1x -> consumo e applico pan sull'immagine zoomata
- * - doppio tap         -> toggle zoom 1x / 2.5x
- */
 @Composable
 fun ZoomableImage(model: String) {
     var scale by remember { mutableFloatStateOf(1f) }
@@ -138,7 +130,6 @@ fun ZoomableImage(model: String) {
                         val changes = event.changes
 
                         if (changes.size >= 2) {
-                            // PINCH: zoom
                             val zoomChange = event.calculateZoom()
                             scale = (scale * zoomChange).coerceIn(1f, 4f)
                             if (scale <= 1.01f) {
@@ -147,13 +138,11 @@ fun ZoomableImage(model: String) {
                             }
                             changes.forEach { it.consume() }
                         } else if (scale > 1f && changes.size == 1) {
-                            // PAN su immagine zoomata
                             val c = changes[0]
                             offsetX += c.position.x - c.previousPosition.x
                             offsetY += c.position.y - c.previousPosition.y
                             c.consume()
                         }
-                        // altrimenti: nessun consume -> il pager scorre
                     } while (event.changes.any { it.pressed })
                 }
             }
@@ -162,6 +151,7 @@ fun ZoomableImage(model: String) {
             model = model,
             contentDescription = null,
             contentScale = ContentScale.Fit,
+            error = ColorPainter(TPColors.SurfaceAlt),
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
