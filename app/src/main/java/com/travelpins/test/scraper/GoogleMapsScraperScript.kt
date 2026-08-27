@@ -10,10 +10,6 @@ object GoogleMapsScraperScript {
             url.contains("!11m2!2s")
     }
 
-    // ============================================================
-    // PARSER CONDIVISO DELLA RISPOSTA /maps/preview/place
-    // ============================================================
-
     private val PLACE_DETAILS_PARSER_JS = """
 
 function parsePlaceDetails(text) {
@@ -40,6 +36,7 @@ function parsePlaceDetails(text) {
 
     var out = {
         name: '',
+        ref: '',
         rating: null,
         reviewCount: null,
         description: '',
@@ -74,6 +71,8 @@ function parsePlaceDetails(text) {
     findMain(data, 0);
 
     if (main) {
+
+        out.ref = main[cidIndex];
 
         if (typeof main[cidIndex + 1] === 'string') {
             out.name = main[cidIndex + 1];
@@ -180,7 +179,6 @@ function parsePlaceDetails(text) {
 
     var photoSeen = {};
     var realPhotos = [];
-    var svPhotos = [];
 
     function walkPhotos(node) {
         if (!node || !Array.isArray(node)) {
@@ -199,16 +197,6 @@ function parsePlaceDetails(text) {
                 var key = node[0];
 
                 if (!photoSeen[key]) {
-                    photoSeen[key] = true;
-
-                    var pw = null;
-                    var ph = null;
-                    if (Array.isArray(meta[2]) &&
-                        typeof meta[2][0] === 'number' &&
-                        typeof meta[2][1] === 'number') {
-                        pw = meta[2][0];
-                        ph = meta[2][1];
-                    }
 
                     var isSv = false;
                     for (var s = 0; s < node.length; s++) {
@@ -217,26 +205,33 @@ function parsePlaceDetails(text) {
                         }
                     }
 
-                    var base = meta[0];
-                    var cut = base.indexOf('=w');
-                    if (cut === -1) {
-                        cut = base.indexOf('=s');
-                    }
-                    if (cut > 0) {
-                        base = base.substring(0, cut);
-                    }
+                    if (!isSv) {
+                        photoSeen[key] = true;
 
-                    var entry = {
-                        key: key,
-                        url: base,
-                        w: pw,
-                        h: ph
-                    };
+                        var pw = null;
+                        var ph = null;
+                        if (Array.isArray(meta[2]) &&
+                            typeof meta[2][0] === 'number' &&
+                            typeof meta[2][1] === 'number') {
+                            pw = meta[2][0];
+                            ph = meta[2][1];
+                        }
 
-                    if (isSv) {
-                        svPhotos.push(entry);
-                    } else {
-                        realPhotos.push(entry);
+                        var base = meta[0];
+                        var cut = base.indexOf('=w');
+                        if (cut === -1) {
+                            cut = base.indexOf('=s');
+                        }
+                        if (cut > 0) {
+                            base = base.substring(0, cut);
+                        }
+
+                        realPhotos.push({
+                            key: key,
+                            url: base,
+                            w: pw,
+                            h: ph
+                        });
                     }
                 }
             }
@@ -249,10 +244,8 @@ function parsePlaceDetails(text) {
 
     walkPhotos(data);
 
-    /* SOLO foto reali: i panorami Street View non si
-     * renderizzano con i parametri dimensione semplici
-     * e comparirebbero come pagine nere in galleria. */
-    out.photos = realPhotos.slice(0, 20);
+    /* Tetto fisso: massimo 10 foto reali */
+    out.photos = realPhotos.slice(0, 10);
 
     var reviewSeen = {};
 
@@ -324,10 +317,6 @@ function parsePlaceDetails(text) {
 }
 """.trimIndent()
 
-    // ============================================================
-    // HOOK DI RETE
-    // ============================================================
-
     val NETWORK_HOOK_SCRIPT = PLACE_DETAILS_PARSER_JS + """
 
 (function() {
@@ -354,9 +343,6 @@ function handlePlaceResponse(url, text) {
         var parsed = parsePlaceDetails(text);
 
         if (!parsed) {
-            try {
-                TravelPins.log('DETAILS: parse fallito ' + url);
-            } catch(e) {}
             return;
         }
 
@@ -375,17 +361,9 @@ function handlePlaceResponse(url, text) {
             TravelPinsBridge.onPlaceDetailsExtracted(
                 JSON.stringify(parsed)
             );
-        } catch(e) {
-            try {
-                TravelPins.log('ERRORE INVIO DETAILS: ' + e.message);
-            } catch(e2) {}
-        }
+        } catch(e) {}
 
-    } catch(e) {
-        try {
-            TravelPins.log('ERRORE GESTIONE RISPOSTA PLACE: ' + e.message);
-        } catch(e2) {}
-    }
+    } catch(e) {}
 }
 
 var originalFetch = window.fetch;
@@ -412,13 +390,7 @@ window.fetch = async function() {
                 .then(function(text) {
                     handlePlaceResponse(url, text);
                 })
-                .catch(function(e) {
-                    try {
-                        TravelPins.log(
-                            'ERRORE LETTURA RISPOSTA PLACE (fetch): ' + e.message
-                        );
-                    } catch(e2) {}
-                });
+                .catch(function(e) {});
         } catch(e) {}
     }
 
@@ -454,13 +426,7 @@ XMLHttpRequest.prototype.send = function(body) {
         xhr.addEventListener('load', function() {
             try {
                 handlePlaceResponse(url, xhr.responseText || '');
-            } catch(e) {
-                try {
-                    TravelPins.log(
-                        'ERRORE LETTURA RISPOSTA PLACE (xhr): ' + e.message
-                    );
-                } catch(e2) {}
-            }
+            } catch(e) {}
         });
     }
 
@@ -468,7 +434,7 @@ XMLHttpRequest.prototype.send = function(body) {
 };
 
 try {
-    TravelPins.log('NETWORK HOOK INSTALLATO (v5: solo foto reali)');
+    TravelPins.log('NETWORK HOOK INSTALLATO (v6: tetto 10 foto + ref)');
 } catch(e) {}
 
 return 'HOOK_INSTALLED';
@@ -525,10 +491,6 @@ var elements = document.querySelectorAll(
 })();
 """.trimIndent()
 
-    // ============================================================
-    // FETCH DIRETTO DEI DETTAGLI (arricchimento in background)
-    // ============================================================
-
     fun detailsFetchScript(
         query: String,
         ref: String,
@@ -567,10 +529,6 @@ try {
         encodeURIComponent(q) +
         '&pb=' + pb;
 
-    try {
-        TravelPins.log('DETAILS FETCH: ' + url.substring(0, 200));
-    } catch(e) {}
-
     var resp = await fetch(
         url,
         {
@@ -580,15 +538,7 @@ try {
         }
     );
 
-    try {
-        TravelPins.log('DETAILS FETCH HTTP: ' + resp.status);
-    } catch(e) {}
-
     var raw = await resp.text();
-
-    try {
-        TravelPins.log('DETAILS FETCH LENGTH: ' + raw.length);
-    } catch(e) {}
 
     if (!raw || raw.length < 10) {
         return 'EMPTY';
@@ -597,9 +547,6 @@ try {
     var parsed = parsePlaceDetails(raw);
 
     if (!parsed) {
-        try {
-            TravelPins.log('DETAILS FETCH: parse fallito');
-        } catch(e) {}
         return 'PARSE_FAIL';
     }
 
@@ -615,18 +562,11 @@ try {
         TravelPinsBridge.onPlaceDetailsExtracted(
             JSON.stringify(parsed)
         );
-    } catch(e) {
-        try {
-            TravelPins.log('DETAILS FETCH ERRORE INVIO: ' + e.message);
-        } catch(e2) {}
-    }
+    } catch(e) {}
 
     return 'OK foto=' + parsed.photos.length;
 
 } catch(e) {
-    try {
-        TravelPins.log('DETAILS FETCH ERROR: ' + e.message);
-    } catch(e2) {}
     return 'ERROR';
 }
 
@@ -744,11 +684,6 @@ try {
 
         return;
     }
-
-    TravelPins.log(
-    '===== GETLIST RAW COMPLETO =====\n' +
-    raw
-);
 
     var cleaned = raw;
 
@@ -1081,117 +1016,8 @@ try {
             'NESSUN PLACE TROVATO CON IL PARSER PRINCIPALE.'
         );
 
-        if (Array.isArray(data)) {
-
-            TravelPins.log(
-                'TOP LEVEL ARRAY LENGTH: ' +
-                data.length
-            );
-
-            for (
-                var z = 0;
-                z < Math.min(
-                    data.length,
-                    15
-                );
-                z++
-            ) {
-
-                var item = data[z];
-
-                var preview = '';
-
-                try {
-
-                    preview =
-                        JSON.stringify(item)
-                            .substring(0, 1000);
-
-                } catch(e) {}
-
-                TravelPins.log(
-                    'TOP[' +
-                    z +
-                    ']: ' +
-                    preview
-                );
-            }
-        }
-
         return;
     }
-
-    var output = '';
-
-    output +=
-        'TITLE: ' +
-        sourceListName +
-        '\n\n';
-
-    output +=
-        'PLACES (' +
-        places.length +
-        ')\n';
-
-    output +=
-        '==============================\n';
-
-    for (
-        var j = 0;
-        j < places.length;
-        j++
-    ) {
-
-        var place = places[j];
-
-        output +=
-            '\n' +
-            (j + 1) +
-            '. ' +
-            place.name +
-            '\n';
-
-        if (place.address) {
-
-            output +=
-                '   ' +
-                place.address +
-                '\n';
-        }
-
-        output +=
-            '   COORD: ' +
-            place.lat +
-            ', ' +
-            place.lng +
-            '\n';
-
-        if (place.placeId) {
-
-            output +=
-                '   PLACE ID: ' +
-                place.placeId +
-                '\n';
-        }
-
-        output +=
-            '   MAPS: ' +
-            'https://www.google.com/maps/search/?api=1&query=' +
-            encodeURIComponent(
-                place.lat +
-                ',' +
-                place.lng
-            ) +
-            '\n';
-
-        output +=
-            '------------------------------\n';
-    }
-
-    TravelPins.log(
-        '===== RISULTATO LISTA =====\n' +
-        output.substring(0, 14000)
-    );
 
     window.__travelpins_places =
         places;
