@@ -29,8 +29,6 @@ class PlaceDetailActivity : ComponentActivity() {
 
     private lateinit var repository: TravelPinsRepository
 
-    // Stati mantenuti per compatibilita' con la UI:
-    // con il manager in background restano Idle.
     private val webViewState = mutableStateOf<android.webkit.WebView?>(null)
     private val enrichmentState = mutableStateOf(EnrichmentState.Idle)
     private val debugMessages = mutableStateListOf<String>()
@@ -48,10 +46,17 @@ class PlaceDetailActivity : ComponentActivity() {
         }
         currentPlaceId = placeId
 
-        // Avvia il manager (idempotente) e mette questo
-        // luogo in testa alla coda di arricchimento.
         EnrichmentManager.start(applicationContext, repository)
-        EnrichmentManager.prioritize(placeId)
+
+        // Se il luogo non ha foto o non e' mai stato arricchito,
+        // forza l'aggiornamento automatico all'apertura.
+        lifecycleScope.launch {
+            val photoCount = repository.countPhotosByPlace(placeId)
+            val place = repository.getPlaceById(placeId)
+            val needsForce =
+                photoCount == 0 || place?.detailsFetchedAt == null
+            EnrichmentManager.prioritize(placeId, force = needsForce)
+        }
 
         setContent {
             TravelPinsDarkTheme {
@@ -90,10 +95,6 @@ class PlaceDetailActivity : ComponentActivity() {
             }
         }
     }
-
-    // ============================================================
-    // AZIONI
-    // ============================================================
 
     private fun sharePlace(place: Place) {
         val link = place.mapsUrl
