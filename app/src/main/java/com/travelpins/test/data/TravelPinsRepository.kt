@@ -60,6 +60,9 @@ class TravelPinsRepository(context: Context) {
 
     suspend fun clearDetailsFetched(placeId: Long) = placeDao.clearDetailsFetched(placeId)
 
+    // NUOVO: Pulizia totale per risolvere blocchi da vincoli unicità
+    suspend fun clearAllPlaces() = placeDao.deleteAll()
+
     suspend fun insertPhotos(photos: List<PlacePhoto>): Int {
         if (photos.isEmpty()) return 0
         return placePhotoDao.insertAll(photos).count { it != -1L }
