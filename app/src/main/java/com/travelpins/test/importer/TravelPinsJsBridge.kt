@@ -1,8 +1,9 @@
 package com.travelpins.test.importer
 
 import android.util.Log
-import android.webkit.JavascriptInterface
 import androidx.lifecycle.LifecycleCoroutineScope
+import com.travelpins.test.data.PlacePhoto
+import com.travelpins.test.data.PlaceReview
 import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.launch
 
@@ -13,7 +14,13 @@ class TravelPinsJsBridge(
     private val getCurrentSourceListName: () -> String?,
     private val onImportFinished: (savedCount: Int) -> Unit,
     private val onImportError: (Throwable) -> Unit,
-    private val onLogMessage: (String) -> Unit = {}
+    private val onLogMessage: (String) -> Unit = {},
+    // ===== NUOVI PARAMETRI PER ARRICCHIMENTO DETTAGLI =====
+    // ID del Place (riga DB) da arricchire con foto/recensioni.
+    // Null = nessun arricchimento in corso (i details vengono ignorati).
+    private val getEnrichmentPlaceId: () -> Long? = { null },
+    private val onDetailsFinished: (placeId: Long, photosSaved: Int, reviewsSaved: Int) -> Unit = { _, _, _ -> },
+    private val onDetailsError: (Throwable) -> Unit = {}
 ) {
 
     private var extractedListName: String? = null
@@ -36,12 +43,6 @@ class TravelPinsJsBridge(
             "$type $method $url"
         )
 
-        // NOTA: prima questo messaggio finiva solo su Logcat e non era
-        // visibile nel log diagnostico copiabile dall'app. Ora viene
-        // inoltrato anche a onLogMessage, cosi' possiamo vedere dal
-        // telefono quali richieste di rete (fetch/XHR) vengono fatte
-        // da Google Maps, ad esempio quando si apre la pagina di un
-        // singolo luogo (utile per individuare endpoint di foto/recensioni).
         onLogMessage(
             "$type $method $url"
         )
@@ -91,20 +92,20 @@ class TravelPinsJsBridge(
                         sourceListName = sourceListName
                     )
 
-                onLogMessage(
-                    "LUOGHI PARSATI: ${places.size}"
-                )
-
-                onLogMessage(
-                    "ELENCO: ${sourceListName ?: "Senza nome"}"
-                )
-
-                val saved =
-                    repository.saveImportedPlaces(
-                        places
+                    onLogMessage(
+                        "LUOGHI PARSATI: ${places.size}"
                     )
 
-                onImportFinished(saved)
+                    onLogMessage(
+                        "ELENCO: ${sourceListName ?: "Senza nome"}"
+                    )
+
+                    val saved =
+                        repository.saveImportedPlaces(
+                            places
+                        )
+
+                    onImportFinished(saved)
 
             } catch (t: Throwable) {
 
@@ -115,6 +116,103 @@ class TravelPinsJsBridge(
                 )
 
                 onImportError(t)
+            }
+        }
+    }
+
+    /**
+     * Riceve dallo script JS i dettagli del singolo luogo
+     * (foto, rating, recensioni, descrizione, sito, tipi)
+     * e li salva nel database, associandoli al Place
+     * indicato da getEnrichmentPlaceId().
+     */
+    @JavascriptInterface
+    fun onPlaceDetailsExtracted(rawJson: String) {
+
+        scope.launch {
+
+            try {
+
+                val placeId = getEnrichmentPlaceId()
+
+                if (placeId == null) {
+                    onLogMessage(
+                        "DETAILS RICEVUTI MA NESSUN ARRICCHIMENTO ATTIVO"
+                    )
+                    return@launch
+                }
+
+                val details =
+                    PlaceDetailsParser.parse(rawJson)
+
+                if (details == null) {
+                    onLogMessage("DETAILS PARSE FALLITO")
+                    return@launch
+                }
+
+                onLogMessage(
+                    "DETAILS: foto=${details.photos.size} " +
+                        "recensioni=${details.reviews.size} " +
+                        "rating=${details.rating}"
+                )
+
+                repository.savePlaceDetails(
+                    placeId = placeId,
+                    rating = details.rating,
+                    reviewCount = details.reviewCount,
+                    description = details.description,
+                    websiteUrl = details.websiteUrl,
+                    types = details.types.joinToString(",")
+                )
+
+                val photos = details.photos.mapIndexed { index, p ->
+                    PlacePhoto(
+                        placeId = placeId,
+                        photoKey = p.key,
+                        imageUrl = p.url,
+                        width = p.width,
+                        height = p.height,
+                        position = index
+                    )
+                }
+
+                val photosSaved =
+                    repository.savePhotos(placeId, photos)
+
+                val reviews = details.reviews.mapIndexed { index, r ->
+                    PlaceReview(
+                        placeId = placeId,
+                        authorName = r.authorName,
+                        authorPhotoUrl = r.authorPhotoUrl,
+                        rating = r.rating,
+                        timeText = r.timeText,
+                        reviewText = r.reviewText,
+                        position = index
+                    )
+                }
+
+                val reviewsSaved =
+                    repository.saveReviews(placeId, reviews)
+
+                onLogMessage(
+                    "SALVATI: foto=$photosSaved recensioni=$reviewsSaved"
+                )
+
+                onDetailsFinished(
+                    placeId,
+                    photosSaved,
+                    reviewsSaved
+                )
+
+            } catch (t: Throwable) {
+
+                Log.e(
+                    "TravelPins",
+                    "Errore dettagli luogo",
+                    t
+                )
+
+                onDetailsError(t)
             }
         }
     }
