@@ -1,6 +1,10 @@
 package com.travelpins.test.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.webkit.WebView
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -60,6 +64,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -71,6 +76,7 @@ import com.travelpins.test.data.Place
 import com.travelpins.test.data.PlacePhoto
 import com.travelpins.test.data.PlaceReview
 import com.travelpins.test.data.TravelPinsRepository
+import com.travelpins.test.importer.EnrichmentManager
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -119,7 +125,7 @@ fun formatCount(count: Int): String =
     NumberFormat.getInstance(Locale.ITALY).format(count.toLong())
 
 // ============================================================
-// ROOT (navigazione interna: dettaglio / galleria / recensioni / mappa)
+// ROOT
 // ============================================================
 
 private enum class DetailScreen { Detail, Gallery, Reviews, Map }
@@ -175,7 +181,6 @@ fun PlaceDetailRoot(
                 reviews = reviews,
                 categories = categories,
                 enrichmentState = enrichmentState,
-                debugMessages = debugMessages,
                 onBack = onBack,
                 onChangeCategory = { p, categoryId ->
                     onAssignCategory(p.id, categoryId)
@@ -240,7 +245,6 @@ fun PlaceDetailScreen(
     reviews: List<PlaceReview>,
     categories: List<Category>,
     enrichmentState: PlaceDetailActivity.EnrichmentState,
-    debugMessages: MutableList<String>,
     onBack: () -> Unit,
     onChangeCategory: (Place, Long?) -> Unit,
     onCreateCategory: (String, Int, String) -> Unit,
@@ -252,10 +256,13 @@ fun PlaceDetailScreen(
     onForceRefresh: (Place) -> Unit,
     onDelete: (Place) -> Unit
 ) {
+    val context = LocalContext.current
+
     var showCategoryPicker by remember { mutableStateOf(false) }
     var showCreateCategory by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showDebugLog by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -335,10 +342,7 @@ fun PlaceDetailScreen(
                     if (photos.isNotEmpty()) {
                         DropdownMenuItem(
                             leadingIcon = {
-                                Icon(
-                                    Icons.Filled.Image,
-                                    contentDescription = null
-                                )
+                                Icon(Icons.Filled.Image, contentDescription = null)
                             },
                             text = { Text("Galleria (${photos.size})") },
                             onClick = {
@@ -350,10 +354,7 @@ fun PlaceDetailScreen(
                     if (reviews.isNotEmpty()) {
                         DropdownMenuItem(
                             leadingIcon = {
-                                Icon(
-                                    Icons.Filled.Star,
-                                    contentDescription = null
-                                )
+                                Icon(Icons.Filled.Star, contentDescription = null)
                             },
                             text = { Text("Recensioni (${reviews.size})") },
                             onClick = {
@@ -367,6 +368,13 @@ fun PlaceDetailScreen(
                         onClick = {
                             showMenu = false
                             onForceRefresh(place)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("🐞 Log arricchimento") },
+                        onClick = {
+                            showMenu = false
+                            showDebugLog = true
                         }
                     )
                     DropdownMenuItem(
@@ -479,7 +487,7 @@ fun PlaceDetailScreen(
                 )
             }
 
-            // Rating + conteggio (SOLO media e numero, come richiesto)
+            // Rating + conteggio
             if (place.rating != null) {
                 Row(
                     Modifier.padding(top = 10.dp),
@@ -504,7 +512,7 @@ fun PlaceDetailScreen(
                             color = TPColors.TextSecondary,
                             fontSize = 13.sp
                         )
-                    }
+                    )
                 }
             }
 
@@ -528,8 +536,8 @@ fun PlaceDetailScreen(
                 )
             }
 
-            // Stato arricchimento + DEBUG
-            if (enrichmentState == PlaceDetailActivity.EnrichmentState.Loading) {
+            // In attesa di arricchimento
+            if (place.detailsFetchedAt == null) {
                 Row(
                     Modifier.padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -541,37 +549,10 @@ fun PlaceDetailScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "Caricamento dettagli da Google Maps…",
+                        "Caricamento dettagli in background…",
                         color = TPColors.TextMuted,
                         fontSize = 12.sp
                     )
-                }
-
-                if (debugMessages.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(TPColors.SurfaceAlt)
-                            .padding(12.dp)
-                    ) {
-                        Text(
-                            "DEBUG (${debugMessages.size} messaggi):",
-                            color = TPColors.TextMuted,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        debugMessages.takeLast(5).forEach { msg ->
-                            Text(
-                                msg,
-                                color = TPColors.TextSecondary,
-                                fontSize = 9.sp,
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            )
-                        }
-                    }
                 }
             }
 
@@ -734,6 +715,61 @@ fun PlaceDetailScreen(
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
                     Text("ANNULLA")
+                }
+            }
+        )
+    }
+
+    // ---------- LOG ARRICCHIMENTO (copiabile) ----------
+    if (showDebugLog) {
+        AlertDialog(
+            onDismissRequest = { showDebugLog = false },
+            title = { Text("Log arricchimento") },
+            text = {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (EnrichmentManager.debugLog.isEmpty()) {
+                        Text("Nessun evento registrato.")
+                    }
+                    EnrichmentManager.debugLog.forEach { line ->
+                        Text(
+                            line,
+                            fontSize = 10.sp,
+                            color = TPColors.TextSecondary,
+                            modifier = Modifier.padding(vertical = 1.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val status = EnrichmentManager.status.value
+                    val header =
+                        "STATUS: done=${status.done} total=${status.total} " +
+                            "running=${status.running}"
+                    val full = (listOf(header) + EnrichmentManager.debugLog)
+                        .joinToString("\n")
+
+                    val clipboard = context.getSystemService(
+                        Context.CLIPBOARD_SERVICE
+                    ) as? ClipboardManager
+                    clipboard?.setPrimaryClip(
+                        ClipData.newPlainText("TravelPins Log", full)
+                    )
+                    Toast.makeText(
+                        context,
+                        "Log copiato",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    showDebugLog = false
+                }) { Text("COPIA") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDebugLog = false }) {
+                    Text("CHIUDI")
                 }
             }
         )
