@@ -1,56 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-<manifest
-    xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <uses-permission
-        android:name="android.permission.INTERNET" />
-
-    <uses-permission
-        android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.TravelPinsTest"
         android:label="TravelPins">
-
+        
         <!-- Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
-
+        
         <activity
             android:name=".MainActivity"
             android:exported="true">
-
+            
             <!-- Avvio normale -->
             <intent-filter>
-
-                <action
-                    android:name="android.intent.action.MAIN" />
-
-                <category
-                    android:name="android.intent.category.LAUNCHER" />
-
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
+            
             <!-- Ricezione da CONDIVIDI -->
             <intent-filter>
-
-                <action
-                    android:name="android.intent.action.SEND" />
-
-                <category
-                    android:name="android.intent.category.DEFAULT" />
-
-                <data
-                    android:mimeType="text/plain" />
-
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
-
         </activity>
 
+        <!-- Scheda del luogo -->
+        <activity
+            android:name=".ui.PlaceDetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.TravelPinsTest" />
     </application>
 
 </manifest>
