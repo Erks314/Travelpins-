@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Place::class, Category::class, PlacePhoto::class, PlaceReview::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,7 +30,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "travelpins.db"
                 )
-                    .addMigrations(MIGRATION_3_4)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration(true)
                     .build().also { INSTANCE = it }
             }
@@ -42,7 +42,6 @@ abstract class AppDatabase : RoomDatabase() {
         // - Crea tabella place_reviews
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                // Aggiungi colonne nullable a places
                 database.execSQL("ALTER TABLE places ADD COLUMN rating REAL")
                 database.execSQL("ALTER TABLE places ADD COLUMN reviewCount INTEGER")
                 database.execSQL("ALTER TABLE places ADD COLUMN description TEXT")
@@ -50,7 +49,6 @@ abstract class AppDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE places ADD COLUMN types TEXT")
                 database.execSQL("ALTER TABLE places ADD COLUMN detailsFetchedAt INTEGER")
 
-                // Crea tabella place_photos
                 database.execSQL("""
                     CREATE TABLE place_photos (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -66,7 +64,6 @@ abstract class AppDatabase : RoomDatabase() {
                 database.execSQL("CREATE INDEX index_place_photos_placeId ON place_photos(placeId)")
                 database.execSQL("CREATE UNIQUE INDEX index_place_photos_placeId_photoKey ON place_photos(placeId, photoKey)")
 
-                // Crea tabella place_reviews
                 database.execSQL("""
                     CREATE TABLE place_reviews (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -81,6 +78,16 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """)
                 database.execSQL("CREATE INDEX index_place_reviews_placeId ON place_reviews(placeId)")
+            }
+        }
+
+        // Migration dalla versione 4 alla 5:
+        // - Aggiunge mapsPlaceRef (riferimento 0x...:0x... per fetch diretto)
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE places ADD COLUMN mapsPlaceRef TEXT"
+                )
             }
         }
     }
