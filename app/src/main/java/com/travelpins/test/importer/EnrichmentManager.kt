@@ -64,15 +64,16 @@ object EnrichmentManager {
         appContext = context.applicationContext
         this.repository = repository
 
-        // Reset una-tantum v6: ri-arricchisce tutti i luoghi con
-        // le regole nuove (max 10 foto reali, niente Street View).
+        // Reset una-tantum v7: riparte l'arricchimento completo
+        // con la logica corretta (il fetch diretto senza foto
+        // non marca piu' il luogo come arricchito).
         val prefs = appContext!!.getSharedPreferences(
             "travelpins", Context.MODE_PRIVATE
         )
-        if (!prefs.getBoolean("cleanup_v6_done", false)) {
+        if (!prefs.getBoolean("cleanup_v7_done", false)) {
             scope.launch {
                 repository.resetAllDetailsFetched()
-                prefs.edit().putBoolean("cleanup_v6_done", true).apply()
+                prefs.edit().putBoolean("cleanup_v7_done", true).apply()
             }
         }
 
@@ -185,7 +186,6 @@ object EnrichmentManager {
 
         var ok = false
 
-        // Ref esplicito, oppure placeId gia' in formato hex pair
         val ref = place.mapsPlaceRef
             ?: place.placeId?.takeIf { HEX_PAIR_REGEX.matches(it) }
 
@@ -209,13 +209,19 @@ object EnrichmentManager {
             }
 
             val clean = result.trim().trim('"')
-            if (clean.startsWith("OK")) {
+
+            /* Accetta il fetch diretto SOLO se ha prodotto
+             * foto reali: altrimenti si passa al fallback. */
+            val fastPhotos =
+                clean.removePrefix("OK foto=").toIntOrNull() ?: -1
+
+            if (fastPhotos > 0) {
                 ok = withTimeoutOrNull(10000) { deferred.await() } ?: false
             }
         }
 
         if (!ok) {
-            // Fallback: caricamento pagina del luogo
+            // Fallback collaudato: caricamento pagina del luogo
             val url = place.mapsUrl
                 ?: "https://www.google.com/maps/search/?api=1&query=" +
                     "${place.latitude},${place.longitude}"
