@@ -17,6 +17,7 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberMarkerState
 import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
 
@@ -26,10 +27,10 @@ fun PlaceMapScreen(
     category: Category?,
     onBack: () -> Unit
 ) {
-    val position = LatLng(place.latitude, place.longitude)
+    val latLng = LatLng(place.latitude, place.longitude)
 
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(position, 15f)
+        position = CameraPosition.fromLatLngZoom(latLng, 15f)
     }
 
     val hue = if (category != null) {
@@ -40,13 +41,15 @@ fun PlaceMapScreen(
         BitmapDescriptorFactory.HUE_AZURE
     }
 
+    val markerState = rememberMarkerState(position = latLng)
+
     Box(Modifier.fillMaxSize()) {
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState
         ) {
             Marker(
-                position = position,
+                state = markerState,
                 title = place.name,
                 snippet = place.address,
                 icon = BitmapDescriptorFactory.defaultMarker(hue)
