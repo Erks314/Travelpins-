@@ -17,11 +17,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URLDecoder
-import kotlin.coroutines.resume
 
 object EnrichmentManager {
     private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
@@ -112,40 +110,13 @@ object EnrichmentManager {
                 val wv = webView ?: break
                 waitSessionReady(wv)
 
-                val ref = place.mapsPlaceRef ?: place.placeId?.takeIf { HEX_PAIR_REGEX.matches(it) }
-                addDebug("→ ${place.name} (ref=${ref != null})")
+                addDebug("→ ${place.name} (fallback pagina)")
 
-                var ok = false
-                if (!ref.isNullOrBlank()) {
-                    val query = place.name + (place.address?.let { ", $it" } ?: "")
-                    val script = GoogleMapsScraperScript.detailsFetchScript(query = query, ref = ref, lat = place.latitude, lng = place.longitude)
-                    val result = withContext(Dispatchers.Main) {
-                        suspendCancellableCoroutine<String> { cont -> wv.evaluateJavascript(script) { r -> cont.resume(r ?: "") } }
-                    }
-                    val clean = result.trim().trim('"')
-                    addDebug("  fetch diretto: $clean")
-                    if (clean.startsWith("OK")) ok = withTimeoutOrNull(8000) { deferred.await() } ?: false
-                }
-
-                if (!ok) {
-                    addDebug("  fallback pagina: ${place.name}")
-                    val url = place.mapsUrl ?: "https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}"
-                    withContext(Dispatchers.Main) { wv.loadUrl(url) }
-                    
-                    // Aspetta che la pagina sia caricata, poi estrai dal DOM dopo 5 secondi
-                    withContext(Dispatchers.Main) {
-                        wv.postDelayed({
-                            addDebug("  Estrazione DOM per ${place.name}")
-                            wv.evaluateJavascript(GoogleMapsScraperScript.EXTRACT_FROM_DOM_SCRIPT) { res ->
-                                addDebug("  DOM result: $res")
-                            }
-                        }, 5000)
-                    }
-                    
-                    ok = withTimeoutOrNull(15000) { deferred.await() } ?: false
-                    if (!ok) addDebug("  fallback timeout: ${place.name}")
-                }
-
+                val url = place.mapsUrl ?: "https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}"
+                withContext(Dispatchers.Main) { wv.loadUrl(url) }
+                
+                val ok = withTimeoutOrNull(30000) { deferred.await() } ?: false
+                
                 if (ok) addDebug("✓ ${place.name} salvato") else addDebug("✗ ${place.name} fallito")
 
                 queue.removeFirst(); queued.remove(id); currentId = null; currentDeferred = null
