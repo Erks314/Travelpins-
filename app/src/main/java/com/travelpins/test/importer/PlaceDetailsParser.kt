@@ -15,32 +15,98 @@ data class PlaceDetails(
 )
 
 data class PhotoDto(val key: String, val url: String, val width: Int?, val height: Int?)
-data class ReviewDto(val authorName: String?, val authorPhotoUrl: String?, val rating: Int?, val timeText: String?, val reviewText: String?)
+data class ReviewDto(
+    val authorName: String?, 
+    val authorPhotoUrl: String?, 
+    val rating: Int?, 
+    val timeText: String?, 
+    val reviewText: String?
+)
 
 object PlaceDetailsParser {
 
     fun parse(rawJson: String): PlaceDetails? {
         return try {
-            val obj = JSONObject(rawJson)
+            val array = JSONArray(rawJson)
             
+            var name = ""
+            var rating: Double? = null
+            var reviewCount: Int? = null
+            var description: String? = null
+            var websiteUrl: String? = null
+            val types = mutableListOf<String>()
             val photos = mutableListOf<PhotoDto>()
-            val photosArray = obj.optJSONArray("photos")
-            if (photosArray != null) {
-                for (i in 0 until photosArray.length()) {
-                    val url = photosArray.getString(i)
-                    photos.add(PhotoDto(key = "p$i", url = url, width = null, height = null))
+            val reviews = mutableListOf<ReviewDto>()
+            
+            fun walk(node: Any?) {
+                if (node == null) return
+                
+                if (node is JSONArray) {
+                    for (i in 0 until node.length()) {
+                        val item = node.opt(i)
+                        
+                        // Foto: URL lh3.googleusercontent.com
+                        if (item is String && item.contains("lh3.googleusercontent.com")) {
+                            if (photos.none { it.url == item }) {
+                                photos.add(PhotoDto(key = "p${photos.size}", url = item, width = null, height = null))
+                            }
+                        }
+                        
+                        // Rating: Double tra 1.0 e 5.0 (prima occorrenza plausibile)
+                        if (item is Double && item >= 1.0 && item <= 5.0 && rating == null) {
+                            rating = item
+                        }
+                        
+                        // Review count: Int > 10 (prima occorrenza plausibile)
+                        if (item is Int && item > 10 && reviewCount == null) {
+                            reviewCount = item
+                        }
+                        
+                        // Website: stringa http/https che non è google
+                        if (item is String && 
+                            (item.startsWith("http://") || item.startsWith("https://")) && 
+                            !item.contains("google.com") && websiteUrl == null) {
+                            websiteUrl = item
+                        }
+                        
+                        // Testo lungo: descrizione o recensione
+                        if (item is String && item.length > 50 && !item.contains("http") && !item.contains("lh3")) {
+                            if (description == null) {
+                                description = item
+                            } else if (reviews.size < 5) {
+                                reviews.add(
+                                    ReviewDto(
+                                        authorName = "Utente Google",
+                                        authorPhotoUrl = null,
+                                        rating = 5,
+                                        timeText = "",
+                                        reviewText = item.take(500)
+                                    )
+                                )
+                            }
+                        }
+                        
+                        walk(item)
+                    }
+                } else if (node is JSONObject) {
+                    val keys = node.keys()
+                    while (keys.hasNext()) {
+                        walk(node.opt(keys.next()))
+                    }
                 }
             }
             
+            walk(array)
+            
             PlaceDetails(
-                name = obj.optString("name").takeIf { it.isNotBlank() } ?: "",
-                rating = if (obj.isNull("rating")) null else obj.optDouble("rating"),
-                reviewCount = if (obj.isNull("reviewCount")) null else obj.optInt("reviewCount"),
-                description = obj.optString("description").takeIf { it.isNotBlank() },
-                websiteUrl = obj.optString("websiteUrl").takeIf { it.isNotBlank() },
-                types = emptyList(),
-                photos = photos,
-                reviews = emptyList()
+                name = name,
+                rating = rating,
+                reviewCount = reviewCount,
+                description = description,
+                websiteUrl = websiteUrl,
+                types = types,
+                photos = photos.distinctBy { it.url }.take(10),
+                reviews = reviews
             )
         } catch (e: Exception) {
             null
