@@ -186,7 +186,6 @@ class PlaceDetailActivity : ComponentActivity() {
 
         webViewState.value = wv
         
-        // WARM-UP: Se non abbiamo ancora i cookie di Google Maps, carichiamo prima la home
         if (!warmupDone) {
             addDebug("Warm-up: carico Google Maps per ottenere i cookie")
             warmupDone = true
