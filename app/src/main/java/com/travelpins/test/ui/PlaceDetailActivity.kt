@@ -160,6 +160,7 @@ class PlaceDetailActivity : ComponentActivity() {
                 super.onPageFinished(view, pageUrl)
                 addDebug("Pagina caricata: $pageUrl")
                 
+                // INSTALLA L'HOOK IMMEDIATAMENTE (senza delay)
                 view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT, null)
                 
                 if (pageUrl.contains("consent.google.com") && !consentAttempted) {
@@ -168,15 +169,8 @@ class PlaceDetailActivity : ComponentActivity() {
                     view.postDelayed({ 
                         view.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT, null) 
                     }, 700)
-                } else if (pageUrl.contains("/maps/place/") || pageUrl.contains("cid=")) {
-                    addDebug("Pagina luogo rilevata, aspetto 5s prima di estrarre dal DOM")
-                    view.postDelayed({
-                        addDebug("Estrazione dati dal DOM...")
-                        view.evaluateJavascript(GoogleMapsScraperScript.EXTRACT_FROM_DOM_SCRIPT) { result ->
-                            addDebug("Risultato estrazione DOM: $result")
-                        }
-                    }, 5000)
                 }
+                // NIENTE ESTRATTAZIONE DOM - lasciamo che l'hook faccia il suo lavoro
             }
             
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
