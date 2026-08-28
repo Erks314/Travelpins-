@@ -12,7 +12,10 @@ class TravelPinsApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // DISABILITATO TEMPORANEAMENTE per evitare conflitti con PlaceDetailActivity
+        
+        // DISABILITATO TEMPORANEAMENTE per evitare interferenze
+        // con il meccanismo di arricchimento in PlaceDetailActivity.
+        // Verrà riabilitato nello Step 2 con il prefetch automatico.
         // EnrichmentManager.start(
         //     this,
         //     TravelPinsRepository(this)
