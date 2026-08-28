@@ -5,7 +5,6 @@ object GoogleMapsScraperScript {
     fun isGoogleListUrl(url: String): Boolean =
         url.contains("/local/userlists/list/") || url.contains("/maps/@/data=") || url.contains("!11m2!2s")
 
-    // NUOVO: Estrae dati dal DOM della pagina luogo
     val EXTRACT_FROM_DOM_SCRIPT = """
     (function() {
         try {
@@ -16,52 +15,56 @@ object GoogleMapsScraperScript {
             var description = null;
             var websiteUrl = null;
             
+            TravelPins.log('Inizio estrazione DOM...');
+            
             // 1. Cerca immagini (foto del luogo)
             var imgs = document.querySelectorAll('img');
+            TravelPins.log('Trovate ' + imgs.length + ' immagini totali');
+            
             for (var i = 0; i < imgs.length; i++) {
                 var src = imgs[i].src || imgs[i].getAttribute('data-src') || '';
                 if (src.indexOf('lh3.googleusercontent.com') !== -1) {
                     if (photos.indexOf(src) === -1) {
                         photos.push(src);
+                        TravelPins.log('Foto trovata: ' + src.substring(0, 80));
                     }
                 }
             }
             
-            // 2. Cerca rating (numero tra 1.0 e 5.0 con stella)
-            var starElements = document.querySelectorAll('[role="img"], [aria-label*="stella"], [aria-label*="star"]');
-            for (var j = 0; j < starElements.length; j++) {
-                var label = starElements[j].getAttribute('aria-label') || '';
-                var match = label.match(/(\d+[.,]\d+)/);
-                if (match && !rating) {
-                    rating = parseFloat(match[1].replace(',', '.'));
-                    if (rating < 1.0 || rating > 5.0) rating = null;
-                }
+            // 2. Cerca rating
+            var allText = document.body.innerText;
+            var ratingMatch = allText.match(/(\d+[.,]\d)\s*(?:stelle|stars|⭐)/i);
+            if (ratingMatch) {
+                rating = parseFloat(ratingMatch[1].replace(',', '.'));
+                TravelPins.log('Rating trovato: ' + rating);
             }
             
             // 3. Cerca conteggio recensioni
-            var allText = document.body.innerText;
             var countMatch = allText.match(/(\d+)\s*(?:recensioni|reviews)/i);
             if (countMatch) {
                 reviewCount = parseInt(countMatch[1]);
+                TravelPins.log('Conteggio recensioni: ' + reviewCount);
             }
             
-            // 4. Cerca descrizione (testo lungo non ripetuto)
-            var paragraphs = document.querySelectorAll('p, div[data-section-id*="about"] p, span[dir="auto"]');
-            for (var k = 0; k < paragraphs.length; k++) {
-                var text = (paragraphs[k].innerText || '').trim();
-                if (text.length > 50 && text.length < 500 && !description) {
+            // 4. Cerca descrizione
+            var sections = document.querySelectorAll('[data-section-id*="about"], [jsaction*="pane.place"]');
+            for (var j = 0; j < sections.length; j++) {
+                var text = (sections[j].innerText || '').trim();
+                if (text.length > 50 && text.length < 1000 && !description) {
                     description = text;
+                    TravelPins.log('Descrizione trovata: ' + text.substring(0, 80));
                     break;
                 }
             }
             
             // 5. Cerca sito web
-            var links = document.querySelectorAll('a[href*="http"]');
-            for (var l = 0; l < links.length; l++) {
-                var href = links[l].href;
-                if (href && href.indexOf('google.com') === -1 && href.indexOf('maps.') === -1 && 
+            var links = document.querySelectorAll('a[href]');
+            for (var k = 0; k < links.length; k++) {
+                var href = links[k].href || '';
+                if (href.indexOf('google.com') === -1 && href.indexOf('maps.') === -1 && 
                     (href.startsWith('http://') || href.startsWith('https://')) && !websiteUrl) {
                     websiteUrl = href;
+                    TravelPins.log('Sito web trovato: ' + href);
                     break;
                 }
             }
@@ -72,16 +75,20 @@ object GoogleMapsScraperScript {
                 reviewCount: reviewCount,
                 description: description,
                 websiteUrl: websiteUrl,
-                reviews: []
+                reviews: reviews
             };
+            
+            TravelPins.log('Risultato finale: ' + photos.length + ' foto, rating=' + rating + ', reviews=' + reviewCount);
             
             try {
                 TravelPinsBridge.onPlaceDetailsExtracted(JSON.stringify(result));
-                return 'OK';
+                return 'SENT';
             } catch(e) {
+                TravelPins.log('Errore invio bridge: ' + e.message);
                 return 'BRIDGE_ERROR: ' + e.message;
             }
         } catch(e) {
+            TravelPins.log('Errore estrazione: ' + e.message);
             return 'PARSE_ERROR: ' + e.message;
         }
     })();
@@ -211,24 +218,5 @@ object GoogleMapsScraperScript {
             try { TravelPinsBridge.onPlacesExtracted(JSON.stringify(unique)); } catch(e) {}
         } catch(e) { TravelPins.log('ERRORE GETLIST: ' + e.message); }
     })();
-    """.trimIndent()
-
-    fun detailsFetchScript(query: String, ref: String, lat: Double, lng: Double): String = """
-        (async function() {
-            try {
-                var pb = '!1m18!1m12!1m3!1d1!2d1!3d1!2m1!1s' + encodeURIComponent('$ref') + '!3m2!1sit!2sit!4m2!3m1!1s' + encodeURIComponent('$ref');
-                var url = '/maps/preview/place?authuser=0&hl=it&gl=it&pb=' + encodeURIComponent(pb);
-                var res = await fetch(url, { method: 'GET', credentials: 'include', cache: 'no-store' });
-                var text = await res.text();
-                if (text.startsWith(")]}'")) {
-                    text = text.substring(4);
-                    if (text.charAt(0) === '\n') text = text.substring(1);
-                }
-                try {
-                    TravelPinsBridge.onPlaceDetailsExtracted(text);
-                    return 'OK foto=1';
-                } catch(e) { return 'ERRORE BRIDGE: ' + e.message; }
-            } catch(e) { return 'ERRORE FETCH: ' + e.message; }
-        })();
     """.trimIndent()
 }
