@@ -21,7 +21,6 @@ object PlaceDetailsParser {
 
     fun parse(rawJson: String): PlaceDetails? {
         return try {
-            // Prova prima come JSON strutturato (da DOM)
             val obj = JSONObject(rawJson)
             
             val photos = mutableListOf<PhotoDto>()
@@ -33,63 +32,18 @@ object PlaceDetailsParser {
                 }
             }
             
-            val reviews = mutableListOf<ReviewDto>()
-            
             PlaceDetails(
-                name = "",
+                name = obj.optString("name").takeIf { it.isNotBlank() } ?: "",
                 rating = if (obj.isNull("rating")) null else obj.optDouble("rating"),
                 reviewCount = if (obj.isNull("reviewCount")) null else obj.optInt("reviewCount"),
                 description = obj.optString("description").takeIf { it.isNotBlank() },
                 websiteUrl = obj.optString("websiteUrl").takeIf { it.isNotBlank() },
                 types = emptyList(),
                 photos = photos,
-                reviews = reviews
+                reviews = emptyList()
             )
         } catch (e: Exception) {
-            // Fallback: parsing euristico del JSON grezzo da XHR
-            try {
-                val array = JSONArray(rawJson)
-                var rating: Double? = null
-                var reviewCount: Int? = null
-                var description: String? = null
-                var websiteUrl: String? = null
-                val photos = mutableListOf<PhotoDto>()
-                val reviews = mutableListOf<ReviewDto>()
-                
-                fun walk(node: Any?) {
-                    if (node == null) return
-                    if (node is JSONArray) {
-                        for (i in 0 until node.length()) {
-                            val item = node.opt(i)
-                            if (item is String && item.contains("lh3.googleusercontent.com")) {
-                                if (photos.none { it.url == item }) {
-                                    photos.add(PhotoDto(key = "p${photos.size}", url = item, width = null, height = null))
-                                }
-                            }
-                            if (item is Double && item >= 1.0 && item <= 5.0 && rating == null) rating = item
-                            if (item is Int && item > 10 && reviewCount == null) reviewCount = item
-                            if (item is String && (item.startsWith("http://") || item.startsWith("https://")) && !item.contains("google.com") && websiteUrl == null) {
-                                websiteUrl = item
-                            }
-                            if (item is String && item.length > 50 && !item.contains("http") && !item.contains("lh3")) {
-                                if (description == null) {
-                                    description = item
-                                } else if (reviews.size < 5) {
-                                    reviews.add(ReviewDto(authorName = "Utente Google", authorPhotoUrl = null, rating = 5, timeText = "", reviewText = item.take(500)))
-                                }
-                            }
-                            walk(item)
-                        }
-                    } else if (node is JSONObject) {
-                        val keys = node.keys()
-                        while (keys.hasNext()) walk(node.opt(keys.next()))
-                    }
-                }
-                walk(array)
-                PlaceDetails(name = "", rating = rating, reviewCount = reviewCount, description = description, websiteUrl = websiteUrl, types = emptyList(), photos = photos.distinctBy { it.url }.take(10), reviews = reviews)
-            } catch (e2: Exception) {
-                null
-            }
+            null
         }
     }
 }
