@@ -1,6 +1,10 @@
 package com.travelpins.test.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.webkit.WebView
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Map
@@ -60,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -222,6 +228,9 @@ fun PlaceDetailScreen(
     var showCreateCategory by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showDebugLogDialog by remember { mutableStateOf(false) }
+    
+    val context = LocalContext.current
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Box(Modifier.fillMaxWidth().height(320.dp)) {
@@ -271,6 +280,14 @@ fun PlaceDetailScreen(
                             onClick = { showMenu = false; onOpenReviews() }
                         )
                     }
+                    DropdownMenuItem(
+                        leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
+                        text = { Text("Copia log debug") },
+                        onClick = {
+                            showMenu = false
+                            showDebugLogDialog = true
+                        }
+                    )
                     DropdownMenuItem(text = { Text("Aggiorna dati Google") }, onClick = { showMenu = false; onForceRefresh(place) })
                     DropdownMenuItem(text = { Text("Condividi") }, onClick = { showMenu = false; onShare(place) })
                     DropdownMenuItem(text = { Text("Elimina luogo") }, onClick = { showMenu = false; showDeleteConfirm = true })
@@ -413,6 +430,42 @@ fun PlaceDetailScreen(
             }
             Spacer(Modifier.height(40.dp))
         }
+    }
+
+    if (showDebugLogDialog) {
+        val logText = if (debugMessages.isEmpty()) {
+            "Nessun messaggio di debug disponibile."
+        } else {
+            debugMessages.joinToString("\n")
+        }
+
+        AlertDialog(
+            onDismissRequest = { showDebugLogDialog = false },
+            title = { Text("Log debug luogo") },
+            text = {
+                Text(
+                    text = logText,
+                    fontSize = 10.sp,
+                    color = TPColors.TextSecondary,
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("TravelPins Debug", logText))
+                    Toast.makeText(context, "Log copiato!", Toast.LENGTH_SHORT).show()
+                    showDebugLogDialog = false
+                }) {
+                    Text("COPIA")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDebugLogDialog = false }) {
+                    Text("CHIUDI")
+                }
+            }
+        )
     }
 
     if (showCategoryPicker && place != null) {
