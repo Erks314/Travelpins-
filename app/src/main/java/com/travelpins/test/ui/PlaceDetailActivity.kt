@@ -169,14 +169,13 @@ class PlaceDetailActivity : ComponentActivity() {
                         view.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT, null) 
                     }, 700)
                 } else if (pageUrl.contains("/maps/place/") || pageUrl.contains("cid=")) {
-                    // Pagina luogo caricata, aspetta un po' poi estrai dal DOM
-                    addDebug("Pagina luogo rilevata, aspetto 3s prima di estrarre dal DOM")
+                    addDebug("Pagina luogo rilevata, aspetto 5s prima di estrarre dal DOM")
                     view.postDelayed({
                         addDebug("Estrazione dati dal DOM...")
                         view.evaluateJavascript(GoogleMapsScraperScript.EXTRACT_FROM_DOM_SCRIPT) { result ->
                             addDebug("Risultato estrazione DOM: $result")
                         }
-                    }, 3000)
+                    }, 5000)
                 }
             }
             
@@ -214,11 +213,11 @@ class PlaceDetailActivity : ComponentActivity() {
     private fun scheduleTimeout(wv: WebView) {
         wv.postDelayed({ 
             if (enrichmentState.value == EnrichmentState.Loading) { 
-                addDebug("⏱️ Timeout 20s raggiunto")
+                addDebug("⏱️ Timeout 30s raggiunto")
                 enrichmentState.value = EnrichmentState.Failed
                 wv.stopLoading() 
             } 
-        }, 20000)
+        }, 30000)
     }
 
     private fun extractFallbackUrl(intentUrl: String): String? {
