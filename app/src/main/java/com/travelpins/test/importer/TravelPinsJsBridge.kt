@@ -66,12 +66,15 @@ class TravelPinsJsBridge(
             try {
                 val placeId = getEnrichmentPlaceId() ?: return@launch
                 
-                // RIMUOVI IL PREFISSO ANTI-XSSI )]}' prima di parsare
                 var cleanJson = rawJson
                 if (cleanJson.startsWith(")]}'")) {
                     cleanJson = cleanJson.substring(4)
                     if (cleanJson.startsWith("\n")) cleanJson = cleanJson.substring(1)
                 }
+                
+                // DIAGNOSTICA: loggiamo 3000 caratteri invece di 200 per capire la struttura
+                onLogMessage("📦 JSON RAW (primi 3000 char):")
+                onLogMessage(cleanJson.take(3000))
                 
                 val details = PlaceDetailsParser.parse(cleanJson)
                 if (details == null) {
