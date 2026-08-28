@@ -168,6 +168,15 @@ class PlaceDetailActivity : ComponentActivity() {
                     view.postDelayed({ 
                         view.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT, null) 
                     }, 700)
+                } else if (pageUrl.contains("/maps/place/") || pageUrl.contains("cid=")) {
+                    // Pagina luogo caricata, aspetta un po' poi estrai dal DOM
+                    addDebug("Pagina luogo rilevata, aspetto 3s prima di estrarre dal DOM")
+                    view.postDelayed({
+                        addDebug("Estrazione dati dal DOM...")
+                        view.evaluateJavascript(GoogleMapsScraperScript.EXTRACT_FROM_DOM_SCRIPT) { result ->
+                            addDebug("Risultato estrazione DOM: $result")
+                        }
+                    }, 3000)
                 }
             }
             
