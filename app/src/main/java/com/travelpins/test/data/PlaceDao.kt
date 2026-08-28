@@ -35,7 +35,7 @@ interface PlaceDao {
     @Query("SELECT * FROM places WHERE placeId = :placeId AND sourceListId = :sourceListId LIMIT 1")
     suspend fun findByPlaceIdInList(placeId: String, sourceListId: String): Place?
 
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(places: List<Place>): List<Long>
 
     @Update
