@@ -10,7 +10,7 @@ import kotlinx.coroutines.launch
 
 class TravelPinsJsBridge(
     private val repository: TravelPinsRepository,
-    private val scope: CoroutineScope, // <-- Modificato qui
+    private val scope: CoroutineScope,
     private val getCurrentSourceListId: () -> String?,
     private val getCurrentSourceListName: () -> String?,
     private val onImportFinished: (savedCount: Int) -> Unit,
@@ -65,7 +65,20 @@ class TravelPinsJsBridge(
         scope.launch {
             try {
                 val placeId = getEnrichmentPlaceId() ?: return@launch
-                val details = PlaceDetailsParser.parse(rawJson) ?: run { onDetailsError(); return@launch }
+                
+                // RIMUOVI IL PREFISSO ANTI-XSSI )]}' prima di parsare
+                var cleanJson = rawJson
+                if (cleanJson.startsWith(")]}'")) {
+                    cleanJson = cleanJson.substring(4)
+                    if (cleanJson.startsWith("\n")) cleanJson = cleanJson.substring(1)
+                }
+                
+                val details = PlaceDetailsParser.parse(cleanJson)
+                if (details == null) {
+                    onLogMessage("⚠️ Parser ha restituito null")
+                    onDetailsError()
+                    return@launch
+                }
 
                 var photosSaved = 0
                 var reviewsSaved = 0
@@ -94,10 +107,11 @@ class TravelPinsJsBridge(
                     detailsFetchedAt = System.currentTimeMillis()
                 )
 
-                onLogMessage("Dettagli salvati: $photosSaved foto, $reviewsSaved recensioni")
+                onLogMessage("✓ Dettagli salvati: $photosSaved foto, $reviewsSaved recensioni")
                 onDetailsFinished(placeId, photosSaved, reviewsSaved)
             } catch (t: Throwable) {
                 Log.e("TravelPins", "Errore parsing dettagli", t)
+                onLogMessage("✗ Errore parsing: ${t.message}")
                 onDetailsError()
             }
         }
