@@ -11,7 +11,9 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.lifecycleScope
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
@@ -35,10 +37,17 @@ class PlaceDetailActivity : ComponentActivity() {
     private lateinit var repository: TravelPinsRepository
     private val webViewState = mutableStateOf<WebView?>(null)
     private val enrichmentState = mutableStateOf(EnrichmentState.Idle)
+    val debugMessages: SnapshotStateList<String> = mutableStateListOf()
     
     private var consentAttempted = false
     private var enrichmentStarted = false
     private var currentPlaceId: Long = -1L
+    private var warmupDone = false
+
+    private fun addDebug(msg: String) {
+        if (debugMessages.size > 50) debugMessages.removeAt(0)
+        debugMessages.add(msg)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +67,7 @@ class PlaceDetailActivity : ComponentActivity() {
                     placeId = placeId, 
                     webViewState = webViewState, 
                     enrichmentState = enrichmentState.value,
+                    debugMessages = debugMessages,
                     onBack = { finish() },
                     onStartEnrichmentIfNeeded = { place -> startEnrichmentIfNeeded(place) },
                     onForceRefresh = { place -> forceRefresh(place) },
@@ -103,12 +113,14 @@ class PlaceDetailActivity : ComponentActivity() {
         if (existing != null) {
             if (reload) { 
                 consentAttempted = false
+                addDebug("Forzo ricarica: $url")
                 existing.loadUrl(url)
                 scheduleTimeout(existing) 
             }
             return
         }
 
+        addDebug("Creo WebView per arricchimento")
         val wv = WebView(this)
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true
@@ -122,17 +134,21 @@ class PlaceDetailActivity : ComponentActivity() {
             getCurrentSourceListName = { null },
             onImportFinished = { }, 
             onImportError = { }, 
-            onLogMessage = { },
+            onLogMessage = { msg -> addDebug(msg) },
             getEnrichmentPlaceId = { currentPlaceId },
             onDetailsFinished = { _, photos, reviews ->
                 runOnUiThread {
+                    addDebug("✓ Dettagli salvati: $photos foto, $reviews recensioni")
                     enrichmentState.value = EnrichmentState.Done
                     webViewState.value?.stopLoading()
                     Toast.makeText(this, "Dettagli aggiornati: $photos foto, $reviews recensioni", Toast.LENGTH_SHORT).show()
                 }
             },
             onDetailsError = { 
-                runOnUiThread { enrichmentState.value = EnrichmentState.Failed } 
+                runOnUiThread {
+                    addDebug("✗ Errore durante il parsing dei dettagli")
+                    enrichmentState.value = EnrichmentState.Failed 
+                }
             }
         )
 
@@ -142,10 +158,13 @@ class PlaceDetailActivity : ComponentActivity() {
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, pageUrl: String) {
                 super.onPageFinished(view, pageUrl)
+                addDebug("Pagina caricata: $pageUrl")
+                
                 view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT, null)
                 
                 if (pageUrl.contains("consent.google.com") && !consentAttempted) {
                     consentAttempted = true
+                    addDebug("Consenso Google rilevato, accetto")
                     view.postDelayed({ 
                         view.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT, null) 
                     }, 700)
@@ -155,7 +174,10 @@ class PlaceDetailActivity : ComponentActivity() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val reqUrl = request.url.toString()
                 if (reqUrl.startsWith("intent://")) { 
-                    extractFallbackUrl(reqUrl)?.let { view.loadUrl(it) }
+                    extractFallbackUrl(reqUrl)?.let { 
+                        addDebug("Intent intercettato, fallback: $it")
+                        view.loadUrl(it) 
+                    }
                     return true 
                 }
                 return false
@@ -163,13 +185,28 @@ class PlaceDetailActivity : ComponentActivity() {
         }
 
         webViewState.value = wv
-        wv.loadUrl(url)
-        scheduleTimeout(wv)
+        
+        // WARM-UP: Se non abbiamo ancora i cookie di Google Maps, carichiamo prima la home
+        if (!warmupDone) {
+            addDebug("Warm-up: carico Google Maps per ottenere i cookie")
+            warmupDone = true
+            wv.loadUrl("https://www.google.com/maps")
+            wv.postDelayed({
+                addDebug("Warm-up completato, carico pagina luogo: $url")
+                wv.loadUrl(url)
+                scheduleTimeout(wv)
+            }, 2000)
+        } else {
+            addDebug("Carico direttamente: $url")
+            wv.loadUrl(url)
+            scheduleTimeout(wv)
+        }
     }
 
     private fun scheduleTimeout(wv: WebView) {
         wv.postDelayed({ 
             if (enrichmentState.value == EnrichmentState.Loading) { 
+                addDebug("⏱️ Timeout 20s raggiunto")
                 enrichmentState.value = EnrichmentState.Failed
                 wv.stopLoading() 
             } 
