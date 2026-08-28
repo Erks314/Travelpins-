@@ -7,6 +7,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.scraper.GoogleMapsScraperScript
 import kotlinx.coroutines.CompletableDeferred
@@ -130,6 +131,17 @@ object EnrichmentManager {
                     addDebug("  fallback pagina: ${place.name}")
                     val url = place.mapsUrl ?: "https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}"
                     withContext(Dispatchers.Main) { wv.loadUrl(url) }
+                    
+                    // Aspetta che la pagina sia caricata, poi estrai dal DOM dopo 5 secondi
+                    withContext(Dispatchers.Main) {
+                        wv.postDelayed({
+                            addDebug("  Estrazione DOM per ${place.name}")
+                            wv.evaluateJavascript(GoogleMapsScraperScript.EXTRACT_FROM_DOM_SCRIPT) { res ->
+                                addDebug("  DOM result: $res")
+                            }
+                        }, 5000)
+                    }
+                    
                     ok = withTimeoutOrNull(15000) { deferred.await() } ?: false
                     if (!ok) addDebug("  fallback timeout: ${place.name}")
                 }
@@ -165,7 +177,7 @@ object EnrichmentManager {
 
         val bridge = TravelPinsJsBridge(
             repository = repository!!, scope = scope, getCurrentSourceListId = { null }, getCurrentSourceListName = { null },
-            onImportFinished = { }, onImportError = { }, onLogMessage = { },
+            onImportFinished = { }, onImportError = { }, onLogMessage = { msg -> addDebug(msg) },
             getEnrichmentPlaceId = { currentId },
             onDetailsFinished = { _, photos, reviews ->
                 addDebug("  salvati foto=$photos recensioni=$reviews")
