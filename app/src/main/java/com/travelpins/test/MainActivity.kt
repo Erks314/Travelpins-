@@ -1448,11 +1448,6 @@ class MainActivity : ComponentActivity() {
         currentListId = null
         currentListName = null
 
-        // PULIZIA TOTALE PREVENTIVA per evitare conflitti di unicità
-        lifecycleScope.launch {
-            repository.clearAllPlaces()
-        }
-
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
