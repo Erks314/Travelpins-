@@ -5,138 +5,88 @@ object GoogleMapsScraperScript {
     fun isGoogleListUrl(url: String): Boolean =
         url.contains("/local/userlists/list/") || url.contains("/maps/@/data=") || url.contains("!11m2!2s")
 
-    val EXTRACT_FROM_DOM_SCRIPT = """
-    (function() {
-        try {
-            var photos = [];
-            var rating = null;
-            var reviewCount = null;
-            var description = null;
-            var websiteUrl = null;
-            
-            TravelPins.log('Inizio estrazione DOM...');
-            
-            var imgs = document.querySelectorAll('img');
-            TravelPins.log('Trovate ' + imgs.length + ' immagini totali');
-            
-            for (var i = 0; i < imgs.length; i++) {
-                var src = imgs[i].src || imgs[i].getAttribute('data-src') || '';
-                if (src.indexOf('lh3.googleusercontent.com') !== -1) {
-                    if (photos.indexOf(src) === -1) {
-                        photos.push(src);
-                    }
-                }
-            }
-            
-            var allText = document.body.innerText;
-            var ratingMatch = allText.match(/(\d+[.,]\d)\s*(?:stelle|stars|⭐)/i);
-            if (ratingMatch) {
-                rating = parseFloat(ratingMatch[1].replace(',', '.'));
-            }
-            
-            var countMatch = allText.match(/(\d+)\s*(?:recensioni|reviews)/i);
-            if (countMatch) {
-                reviewCount = parseInt(countMatch[1]);
-            }
-            
-            var sections = document.querySelectorAll('[data-section-id*="about"], [jsaction*="pane.place"]');
-            for (var j = 0; j < sections.length; j++) {
-                var text = (sections[j].innerText || '').trim();
-                if (text.length > 50 && text.length < 1000 && !description) {
-                    description = text;
-                    break;
-                }
-            }
-            
-            var links = document.querySelectorAll('a[href]');
-            for (var k = 0; k < links.length; k++) {
-                var href = links[k].href || '';
-                if (href.indexOf('google.com') === -1 && href.indexOf('maps.') === -1 && 
-                    (href.startsWith('http://') || href.startsWith('https://')) && !websiteUrl) {
-                    websiteUrl = href;
-                    break;
-                }
-            }
-            
-            var result = {
-                name: "",
-                photos: photos.slice(0, 10),
-                rating: rating,
-                reviewCount: reviewCount,
-                description: description,
-                websiteUrl: websiteUrl,
-                types: [],
-                reviews: []
-            };
-            
-            TravelPins.log('Risultato finale: ' + photos.length + ' foto, rating=' + rating + ', reviews=' + reviewCount);
-            
-            try {
-                TravelPinsBridge.onPlaceDetailsExtracted(JSON.stringify(result));
-                return 'SENT';
-            } catch(e) {
-                return 'BRIDGE_ERROR: ' + e.message;
-            }
-        } catch(e) {
-            return 'PARSE_ERROR: ' + e.message;
-        }
-    })();
-    """.trimIndent()
-
-    fun detailsFetchScript(query: String, ref: String, lat: Double, lng: Double): String = """
-        (async function() {
-            try {
-                var pb = '!1m18!1m12!1m3!1d1!2d1!3d1!2m1!1s' + encodeURIComponent('$ref') + '!3m2!1sit!2sit!4m2!3m1!1s' + encodeURIComponent('$ref');
-                var url = '/maps/preview/place?authuser=0&hl=it&gl=it&pb=' + encodeURIComponent(pb);
-                var res = await fetch(url, { method: 'GET', credentials: 'include', cache: 'no-store' });
-                var text = await res.text();
-                if (text.startsWith(")]}'")) {
-                    text = text.substring(4);
-                    if (text.charAt(0) === '\n') text = text.substring(1);
-                }
-                try {
-                    TravelPinsBridge.onPlaceDetailsExtracted(text);
-                    return 'OK foto=1';
-                } catch(e) { return 'ERRORE BRIDGE: ' + e.message; }
-            } catch(e) { return 'ERRORE FETCH: ' + e.message; }
-        })();
-    """.trimIndent()
-
     val NETWORK_HOOK_SCRIPT = """
     (function() {
         if (window.__travelpins_hooked) return 'ALREADY_INSTALLED';
         window.__travelpins_hooked = true;
-        function isNoiseUrl(url) { return url.indexOf('/maps/vt') !== -1 || url.indexOf('/maps/preview/log204') !== -1; }
-        function isPlaceDetailUrl(url) { return url.indexOf('/maps/preview/place') !== -1; }
+        
+        function isNoiseUrl(url) { 
+            return url.indexOf('/maps/vt') !== -1 || 
+                   url.indexOf('/maps/preview/log204') !== -1; 
+        }
+        
+        function isPlaceDetailUrl(url) { 
+            return url.indexOf('/maps/preview/place') !== -1; 
+        }
+        
         function logPlaceResponse(url, text) {
             try {
-                TravelPins.log('===== RISPOSTA /maps/preview/place =====\nURL: ' + url + '\nLEN: ' + text.length);
-                try { TravelPinsBridge.onPlaceDetailsExtracted(text); } catch(e) { TravelPins.log('ERRORE BRIDGE: ' + e.message); }
-            } catch(e) {}
+                TravelPins.log('===== RISPOSTA /maps/preview/place =====');
+                TravelPins.log('URL: ' + url);
+                TravelPins.log('LUNGHEZZA: ' + text.length);
+                TravelPins.log('PRIMI 200 CHAR: ' + text.substring(0, 200));
+                
+                try { 
+                    TravelPinsBridge.onPlaceDetailsExtracted(text); 
+                    TravelPins.log('DATI INVIATI AL BRIDGE');
+                } catch(e) { 
+                    TravelPins.log('ERRORE INVIO BRIDGE: ' + e.message); 
+                }
+            } catch(e) {
+                TravelPins.log('ERRORE LOG RISPOSTA: ' + e.message);
+            }
         }
+        
+        // Hook fetch
         var originalFetch = window.fetch;
         window.fetch = async function() {
             var input = arguments[0], options = arguments[1] || {};
             var url = typeof input === 'string' ? input : input.url;
             var method = options.method || (typeof input !== 'string' ? input.method : 'GET') || 'GET';
-            if (!isNoiseUrl(url)) { try { TravelPins.network('FETCH_REQUEST', method, url, options.body || ''); } catch(e) {} }
-            var response = await originalFetch.apply(this, arguments);
-            if (isPlaceDetailUrl(url)) {
-                try { response.clone().text().then(function(text) { logPlaceResponse(url, text); }); } catch(e) {}
+            
+            if (!isNoiseUrl(url)) { 
+                try { TravelPins.network('FETCH_REQUEST', method, url, options.body || ''); } catch(e) {} 
             }
+            
+            var response = await originalFetch.apply(this, arguments);
+            
+            if (isPlaceDetailUrl(url)) {
+                try { 
+                    response.clone().text().then(function(text) { 
+                        logPlaceResponse(url, text); 
+                    }); 
+                } catch(e) {}
+            }
+            
             return response;
         };
+        
+        // Hook XMLHttpRequest
         var originalOpen = XMLHttpRequest.prototype.open;
         var originalSend = XMLHttpRequest.prototype.send;
-        XMLHttpRequest.prototype.open = function(method, url) { this.__tp_method = method; this.__tp_url = url; return originalOpen.apply(this, arguments); };
+        
+        XMLHttpRequest.prototype.open = function(method, url) { 
+            this.__tp_method = method; 
+            this.__tp_url = url; 
+            return originalOpen.apply(this, arguments); 
+        };
+        
         XMLHttpRequest.prototype.send = function(body) {
             var xhr = this, url = xhr.__tp_url || '', method = xhr.__tp_method || 'GET';
-            if (!isNoiseUrl(url)) { try { TravelPins.network('XHR_REQUEST', method, url, body || ''); } catch(e) {} }
-            if (isPlaceDetailUrl(url)) {
-                xhr.addEventListener('load', function() { try { logPlaceResponse(url, xhr.responseText || ''); } catch(e) {} });
+            
+            if (!isNoiseUrl(url)) { 
+                try { TravelPins.network('XHR_REQUEST', method, url, body || ''); } catch(e) {} 
             }
+            
+            if (isPlaceDetailUrl(url)) {
+                xhr.addEventListener('load', function() { 
+                    try { logPlaceResponse(url, xhr.responseText || ''); } catch(e) {} 
+                });
+            }
+            
             return originalSend.apply(this, arguments);
         };
+        
         try { TravelPins.log('NETWORK HOOK v3 INSTALLATO'); } catch(e) {}
         return 'HOOK_INSTALLED';
     })();
@@ -163,7 +113,9 @@ object GoogleMapsScraperScript {
         try {
             var currentUrl = window.location.href;
             var listId = '';
-            var match = currentUrl.match(/!11m2!2s([^!&]+)/i) || currentUrl.match(/\/local\/userlists\/list\/([^?\/]+)/i) || currentUrl.match(/2s([A-Za-z0-9_-]{20,})/);
+            var match = currentUrl.match(/!11m2!2s([^!&]+)/i) || 
+                       currentUrl.match(/\/local\/userlists\/list\/([^?\/]+)/i) || 
+                       currentUrl.match(/2s([A-Za-z0-9_-]{20,})/);
             if (match) listId = match[1] || match[2] || match[3];
             if (!listId) { TravelPins.log('ERRORE: LIST ID NON TROVATO'); return; }
             
@@ -174,29 +126,47 @@ object GoogleMapsScraperScript {
             if (!raw || raw.length < 10) return;
             
             var cleaned = raw;
-            if (cleaned.indexOf(")]}'") === 0) { cleaned = cleaned.substring(4); if (cleaned.charAt(0) === '\n') cleaned = cleaned.substring(1); }
+            if (cleaned.indexOf(")]}'") === 0) { 
+                cleaned = cleaned.substring(4); 
+                if (cleaned.charAt(0) === '\n') cleaned = cleaned.substring(1); 
+            }
             var data = JSON.parse(cleaned);
             
             var sourceListName = '';
-            if (Array.isArray(data) && Array.isArray(data[0]) && typeof data[0][4] === 'string') sourceListName = data[0][4].trim();
-            if (!sourceListName) sourceListName = (document.title || '').replace(/\s*-\s*Google Maps\s*$/i, '').trim() || 'Lista Google Maps';
+            if (Array.isArray(data) && Array.isArray(data[0]) && typeof data[0][4] === 'string') {
+                sourceListName = data[0][4].trim();
+            }
+            if (!sourceListName) {
+                sourceListName = (document.title || '').replace(/\s*-\s*Google Maps\s*$/i, '').trim() || 'Lista Google Maps';
+            }
             try { TravelPinsBridge.onListTitleExtracted(sourceListName); } catch(e) {}
             
             var places = [];
             function walk(node) {
                 if (!node) return;
                 if (Array.isArray(node)) {
-                    if (node.length >= 3 && typeof node[2] === 'string' && node[2].length > 2 && node[2].length < 250 && !node[2].startsWith('http')) {
+                    if (node.length >= 3 && typeof node[2] === 'string' && 
+                        node[2].length > 2 && node[2].length < 250 && !node[2].startsWith('http')) {
                         var env = node[1];
-                        if (Array.isArray(env) && Array.isArray(env[5]) && typeof env[5][2] === 'number' && typeof env[5][3] === 'number') {
+                        if (Array.isArray(env) && Array.isArray(env[5]) && 
+                            typeof env[5][2] === 'number' && typeof env[5][3] === 'number') {
                             var lat = env[5][2], lng = env[5][3];
                             if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
                                 var address = typeof node[3] === 'string' ? node[3] : '';
                                 var placeId = '', mapsUrl = '';
                                 function findId(n) {
                                     if (placeId || !n) return;
-                                    if (typeof n === 'string' && n.length > 15 && n.length < 200 && (n.indexOf('ChIJ') === 0 || n.indexOf('0x') === 0)) { placeId = n; return; }
-                                    if (Array.isArray(n)) for (var i = 0; i < n.length; i++) { findId(n[i]); if (placeId) return; }
+                                    if (typeof n === 'string' && n.length > 15 && n.length < 200 && 
+                                        (n.indexOf('ChIJ') === 0 || n.indexOf('0x') === 0)) { 
+                                        placeId = n; 
+                                        return; 
+                                    }
+                                    if (Array.isArray(n)) {
+                                        for (var i = 0; i < n.length; i++) { 
+                                            findId(n[i]); 
+                                            if (placeId) return; 
+                                        }
+                                    }
                                 }
                                 findId(env);
                                 try {
@@ -207,13 +177,22 @@ object GoogleMapsScraperScript {
                                         mapsUrl = 'https://www.google.com/maps?cid=' + rawCid.toString();
                                     }
                                 } catch(e) {}
-                                places.push({ name: node[2], address: address, lat: lat, lng: lng, placeId: placeId, mapsUrl: mapsUrl });
+                                places.push({ 
+                                    name: node[2], 
+                                    address: address, 
+                                    lat: lat, 
+                                    lng: lng, 
+                                    placeId: placeId, 
+                                    mapsUrl: mapsUrl 
+                                });
                             }
                         }
                     }
                     for (var i = 0; i < node.length; i++) walk(node[i]);
                 } else if (typeof node === 'object') {
-                    for (var key in node) try { walk(node[key]); } catch(e) {}
+                    for (var key in node) {
+                        try { walk(node[key]); } catch(e) {}
+                    }
                 }
             }
             walk(data);
