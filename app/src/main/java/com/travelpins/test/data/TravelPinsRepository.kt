@@ -33,16 +33,8 @@ class TravelPinsRepository(context: Context) {
         placeReviewDao.observeByPlace(placeId)
 
     suspend fun saveImportedPlaces(places: List<Place>): Int {
-        val newPlaces = places.filter { place ->
-            val placeId = place.placeId
-            if (placeId.isNullOrBlank()) {
-                true
-            } else {
-                placeDao.findByPlaceId(placeId) == null
-            }
-        }
-        if (newPlaces.isEmpty()) return 0
-        val inserted = placeDao.insertAll(newPlaces)
+        if (places.isEmpty()) return 0
+        val inserted = placeDao.insertAll(places)
         return inserted.count { it != -1L }
     }
 
@@ -60,7 +52,6 @@ class TravelPinsRepository(context: Context) {
 
     suspend fun clearDetailsFetched(placeId: Long) = placeDao.clearDetailsFetched(placeId)
 
-    // NUOVO: Pulizia totale per risolvere blocchi da vincoli unicità
     suspend fun clearAllPlaces() = placeDao.deleteAll()
 
     suspend fun insertPhotos(photos: List<PlacePhoto>): Int {
