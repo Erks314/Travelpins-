@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,7 +55,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
-import kotlin.math.abs
+import kotlinx.coroutines.flow.first
 
 private enum class HomeTab { HOME, ELENCHI, MAPPA, PROFILO }
 
@@ -64,7 +65,6 @@ private data class ListGroup(
     val places: List<Place>
 ) {
     val displayName: String get() = listName?.takeIf { it.isNotBlank() } ?: "Elenco senza titolo"
-    val representativeId: Long get() = places.first().id
 }
 
 private fun groupLists(places: List<Place>): List<ListGroup> =
@@ -83,10 +83,7 @@ private val badgePalette = listOf(
     "🏔️" to Color(0xFF64748B)
 )
 
-private fun badgeFor(name: String): Pair<String, Color> {
-    val idx = abs(name.hashCode()) % badgePalette.size
-    return badgePalette[idx]
-}
+private fun badgeAt(index: Int): Pair<String, Color> = badgePalette[index % badgePalette.size]
 
 private class CurvedBottomShape : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
@@ -100,6 +97,24 @@ private class CurvedBottomShape : Shape {
         }
         return Outline.Generic(path)
     }
+}
+
+// Cerca la prima foto disponibile tra più luoghi candidati.
+// Si aggiorna in diretta quando il prefetch salva nuove foto.
+@Composable
+private fun rememberCoverUrl(repository: TravelPinsRepository, placeIds: List<Long>, width: Int): String? {
+    var url by remember(placeIds) { mutableStateOf<String?>(null) }
+    LaunchedEffect(placeIds) {
+        for (id in placeIds) {
+            val photos = repository.observePhotosByPlace(id).first()
+            if (photos.isNotEmpty()) {
+                url = photos.first().sizedUrl(width)
+                return@LaunchedEffect
+            }
+        }
+        url = null
+    }
+    return url
 }
 
 @Composable
@@ -119,14 +134,12 @@ fun TravelPinsHomeShell(
                     repository = repository,
                     onOpenList = onOpenList,
                     onSeeAll = { currentTab = HomeTab.ELENCHI },
-                    onImport = onImport,
-                    onOpenGoogleLists = onOpenGoogleLists
+                    onImport = onImport
                 )
                 HomeTab.ELENCHI -> ElenchiTabContent(
                     repository = repository,
                     onOpenList = onOpenList,
-                    onImport = onImport,
-                    onOpenGoogleLists = onOpenGoogleLists
+                    onImport = onImport
                 )
                 HomeTab.MAPPA -> PlaceholderTab("🗺️", "Mappa generale", "Presto disponibile: tutti i tuoi luoghi su un'unica mappa.")
                 HomeTab.PROFILO -> ProfiloTabContent(onShowDebugLog)
@@ -142,10 +155,10 @@ private fun BottomNav(current: HomeTab, onSelect: (HomeTab) -> Unit) {
         Modifier.fillMaxWidth().background(Color(0xFF1A1A24)).height(64.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        NavItem(Icons.Filled.Home, "Home", HomeTab.HOME, current, onSelect, Modifier.fillMaxWidth().weight(1f))
-        NavItem(Icons.Filled.List, "Elenchi", HomeTab.ELENCHI, current, onSelect, Modifier.fillMaxWidth().weight(1f))
-        NavItem(Icons.Filled.Map, "Mappa", HomeTab.MAPPA, current, onSelect, Modifier.fillMaxWidth().weight(1f))
-        NavItem(Icons.Filled.Person, "Profilo", HomeTab.PROFILO, current, onSelect, Modifier.fillMaxWidth().weight(1f))
+        NavItem(Icons.Filled.Home, "Home", HomeTab.HOME, current, onSelect, Modifier.weight(1f))
+        NavItem(Icons.Filled.List, "Elenchi", HomeTab.ELENCHI, current, onSelect, Modifier.weight(1f))
+        NavItem(Icons.Filled.Map, "Mappa", HomeTab.MAPPA, current, onSelect, Modifier.weight(1f))
+        NavItem(Icons.Filled.Person, "Profilo", HomeTab.PROFILO, current, onSelect, Modifier.weight(1f))
     }
 }
 
@@ -181,8 +194,7 @@ private fun HomeTabContent(
     repository: TravelPinsRepository,
     onOpenList: (String?, String?) -> Unit,
     onSeeAll: () -> Unit,
-    onImport: () -> Unit,
-    onOpenGoogleLists: () -> Unit
+    onImport: () -> Unit
 ) {
     val places by repository.places.collectAsState(initial = emptyList())
     val groups = remember(places) { groupLists(places) }
@@ -191,7 +203,7 @@ private fun HomeTabContent(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Hero(repository, groups.firstOrNull()?.representativeId)
+        Hero(repository, groups)
 
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 6.dp),
@@ -204,9 +216,9 @@ private fun HomeTabContent(
         }
 
         if (groups.isEmpty()) {
-            EmptyState(onImport, onOpenGoogleLists)
+            EmptyState(onImport)
         } else {
-            groups.forEach { group -> ListCard(repository, group, onOpenList) }
+            groups.forEachIndexed { index, group -> ListCard(repository, group, index, onOpenList) }
         }
 
         Spacer(Modifier.height(24.dp))
@@ -214,9 +226,10 @@ private fun HomeTabContent(
 }
 
 @Composable
-private fun Hero(repository: TravelPinsRepository, coverPlaceId: Long?) {
-    val photos by repository.observePhotosByPlace(coverPlaceId ?: -1L).collectAsState(initial = emptyList())
-    val url = photos.firstOrNull()?.sizedUrl(1200)
+private fun Hero(repository: TravelPinsRepository, groups: List<ListGroup>) {
+    // Prende i primi 6 luoghi dei primi 3 elenchi come candidati per la foto hero
+    val candidates = remember(groups) { groups.take(3).flatMap { it.places.take(2) }.map { it.id } }
+    val url = rememberCoverUrl(repository, candidates, 1200)
 
     Box(Modifier.fillMaxWidth().height(280.dp).clip(CurvedBottomShape())) {
         if (url != null) {
@@ -237,8 +250,7 @@ private fun Hero(repository: TravelPinsRepository, coverPlaceId: Long?) {
             verticalArrangement = Arrangement.Center
         ) {
             Box(
-                Modifier.size(72.dp).clip(CircleShape)
-                    .background(TPColors.Accent),
+                Modifier.size(72.dp).clip(CircleShape).background(TPColors.Accent),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Filled.Place, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
@@ -265,11 +277,13 @@ private fun Hero(repository: TravelPinsRepository, coverPlaceId: Long?) {
 private fun ListCard(
     repository: TravelPinsRepository,
     group: ListGroup,
+    badgeIndex: Int,
     onOpenList: (String?, String?) -> Unit
 ) {
-    val cover by repository.observePhotosByPlace(group.representativeId).collectAsState(initial = emptyList())
-    val coverUrl = cover.firstOrNull()?.sizedUrl(900)
-    val (emoji, badgeColor) = badgeFor(group.displayName)
+    // Cerca la foto tra i primi 6 luoghi dell'elenco (così se il primo non ha foto, prova il secondo, ecc.)
+    val candidates = remember(group) { group.places.take(6).map { it.id } }
+    val coverUrl = rememberCoverUrl(repository, candidates, 900)
+    val (emoji, badgeColor) = badgeAt(badgeIndex)
 
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(160.dp)
@@ -319,7 +333,7 @@ private fun ListCard(
 }
 
 @Composable
-private fun EmptyState(onImport: () -> Unit, onOpenGoogleLists: () -> Unit) {
+private fun EmptyState(onImport: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 24.dp).clip(RoundedCornerShape(20.dp))
             .background(TPColors.Surface).padding(28.dp),
@@ -335,14 +349,13 @@ private fun EmptyState(onImport: () -> Unit, onOpenGoogleLists: () -> Unit) {
             Modifier.clip(RoundedCornerShape(14.dp)).background(TPColors.Accent)
                 .clickable { onImport() }.padding(horizontal = 28.dp, vertical = 14.dp)
         ) {
-            Text("＋ IMPORTA ELENCO", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text("＋ IMPORTA DA GOOGLE MAPS", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         Text(
-            "Apri i miei elenchi su Google Maps ›",
-            color = TPColors.Accent,
-            fontSize = 13.sp,
-            modifier = Modifier.clickable { onOpenGoogleLists() }
+            "Apri un elenco in Google Maps, tocca Condividi e scegli TravelPins.",
+            color = TPColors.TextMuted,
+            fontSize = 12.sp
         )
     }
 }
@@ -351,8 +364,7 @@ private fun EmptyState(onImport: () -> Unit, onOpenGoogleLists: () -> Unit) {
 private fun ElenchiTabContent(
     repository: TravelPinsRepository,
     onOpenList: (String?, String?) -> Unit,
-    onImport: () -> Unit,
-    onOpenGoogleLists: () -> Unit
+    onImport: () -> Unit
 ) {
     val places by repository.places.collectAsState(initial = emptyList())
     val groups = remember(places) { groupLists(places) }
@@ -363,34 +375,23 @@ private fun ElenchiTabContent(
     ) {
         Text("Elenchi", color = TPColors.TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp).padding(top = 20.dp))
 
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                .clip(RoundedCornerShape(16.dp)).background(TPColors.Surface)
+                .clickable { onImport() }.padding(16.dp)
         ) {
-            ActionButton("＋", "Importa da Google Maps", Modifier.fillMaxWidth().weight(1f), onImport)
-            ActionButton("🗺️", "I miei elenchi su Maps", Modifier.fillMaxWidth().weight(1f), onOpenGoogleLists)
+            Text("＋ Importa da Google Maps", color = TPColors.Accent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text("Apri un elenco in Google Maps, tocca Condividi e scegli TravelPins.", color = TPColors.TextMuted, fontSize = 12.sp)
         }
 
         if (groups.isEmpty()) {
-            EmptyState(onImport, onOpenGoogleLists)
+            EmptyState(onImport)
         } else {
-            groups.forEach { group -> ListCard(repository, group, onOpenList) }
+            groups.forEachIndexed { index, group -> ListCard(repository, group, index, onOpenList) }
         }
 
         Spacer(Modifier.height(24.dp))
-    }
-}
-
-@Composable
-private fun ActionButton(icon: String, label: String, modifier: Modifier, onClick: () -> Unit) {
-    Column(
-        modifier.clip(RoundedCornerShape(16.dp)).background(TPColors.Surface)
-            .clickable { onClick() }.padding(vertical = 14.dp, horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Text(icon, fontSize = 18.sp)
-        Text(label, color = TPColors.TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
