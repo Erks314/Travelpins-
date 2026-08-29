@@ -84,7 +84,7 @@ object TPColors {
     val Bg = Color(0xFF12121A)
     val Surface = Color(0xFF1C1C28)
     val SurfaceAlt = Color(0xFF242432)
-    val Accent = Color(0xFF6C5CE7)
+    val Accent = Color(0xFF2EBD95)
     val TextPrimary = Color.White
     val TextSecondary = Color(0xFF9A9AB0)
     val TextMuted = Color(0xFF6E6E85)
@@ -572,7 +572,7 @@ private val categoryColorPalette = listOf(
     0xFFEC4899, 0xFFF43F5E, 0xFF64748B, 0xFF6B7280, 0xFF78716C
 ).map { it.toInt() }
 
-private val categoryIconPalette = listOf("📍", "", "", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "", "", "🎭")
+private val categoryIconPalette = listOf("📍", "", "🏨", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "", "", "🎭")
 
 @Composable
 fun PlaceDetailCreateCategoryDialog(onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit, onDismiss: () -> Unit) {
