@@ -40,6 +40,7 @@ import com.google.android.gms.maps.model.MarkerOptions
 import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
+import com.travelpins.test.importer.EnrichmentManager
 import com.travelpins.test.importer.TravelPinsJsBridge
 import com.travelpins.test.scraper.GoogleMapsScraperScript
 import com.travelpins.test.ui.TravelPinsDarkTheme
@@ -94,6 +95,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         repository = TravelPinsRepository(applicationContext)
         createWebView()
+        
+        // ATTACCA IL WEBVIEW DEL PREFETCH alla finestra dell'Activity
+        // Questo permette al JavaScript di girare davvero in background
+        EnrichmentManager.attach(this)
+        
         showAppShell(NavTab.HOME)
         handleIntent(intent)
         observeData()
@@ -150,10 +156,6 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    // ============================================================
-    // APP SHELL — Home in Compose con bottom navigation
-    // ============================================================
-
     private fun showAppShell(tab: NavTab) {
         currentScreen = Screen.HOME
         currentNavTab = tab
@@ -192,9 +194,7 @@ class MainActivity : ComponentActivity() {
         val content = findViewById<View>(android.R.id.content) ?: return
 
         when (currentScreen) {
-            Screen.HOME -> {
-                // La Home è in Compose e si aggiorna da sola tramite i Flow
-            }
+            Screen.HOME -> { }
             Screen.LIST_DETAIL -> {
                 val listPlaces = placesInCurrentList()
                 refreshFilters(content)
@@ -206,10 +206,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-    // ============================================================
-    // DETTAGLIO ELENCO — mappa + luoghi di UN elenco (full-screen, nav nascosta)
-    // ============================================================
 
     private fun showListDetail(listId: String?, listName: String?) {
         currentScreen = Screen.LIST_DETAIL
@@ -347,10 +343,6 @@ class MainActivity : ComponentActivity() {
         refreshContent()
     }
 
-    // ============================================================
-    // MAPPA A SCHERMO INTERO (per UN elenco)
-    // ============================================================
-
     private fun showListMap(listId: String?, listName: String?) {
         currentScreen = Screen.LIST_MAP
         viewingListId = listId
@@ -430,10 +422,6 @@ class MainActivity : ComponentActivity() {
     private fun placesInCurrentList(): List<Place> {
         return currentPlaces.filter { it.sourceListId == viewingListId }
     }
-
-    // ============================================================
-    // MAP VIEW
-    // ============================================================
 
     private fun prepareMapView() {
         if (mapView == null) {
@@ -562,10 +550,6 @@ class MainActivity : ComponentActivity() {
         return hsv[0]
     }
 
-    // ============================================================
-    // DATABASE
-    // ============================================================
-
     private fun observeData() {
         lifecycleScope.launch {
             repository.places.collect { places ->
@@ -581,10 +565,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-    // ============================================================
-    // FILTERS (per categoria, dentro un elenco)
-    // ============================================================
 
     private fun refreshFilters(content: View) {
         val container = content.findViewWithTag<LinearLayout>("filter_container") ?: return
@@ -623,10 +603,6 @@ class MainActivity : ComponentActivity() {
             }
         )
     }
-
-    // ============================================================
-    // PLACES (luoghi di UN elenco, filtrati per categoria)
-    // ============================================================
 
     private fun refreshPlaces(content: View, scopedPlaces: List<Place>) {
         val container = content.findViewWithTag<LinearLayout>("places_container") ?: return
@@ -679,10 +655,6 @@ class MainActivity : ComponentActivity() {
             )
         }
     }
-
-    // ============================================================
-    // PLACE CARD
-    // ============================================================
 
     private fun createPlaceView(place: Place): View {
         val category = currentCategories.firstOrNull { it.id == place.categoryId }
@@ -785,10 +757,6 @@ class MainActivity : ComponentActivity() {
         return box
     }
 
-    // ============================================================
-    // CATEGORY PICKER
-    // ============================================================
-
     private fun showCategoryPicker(place: Place) {
         if (currentCategories.isEmpty()) {
             Toast.makeText(this, "Prima crea almeno una categoria.", Toast.LENGTH_LONG).show()
@@ -820,10 +788,6 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    // ============================================================
-    // CATEGORIES DIALOG
-    // ============================================================
-
     private fun showCategoriesDialog() {
         val items = mutableListOf<String>()
 
@@ -847,10 +811,6 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    // ============================================================
-    // CATEGORY OPTIONS
-    // ============================================================
-
     private fun showCategoryOptions(category: Category) {
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("${category.iconKey}  ${category.name}")
@@ -866,10 +826,6 @@ class MainActivity : ComponentActivity() {
             .setNegativeButton("Annulla", null)
             .show()
     }
-
-    // ============================================================
-    // CREATE CATEGORY
-    // ============================================================
 
     private val categoryColorPalette = listOf(
         Color.parseColor("#EF4444"), Color.parseColor("#F97316"), Color.parseColor("#F59E0B"),
@@ -1055,10 +1011,6 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    // ============================================================
-    // DELETE CATEGORY
-    // ============================================================
-
     private fun confirmDeleteCategory(category: Category) {
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("Eliminare categoria?")
@@ -1081,10 +1033,6 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    // ============================================================
-    // OPEN GOOGLE MAPS
-    // ============================================================
-
     private fun openInGoogleMaps(place: Place) {
         val uri = if (!place.mapsUrl.isNullOrBlank()) {
             Uri.parse(place.mapsUrl)
@@ -1101,10 +1049,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ============================================================
-    // BACKGROUND / DP
-    // ============================================================
-
     private fun roundedBackground(color: Int, radius: Float): GradientDrawable {
         return GradientDrawable().apply {
             setColor(color)
@@ -1115,10 +1059,6 @@ class MainActivity : ComponentActivity() {
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
     }
-
-    // ============================================================
-    // IMPORTER
-    // ============================================================
 
     private fun showImporter() {
         consentAttempted = false
@@ -1223,10 +1163,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ============================================================
-    // WEBVIEW
-    // ============================================================
-
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView() {
         webView = WebView(this).apply {
@@ -1327,10 +1263,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ============================================================
-    // GOOGLE LIST ID
-    // ============================================================
-
     private fun extractListId(url: String): String? {
         Regex("!11m2!2s([^!&]+)", RegexOption.IGNORE_CASE).find(url)?.let {
             return it.groupValues[1]
@@ -1344,10 +1276,6 @@ class MainActivity : ComponentActivity() {
         return null
     }
 
-    // ============================================================
-    // GOOGLE CONSENT
-    // ============================================================
-
     private fun acceptGoogleConsent() {
         if (!::webView.isInitialized) return
 
@@ -1357,10 +1285,6 @@ class MainActivity : ComponentActivity() {
             appendOutput("CONSENSO RISULTATO\n$result")
         }
     }
-
-    // ============================================================
-    // GOOGLE SCAN
-    // ============================================================
 
     private fun scanGoogleList() {
         if (importStarted) return
@@ -1375,10 +1299,6 @@ class MainActivity : ComponentActivity() {
             appendOutput("CALLBACK GETLIST\n$result")
         }
     }
-
-    // ============================================================
-    // GOOGLE INTENT
-    // ============================================================
 
     private fun handleGoogleIntent(intentUrl: String) {
         try {
@@ -1409,10 +1329,6 @@ class MainActivity : ComponentActivity() {
             updateImportStatus("Errore durante l'apertura della lista.")
         }
     }
-
-    // ============================================================
-    // SHARE INTENT
-    // ============================================================
 
     private fun handleIntent(intent: Intent?) {
         if (intent?.action != Intent.ACTION_SEND) return
@@ -1448,18 +1364,10 @@ class MainActivity : ComponentActivity() {
         webView.loadUrl(url)
     }
 
-    // ============================================================
-    // LOG INTERNO
-    // ============================================================
-
     private fun appendOutput(section: String) {
         if (!::outputView.isInitialized) return
         outputView.append("\n$section\n")
     }
-
-    // ============================================================
-    // COPIA LOG
-    // ============================================================
 
     private fun copyOutputToClipboard() {
         if (!::outputView.isInitialized) return
@@ -1471,10 +1379,6 @@ class MainActivity : ComponentActivity() {
 
         Toast.makeText(this, "Copiato!", Toast.LENGTH_SHORT).show()
     }
-
-    // ============================================================
-    // LOG DIAGNOSTICA (ora nel tab Profilo)
-    // ============================================================
 
     private fun showDebugLogDialog() {
         val logText = if (::outputView.isInitialized) {
