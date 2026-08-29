@@ -29,14 +29,10 @@ object PlaceDetailsParser {
         return try {
             val rootArray = JSONArray(rawJson)
             
-            // L'array principale ha questa struttura:
-            // [null, null, null, null, [coords], null, [datiLuogo], ...]
-            // L'elemento [6] (o successivo se null) contiene i dati principali
             var placeDataArray: JSONArray? = null
             for (i in 0 until minOf(rootArray.length(), 20)) {
                 val item = rootArray.opt(i)
                 if (item is JSONArray && item.length() > 15) {
-                    // Cerchiamo quello che contiene il nome del luogo e rating
                     if (containsPlaceData(item)) {
                         placeDataArray = item
                         break
@@ -46,7 +42,6 @@ object PlaceDetailsParser {
             
             if (placeDataArray == null) return null
             
-            // Estrai dati principali
             val name = extractString(placeDataArray, "name")
             val rating = extractDoubleInRange(placeDataArray, 1.0, 5.0)
             val reviewCount = extractIntInRange(placeDataArray, 1, 1000000)
@@ -54,10 +49,7 @@ object PlaceDetailsParser {
             val types = extractTypes(placeDataArray)
             val description = extractDescription(placeDataArray)
             
-            // Estrai foto da tutto l'array (possono essere ovunque)
             val photos = extractPhotos(rootArray)
-            
-            // Estrai recensioni
             val reviews = extractReviews(rootArray)
             
             PlaceDetails(
@@ -75,11 +67,9 @@ object PlaceDetailsParser {
         }
     }
     
-    // Verifica se un JSONArray contiene i dati principali del luogo
     private fun containsPlaceData(array: JSONArray): Boolean {
         var hasName = false
         var hasRating = false
-        var hasCoords = false
         
         for (i in 0 until array.length()) {
             val item = array.opt(i)
@@ -91,20 +81,11 @@ object PlaceDetailsParser {
             if (item is Double && item >= 1.0 && item <= 5.0) {
                 hasRating = true
             }
-            if (item is JSONArray && item.length() >= 2) {
-                val first = item.opt(0)
-                val second = item.opt(1)
-                if (first is Double && second is Double && 
-                    kotlin.math.abs(first) <= 180 && kotlin.math.abs(second) <= 180) {
-                    hasCoords = true
-                }
-            }
         }
         
         return hasName && hasRating
     }
     
-    // Estrai URL foto puliti con alta risoluzione
     private fun extractPhotos(root: JSONArray): List<PhotoDto> {
         val photos = mutableListOf<PhotoDto>()
         val seen = mutableSetOf<String>()
@@ -113,13 +94,13 @@ object PlaceDetailsParser {
             if (node == null || photos.size >= 20) return
             
             if (node is String && node.contains("lh3.googleusercontent.com")) {
-                // Pulisci URL: prendi la parte prima di \u003d o = o ?
                 var cleanUrl = node
-                val eqIdx = cleanUrl.indexOf("\\u003d")
-                if (eqIdx != -1) cleanUrl = cleanUrl.substring(0, eqIdx)
-                else {
-                    val eqIdx2 = cleanUrl.indexOf('=')
-                    if (eqIdx2 != -1 && eqIdx2 > 30) cleanUrl = cleanUrl.substring(0, eqIdx2)
+                val escapeIdx = cleanUrl.indexOf("\\u003d")
+                if (escapeIdx != -1) {
+                    cleanUrl = cleanUrl.substring(0, escapeIdx)
+                } else {
+                    val eqIdx = cleanUrl.indexOf('=')
+                    if (eqIdx != -1 && eqIdx > 30) cleanUrl = cleanUrl.substring(0, eqIdx)
                 }
                 val qIdx = cleanUrl.indexOf('?')
                 if (qIdx != -1) cleanUrl = cleanUrl.substring(0, qIdx)
@@ -147,7 +128,6 @@ object PlaceDetailsParser {
         return photos
     }
     
-    // Estrai recensioni
     private fun extractReviews(root: JSONArray): List<ReviewDto> {
         val reviews = mutableListOf<ReviewDto>()
         
@@ -155,7 +135,6 @@ object PlaceDetailsParser {
             if (node == null || depth > 15 || reviews.size >= 5) return
             
             if (node is JSONArray) {
-                // Cerca struttura recensione: tipicamente [null, rating, ..., testo, ..., autore, ...]
                 if (node.length() >= 5 && reviews.size < 5) {
                     var rating: Int? = null
                     var text: String? = null
@@ -179,7 +158,6 @@ object PlaceDetailsParser {
                     }
                     
                     if (rating != null && text != null && author != null) {
-                        // Verifica che sia effettivamente una recensione (non un luogo o altro)
                         val hasReviewStructure = text.length > 30 && author.length < 40
                         if (hasReviewStructure) {
                             reviews.add(ReviewDto(
@@ -204,22 +182,19 @@ object PlaceDetailsParser {
         return reviews
     }
     
-    // Estrai nome luogo dall'array dati
     private fun extractString(array: JSONArray, type: String): String {
         for (i in 0 until array.length()) {
             val item = array.opt(i)
             if (item is String && item.length > 3 && item.length < 100 && 
                 !item.startsWith("http") && !item.startsWith("0x") &&
                 !item.contains("google") && !item.contains("0ahUKE") &&
-                !item.contains("\u")) {
-                // Candidato probabile per il nome
+                !item.contains("\\u")) {
                 return item
             }
         }
         return ""
     }
     
-    // Estrai Double in range 1.0-5.0 (rating)
     private fun extractDoubleInRange(array: JSONArray, min: Double, max: Double): Double? {
         for (i in 0 until array.length()) {
             val item = array.opt(i)
@@ -232,7 +207,6 @@ object PlaceDetailsParser {
         return null
     }
     
-    // Estrai Int in range (review count)
     private fun extractIntInRange(array: JSONArray, min: Int, max: Int): Int? {
         for (i in 0 until array.length()) {
             val item = array.opt(i)
@@ -245,7 +219,6 @@ object PlaceDetailsParser {
         return null
     }
     
-    // Estrai sito web
     private fun extractWebsite(array: JSONArray): String? {
         fun walk(node: Any?): String? {
             if (node == null) return null
@@ -271,13 +244,11 @@ object PlaceDetailsParser {
         return walk(array)
     }
     
-    // Estrai tipi
     private fun extractTypes(array: JSONArray): List<String> {
         val types = mutableListOf<String>()
         for (i in 0 until array.length()) {
             val item = array.opt(i)
             if (item is JSONArray) {
-                // Cerchiamo un array piccolo (2-5 elementi) di stringhe corte (tipi)
                 if (item.length() in 1..5) {
                     var allShortStrings = true
                     val candidates = mutableListOf<String>()
@@ -303,14 +274,12 @@ object PlaceDetailsParser {
         return types
     }
     
-    // Estrai descrizione (testo lungo)
     private fun extractDescription(array: JSONArray): String? {
         fun walk(node: Any?): String? {
             if (node == null) return null
             if (node is String && node.length > 100 && node.length < 2000 &&
                 !node.contains("http") && !node.contains("0x") &&
-                !node.contains("\u") && !node.contains("google")) {
-                // Verifica che non sia un URL o un token
+                !node.contains("\\u") && !node.contains("google")) {
                 if (!node.startsWith("0ahUKE") && !node.startsWith("CIH")) {
                     return node
                 }
