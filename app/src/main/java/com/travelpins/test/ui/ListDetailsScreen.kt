@@ -27,16 +27,20 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +63,7 @@ import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 private class ListCurvedShape : Shape {
@@ -108,6 +113,9 @@ fun TravelPinsListDetailScreen(
     val categories by repository.categories.collectAsState(initial = emptyList())
     var query by remember { mutableStateOf("") }
     var filterId by remember { mutableStateOf<Long?>(null) }
+    var actionsPlace by remember { mutableStateOf<Place?>(null) }
+    var notePlace by remember { mutableStateOf<Place?>(null) }
+    val scope = rememberCoroutineScope()
 
     val listPlaces = remember(allPlaces, listId) { allPlaces.filter { it.sourceListId == listId } }
 
@@ -147,7 +155,7 @@ fun TravelPinsListDetailScreen(
                 Text("Nessun luogo corrisponde ai filtri attivi.", color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp))
             } else {
                 visiblePlaces.forEach { place ->
-                    PlaceCard(repository, place, categories, onOpenPlace, onChangeCategory)
+                    PlaceCard(repository, place, categories, onOpenPlace, onLongPress = { actionsPlace = place })
                 }
             }
             Spacer(Modifier.height(90.dp))
@@ -162,6 +170,52 @@ fun TravelPinsListDetailScreen(
             Text("＋", color = Color.White, fontSize = 24.sp)
         }
     }
+
+    actionsPlace?.let { place ->
+        AlertDialog(
+            onDismissRequest = { actionsPlace = null },
+            title = { Text(place.name, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column {
+                    TextButton(onClick = { notePlace = place; actionsPlace = null }) { Text("📝  Scrivi nota") }
+                    TextButton(onClick = { onChangeCategory(place); actionsPlace = null }) { Text("🏷️  Cambia categoria") }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { actionsPlace = null }) { Text("ANNULLA") } }
+        )
+    }
+
+    notePlace?.let { place ->
+        NoteDialog(
+            initial = place.note ?: "",
+            onSave = { text ->
+                scope.launch { repository.updateNote(place.id, text.ifBlank { null }) }
+                notePlace = null
+            },
+            onDismiss = { notePlace = null }
+        )
+    }
+}
+
+@Composable
+private fun NoteDialog(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nota del luogo") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Scrivi la tua nota") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3
+            )
+        },
+        confirmButton = { TextButton(onClick = { onSave(text) }) { Text("SALVA") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ANNULLA") } }
+    )
 }
 
 @Composable
@@ -303,17 +357,18 @@ private fun PlaceCard(
     place: Place,
     categories: List<Category>,
     onOpenPlace: (Long) -> Unit,
-    onChangeCategory: (Place) -> Unit
+    onLongPress: () -> Unit
 ) {
     val photos by repository.observePhotosByPlace(place.id).collectAsState(initial = emptyList())
     val photoUrl = photos.firstOrNull()?.sizedUrl(400, 400)
     val category = categories.firstOrNull { it.id == place.categoryId }
+    val hasNote = !place.note.isNullOrBlank()
 
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(112.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(TPColors.Surface)
-            .combinedClickable(onClick = { onOpenPlace(place.id) }, onLongClick = { onChangeCategory(place) })
+            .combinedClickable(onClick = { onOpenPlace(place.id) }, onLongClick = onLongPress)
             .padding(11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -326,7 +381,10 @@ private fun PlaceCard(
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(place.name, color = TPColors.TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(place.name, color = TPColors.TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                if (hasNote) Text("📝", fontSize = 14.sp)
+            }
             Spacer(Modifier.height(7.dp))
             if (category != null) {
                 Row(
