@@ -90,14 +90,3 @@ private fun rememberListCover(repository: TravelPinsRepository, placeIds: List<L
     }
     return url
 }
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun TravelPinsListDetailScreen(
-    repository: TravelPinsRepository,
-    listId: String?,
-    listName: String?,
-    onBack: () -> Unit,
-    onOpenMap: (Long?) -> Unit,
-    onOpenPlace: (Long) -> Unit,
-    onChange
