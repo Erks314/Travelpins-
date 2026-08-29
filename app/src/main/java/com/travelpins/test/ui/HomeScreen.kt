@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -115,7 +113,7 @@ fun TravelPinsHomeShell(
     var currentTab by remember { mutableStateOf(HomeTab.HOME) }
 
     Column(Modifier.fillMaxSize().background(TPColors.Bg)) {
-        Box(Modifier.weight(1f)) {
+        Box(Modifier.fillMaxWidth().weight(1f)) {
             when (currentTab) {
                 HomeTab.HOME -> HomeTabContent(
                     repository = repository,
@@ -144,36 +142,10 @@ private fun BottomNav(current: HomeTab, onSelect: (HomeTab) -> Unit) {
         Modifier.fillMaxWidth().background(Color(0xFF1A1A24)).height(64.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        NavItem(Icons.Filled.Home, "Home", HomeTab.HOME, current, onSelect)
-        NavItem(Icons.Filled.List, "Elenchi", HomeTab.ELENCHI, current, onSelect)
-        NavItem(Icons.Filled.Map, "Mappa", HomeTab.MAPPA, current, onSelect)
-        NavItem(Icons.Filled.Person, "Profilo", HomeTab.PROFILO, current, onSelect)
-    }
-}
-
-@Composable
-private fun RowScopeWeight(
-    icon: ImageVector,
-    label: String,
-    tab: HomeTab,
-    current: HomeTab,
-    onSelect: (HomeTab) -> Unit
-) {
-    val selected = current == tab
-    val color = if (selected) TPColors.Accent else TPColors.TextMuted
-
-    Column(
-        Modifier.weight(1f).clickable { onSelect(tab) },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Box(
-            Modifier.width(24.dp).height(3.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(if (selected) TPColors.Accent else Color.Transparent)
-        )
-        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(22.dp))
-        Text(label, color = color, fontSize = 10.sp)
+        NavItem(Icons.Filled.Home, "Home", HomeTab.HOME, current, onSelect, Modifier.fillMaxWidth().weight(1f))
+        NavItem(Icons.Filled.List, "Elenchi", HomeTab.ELENCHI, current, onSelect, Modifier.fillMaxWidth().weight(1f))
+        NavItem(Icons.Filled.Map, "Mappa", HomeTab.MAPPA, current, onSelect, Modifier.fillMaxWidth().weight(1f))
+        NavItem(Icons.Filled.Person, "Profilo", HomeTab.PROFILO, current, onSelect, Modifier.fillMaxWidth().weight(1f))
     }
 }
 
@@ -183,13 +155,14 @@ private fun NavItem(
     label: String,
     tab: HomeTab,
     current: HomeTab,
-    onSelect: (HomeTab) -> Unit
+    onSelect: (HomeTab) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val selected = current == tab
     val color = if (selected) TPColors.Accent else TPColors.TextMuted
 
     Column(
-        Modifier.weight(1f).clickable { onSelect(tab) },
+        modifier.clickable { onSelect(tab) },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -394,8 +367,8 @@ private fun ElenchiTabContent(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            ActionButton("＋", "Importa da Google Maps", Modifier.weight(1f), onImport)
-            ActionButton("🗺️", "I miei elenchi su Maps", Modifier.weight(1f), onOpenGoogleLists)
+            ActionButton("＋", "Importa da Google Maps", Modifier.fillMaxWidth().weight(1f), onImport)
+            ActionButton("🗺️", "I miei elenchi su Maps", Modifier.fillMaxWidth().weight(1f), onOpenGoogleLists)
         }
 
         if (groups.isEmpty()) {
