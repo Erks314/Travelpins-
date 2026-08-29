@@ -56,6 +56,7 @@ import coil.compose.AsyncImage
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.flow.first
+import kotlin.math.abs
 
 private enum class HomeTab { HOME, ELENCHI, MAPPA, PROFILO }
 
@@ -99,12 +100,15 @@ private class CurvedBottomShape : Shape {
     }
 }
 
-// Cerca la prima foto disponibile tra più luoghi candidati.
-// Si aggiorna in diretta quando il prefetch salva nuove foto.
+// Copertina: prima la copertina manuale scelta dall'utente, altrimenti la prima foto disponibile
 @Composable
-private fun rememberCoverUrl(repository: TravelPinsRepository, placeIds: List<Long>, width: Int): String? {
-    var url by remember(placeIds) { mutableStateOf<String?>(null) }
-    LaunchedEffect(placeIds) {
+private fun rememberCoverUrl(repository: TravelPinsRepository, placeIds: List<Long>, width: Int, manualUrl: String? = null): String? {
+    var url by remember(placeIds, manualUrl) { mutableStateOf<String?>(null) }
+    LaunchedEffect(placeIds, manualUrl) {
+        if (manualUrl != null) {
+            url = manualUrl + "=w" + width + "-k-no"
+            return@LaunchedEffect
+        }
         for (id in placeIds) {
             val photos = repository.observePhotosByPlace(id).first()
             if (photos.isNotEmpty()) {
@@ -227,9 +231,10 @@ private fun HomeTabContent(
 
 @Composable
 private fun Hero(repository: TravelPinsRepository, groups: List<ListGroup>) {
-    // Prende i primi 6 luoghi dei primi 3 elenchi come candidati per la foto hero
     val candidates = remember(groups) { groups.take(3).flatMap { it.places.take(2) }.map { it.id } }
-    val url = rememberCoverUrl(repository, candidates, 1200)
+    val firstGroupId = groups.firstOrNull()?.listId
+    val manualCover = remember(firstGroupId) { repository.getListCover(firstGroupId) }
+    val url = rememberCoverUrl(repository, candidates, 1200, manualCover)
 
     Box(Modifier.fillMaxWidth().height(280.dp).clip(CurvedBottomShape())) {
         if (url != null) {
@@ -280,9 +285,9 @@ private fun ListCard(
     badgeIndex: Int,
     onOpenList: (String?, String?) -> Unit
 ) {
-    // Cerca la foto tra i primi 6 luoghi dell'elenco (così se il primo non ha foto, prova il secondo, ecc.)
     val candidates = remember(group) { group.places.take(6).map { it.id } }
-    val coverUrl = rememberCoverUrl(repository, candidates, 900)
+    val manualCover = remember(group.listId) { repository.getListCover(group.listId) }
+    val coverUrl = rememberCoverUrl(repository, candidates, 900, manualCover)
     val (emoji, badgeColor) = badgeAt(badgeIndex)
 
     Box(
