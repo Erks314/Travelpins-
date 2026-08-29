@@ -1,5 +1,6 @@
 package com.travelpins.test.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,15 +45,14 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.travelpins.test.R
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.flow.first
@@ -100,7 +100,6 @@ private class CurvedBottomShape : Shape {
     }
 }
 
-// Copertina: prima la copertina manuale scelta dall'utente, altrimenti la prima foto disponibile
 @Composable
 private fun rememberCoverUrl(repository: TravelPinsRepository, placeIds: List<Long>, width: Int, manualUrl: String? = null): String? {
     var url by remember(placeIds, manualUrl) { mutableStateOf<String?>(null) }
@@ -207,7 +206,7 @@ private fun HomeTabContent(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Hero(repository, groups)
+        Hero()
 
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 6.dp),
@@ -229,52 +228,16 @@ private fun HomeTabContent(
     }
 }
 
+// HERO FISSA: usa l'immagine home_hero.png (contiene già logo e tagline)
 @Composable
-private fun Hero(repository: TravelPinsRepository, groups: List<ListGroup>) {
-    val candidates = remember(groups) { groups.take(3).flatMap { it.places.take(2) }.map { it.id } }
-    val firstGroupId = groups.firstOrNull()?.listId
-    val manualCover = remember(firstGroupId) { repository.getListCover(firstGroupId) }
-    val url = rememberCoverUrl(repository, candidates, 1200, manualCover)
-
-    Box(Modifier.fillMaxWidth().height(280.dp).clip(CurvedBottomShape())) {
-        if (url != null) {
-            AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        } else {
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(TPColors.SurfaceAlt, TPColors.Bg))))
-        }
-
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))
-            )
+private fun Hero() {
+    Box(Modifier.fillMaxWidth().height(260.dp).clip(CurvedBottomShape())) {
+        Image(
+            painter = painterResource(id = R.drawable.home_hero),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
         )
-
-        Column(
-            Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Box(
-                Modifier.size(72.dp).clip(CircleShape).background(TPColors.Accent),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Filled.Place, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
-            }
-            Spacer(Modifier.height(12.dp))
-            Text(
-                buildAnnotatedString {
-                    withStyle(SpanStyle(color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Bold)) { append("Travel") }
-                    withStyle(SpanStyle(color = TPColors.Accent, fontSize = 36.sp, fontWeight = FontWeight.Bold)) { append("Pins") }
-                }
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "I TUOI LUOGHI, LE TUE AVVENTURE",
-                color = Color.White.copy(alpha = 0.85f),
-                fontSize = 12.sp,
-                letterSpacing = 3.sp
-            )
-        }
     }
 }
 
