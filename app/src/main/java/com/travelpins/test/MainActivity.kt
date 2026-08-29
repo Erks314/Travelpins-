@@ -45,6 +45,7 @@ import com.travelpins.test.importer.TravelPinsJsBridge
 import com.travelpins.test.scraper.GoogleMapsScraperScript
 import com.travelpins.test.ui.TravelPinsDarkTheme
 import com.travelpins.test.ui.TravelPinsHomeShell
+import com.travelpins.test.ui.TravelPinsListDetailScreen
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
 
