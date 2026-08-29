@@ -58,6 +58,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +78,7 @@ import com.travelpins.test.data.Place
 import com.travelpins.test.data.PlacePhoto
 import com.travelpins.test.data.PlaceReview
 import com.travelpins.test.data.TravelPinsRepository
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -153,6 +155,7 @@ fun PlaceDetailRoot(
     Box(Modifier.fillMaxSize().background(TPColors.Bg)) {
         when (screen) {
             DetailScreen.Detail -> PlaceDetailScreen(
+                repository = repository,
                 place = place,
                 photos = photos,
                 reviews = reviews,
@@ -207,6 +210,7 @@ fun PlaceDetailRoot(
 
 @Composable
 fun PlaceDetailScreen(
+    repository: TravelPinsRepository,
     place: Place?,
     photos: List<PlacePhoto>,
     reviews: List<PlaceReview>,
@@ -229,7 +233,9 @@ fun PlaceDetailScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showDebugLogDialog by remember { mutableStateOf(false) }
-    
+    var showNoteDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
     val context = LocalContext.current
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -266,6 +272,11 @@ fun PlaceDetailScreen(
 
             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                 if (place != null) {
+                    DropdownMenuItem(
+                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                        text = { Text("📝 Nota") },
+                        onClick = { showMenu = false; showNoteDialog = true }
+                    )
                     if (photos.isNotEmpty()) {
                         DropdownMenuItem(
                             leadingIcon = { Icon(Icons.Filled.Image, contentDescription = null) },
@@ -345,6 +356,20 @@ fun PlaceDetailScreen(
 
             if (!place.description.isNullOrBlank()) {
                 Text(place.description!!, color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
+            }
+
+            if (!place.note.isNullOrBlank()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 12.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(TPColors.SurfaceAlt)
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text("📝", fontSize = 15.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(place.note!!, color = TPColors.TextPrimary, fontSize = 14.sp)
+                }
             }
 
             if (!place.websiteUrl.isNullOrBlank()) {
@@ -432,6 +457,17 @@ fun PlaceDetailScreen(
         }
     }
 
+    if (showNoteDialog && place != null) {
+        NoteDialog(
+            initial = place.note ?: "",
+            onSave = { text ->
+                scope.launch { repository.updateNote(place.id, text.ifBlank { null }) }
+                showNoteDialog = false
+            },
+            onDismiss = { showNoteDialog = false }
+        )
+    }
+
     if (showDebugLogDialog) {
         val logText = if (debugMessages.isEmpty()) {
             "Nessun messaggio di debug disponibile."
@@ -493,6 +529,26 @@ fun PlaceDetailScreen(
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("ANNULLA") } }
         )
     }
+}
+
+@Composable
+private fun NoteDialog(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nota del luogo") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Scrivi la tua nota") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3
+            )
+        },
+        confirmButton = { TextButton(onClick = { onSave(text) }) { Text("SALVA") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ANNULLA") } }
+    )
 }
 
 @Composable
@@ -572,7 +628,7 @@ private val categoryColorPalette = listOf(
     0xFFEC4899, 0xFFF43F5E, 0xFF64748B, 0xFF6B7280, 0xFF78716C
 ).map { it.toInt() }
 
-private val categoryIconPalette = listOf("📍", "", "🏨", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "", "", "🎭")
+private val categoryIconPalette = listOf("📍", "🍴", "🏨", "🏖️", "🏛️", "🌄", "", "🛍️", "☕", "🍺", "", "")
 
 @Composable
 fun PlaceDetailCreateCategoryDialog(onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit, onDismiss: () -> Unit) {
