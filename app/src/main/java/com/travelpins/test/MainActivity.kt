@@ -25,6 +25,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -40,21 +42,19 @@ import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.importer.TravelPinsJsBridge
 import com.travelpins.test.scraper.GoogleMapsScraperScript
+import com.travelpins.test.ui.TravelPinsDarkTheme
+import com.travelpins.test.ui.TravelPinsHomeShell
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
 
 class MainActivity : ComponentActivity() {
 
-    // ============================================================
-    // PALETTE — tema scuro stile mockup
-    // ============================================================
-
     companion object {
         private val COLOR_BG = Color.parseColor("#12121A")
         private val COLOR_SURFACE = Color.parseColor("#1C1C28")
         private val COLOR_SURFACE_ALT = Color.parseColor("#242432")
-        private val COLOR_ACCENT = Color.parseColor("#6C5CE7")
-        private val COLOR_ACCENT_DARK = Color.parseColor("#5847C9")
+        private val COLOR_ACCENT = Color.parseColor("#2EBD95")
+        private val COLOR_ACCENT_DARK = Color.parseColor("#249B7B")
         private val COLOR_TEXT_PRIMARY = Color.parseColor("#FFFFFF")
         private val COLOR_TEXT_SECONDARY = Color.parseColor("#9A9AB0")
         private val COLOR_TEXT_MUTED = Color.parseColor("#6E6E85")
@@ -151,7 +151,7 @@ class MainActivity : ComponentActivity() {
     }
 
     // ============================================================
-    // APP SHELL — contenitore con bottom nav + FAB import
+    // APP SHELL — Home in Compose con bottom navigation
     // ============================================================
 
     private fun showAppShell(tab: NavTab) {
@@ -161,128 +161,30 @@ class MainActivity : ComponentActivity() {
         viewingListName = null
         selectedCategoryId = null
 
-        val root = FrameLayout(this).apply {
-            setBackgroundColor(COLOR_BG)
-        }
-
-        val contentContainer = FrameLayout(this).apply {
-            tag = "content_container"
-            setPadding(0, 0, 0, dp(72))
-        }
-
-        root.addView(
-            contentContainer,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-        val navBar = buildBottomNav()
-
-        root.addView(
-            navBar,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(72),
-                Gravity.BOTTOM
-            )
-        )
-
-        val fab = TextView(this).apply {
-            text = "＋"
-            textSize = 26f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            background = roundedBackground(COLOR_ACCENT, 28f)
-            setOnClickListener { showImporter() }
-        }
-
-        root.addView(
-            fab,
-            FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                bottomMargin = dp(36)
-            }
-        )
-
-        setContentView(root)
-        refreshContent()
-    }
-
-    private fun buildBottomNav(): LinearLayout {
-        val navBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(COLOR_NAV_BG)
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val items = listOf(
-            Triple("🏠", "Home", NavTab.HOME),
-            Triple("🔖", "Elenchi", NavTab.ELENCHI),
-            Triple("🗺️", "Mappa", NavTab.MAPPA),
-            Triple("👤", "Profilo", NavTab.PROFILO)
-        )
-
-        items.forEach { (icon, label, tab) ->
-            navBar.addView(
-                buildNavItem(icon, label, tab),
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
-            )
-        }
-
-        return navBar
-    }
-
-    private fun buildNavItem(icon: String, label: String, tab: NavTab): LinearLayout {
-        val selected = currentNavTab == tab
-        val color = if (selected) COLOR_ACCENT else COLOR_TEXT_MUTED
-
-        val item = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setOnClickListener {
-                if (currentNavTab != tab) {
-                    currentNavTab = tab
-                    refreshContent()
-                    findViewById<View>(android.R.id.content)?.let { content ->
-                        if (content is FrameLayout) {
-                            val old = content.getChildAt(1) as? LinearLayout
-                            if (old != null) {
-                                content.removeViewAt(1)
-                                content.addView(
-                                    buildBottomNav(),
-                                    1,
-                                    FrameLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT,
-                                        dp(72),
-                                        Gravity.BOTTOM
-                                    )
-                                )
-                            }
-                        }
-                    }
+        val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                TravelPinsDarkTheme {
+                    TravelPinsHomeShell(
+                        repository = repository,
+                        onOpenList = { listId, listName -> showListDetail(listId, listName) },
+                        onImport = { showImporter() },
+                        onOpenGoogleLists = { openGoogleMapsLists() },
+                        onShowDebugLog = { showDebugLogDialog() }
+                    )
                 }
             }
         }
 
-        val iconView = TextView(this).apply {
-            text = icon
-            textSize = 18f
-            gravity = Gravity.CENTER
+        setContentView(composeView)
+    }
+
+    private fun openGoogleMapsLists() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/saved")))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Impossibile aprire Google Maps.", Toast.LENGTH_SHORT).show()
         }
-
-        val labelView = TextView(this).apply {
-            text = label
-            textSize = 10f
-            setTextColor(color)
-            gravity = Gravity.CENTER
-            setPadding(0, 2, 0, 0)
-        }
-
-        item.addView(iconView)
-        item.addView(labelView)
-
-        return item
     }
 
     private fun refreshContent() {
@@ -291,12 +193,7 @@ class MainActivity : ComponentActivity() {
 
         when (currentScreen) {
             Screen.HOME -> {
-                val contentContainer = content.findViewWithTag<FrameLayout>("content_container") ?: return
-                when (currentNavTab) {
-                    NavTab.HOME, NavTab.ELENCHI -> renderListsTab(contentContainer)
-                    NavTab.MAPPA -> renderPlaceholderTab(contentContainer, "🗺️", "Mappa generale", "Presto disponibile: tutti i tuoi luoghi su un'unica mappa.")
-                    NavTab.PROFILO -> renderPlaceholderTab(contentContainer, "👤", "Profilo", "Presto disponibile: impostazioni e preferenze account.")
-                }
+                // La Home è in Compose e si aggiorna da sola tramite i Flow
             }
             Screen.LIST_DETAIL -> {
                 val listPlaces = placesInCurrentList()
@@ -308,206 +205,6 @@ class MainActivity : ComponentActivity() {
                 updateMapMarkers(placesInCurrentList())
             }
         }
-    }
-
-    // ============================================================
-    // TAB: HOME / ELENCHI — elenco delle liste importate
-    // ============================================================
-
-    private fun renderListsTab(container: FrameLayout) {
-        container.removeAllViews()
-
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(20, 28, 20, 12)
-        }
-
-        val headerRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val title = TextView(this).apply {
-            text = "I miei elenchi"
-            textSize = 26f
-            setTextColor(COLOR_TEXT_PRIMARY)
-        }
-
-        headerRow.addView(
-            title,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        )
-
-        val addButton = TextView(this).apply {
-            text = "＋"
-            textSize = 20f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            background = roundedBackground(COLOR_ACCENT, 24f)
-            setOnClickListener { showImporter() }
-        }
-
-        headerRow.addView(addButton, LinearLayout.LayoutParams(dp(44), dp(44)))
-
-        root.addView(
-            headerRow,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = 18
-            }
-        )
-
-        val debugLogButton = TextView(this).apply {
-            text = "🐞 Mostra log diagnostica"
-            textSize = 12f
-            setTextColor(COLOR_TEXT_MUTED)
-            setPadding(2, 0, 0, 12)
-            setOnClickListener { showDebugLogDialog() }
-        }
-
-        root.addView(debugLogButton)
-
-        val listsScroll = ScrollView(this)
-
-        val listsContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            tag = "lists_container"
-            setPadding(0, 0, 0, 20)
-        }
-
-        listsScroll.addView(listsContainer)
-
-        root.addView(
-            listsScroll,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-        )
-
-        container.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-
-        refreshListsScreen(root)
-    }
-
-    private fun refreshListsScreen(content: View) {
-        val container = content.findViewWithTag<LinearLayout>("lists_container") ?: return
-        container.removeAllViews()
-
-        if (currentPlaces.isEmpty()) {
-            val emptyCard = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(24, 32, 24, 32)
-                background = roundedBackground(COLOR_SURFACE, 18f)
-            }
-
-            val emptyTitle = TextView(this).apply {
-                text = "Nessun elenco importato"
-                textSize = 17f
-                setTextColor(COLOR_TEXT_PRIMARY)
-                gravity = Gravity.CENTER
-            }
-
-            val emptyText = TextView(this).apply {
-                text = "Importa una lista da Google Maps per iniziare."
-                textSize = 14f
-                setTextColor(COLOR_TEXT_SECONDARY)
-                gravity = Gravity.CENTER
-                setPadding(0, 8, 0, 0)
-            }
-
-            emptyCard.addView(emptyTitle)
-            emptyCard.addView(emptyText)
-
-            container.addView(
-                emptyCard,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            )
-            return
-        }
-
-        val groups = currentPlaces
-            .groupBy { it.sourceListId to it.sourceListName }
-            .toList()
-            .sortedByDescending { (_, places) -> places.maxOf { it.importedAt } }
-
-        groups.forEach { (key, placesInGroup) ->
-            val (listId, listName) = key
-            val displayName = listName?.takeIf { it.isNotBlank() } ?: "Elenco senza titolo"
-
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(18, 16, 18, 16)
-                background = roundedBackground(COLOR_SURFACE, 18f)
-                setOnClickListener { showListDetail(listId, listName) }
-            }
-
-            val nameView = TextView(this).apply {
-                text = "📁  $displayName"
-                textSize = 17f
-                setTextColor(COLOR_TEXT_PRIMARY)
-                setPadding(0, 0, 0, 6)
-            }
-
-            val countView = TextView(this).apply {
-                text = "${placesInGroup.size} luoghi"
-                textSize = 13f
-                setTextColor(COLOR_TEXT_SECONDARY)
-            }
-
-            card.addView(nameView)
-            card.addView(countView)
-
-            container.addView(
-                card,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = 10 }
-            )
-        }
-    }
-
-    // ============================================================
-    // TAB: MAPPA / PROFILO — placeholder
-    // ============================================================
-
-    private fun renderPlaceholderTab(container: FrameLayout, icon: String, title: String, message: String) {
-        container.removeAllViews()
-
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(40, 40, 40, 40)
-        }
-
-        val iconView = TextView(this).apply {
-            text = icon
-            textSize = 48f
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 16)
-        }
-
-        val titleView = TextView(this).apply {
-            text = title
-            textSize = 20f
-            setTextColor(COLOR_TEXT_PRIMARY)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 8)
-        }
-
-        val messageView = TextView(this).apply {
-            text = message
-            textSize = 14f
-            setTextColor(COLOR_TEXT_SECONDARY)
-            gravity = Gravity.CENTER
-        }
-
-        root.addView(iconView)
-        root.addView(titleView)
-        root.addView(messageView)
-
-        container.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
 
     // ============================================================
@@ -909,7 +606,8 @@ class MainActivity : ComponentActivity() {
             textSize = 12f
             setTextColor(if (selected) Color.WHITE else COLOR_TEXT_SECONDARY)
             background = roundedBackground(
-                if (selected) COLOR_ACCENT else COLOR_SURFACE, 14f
+                if (selected) COLOR_ACCENT else COLOR_SURFACE,
+                14f
             )
             setPadding(16, 0, 16, 0)
             setOnClickListener {
@@ -1088,25 +786,6 @@ class MainActivity : ComponentActivity() {
     }
 
     // ============================================================
-    // PLACE MENU
-    // ============================================================
-
-    private fun showPlaceMenu(place: Place) {
-        val options = arrayOf("Cambia categoria", "Apri in Google Maps")
-
-        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
-            .setTitle(place.name)
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showCategoryPicker(place)
-                    1 -> openInGoogleMaps(place)
-                }
-            }
-            .setNegativeButton("Annulla", null)
-            .show()
-    }
-
-    // ============================================================
     // CATEGORY PICKER
     // ============================================================
 
@@ -1203,7 +882,7 @@ class MainActivity : ComponentActivity() {
     )
 
     private val categoryIconPalette = listOf(
-        "📍", "🍴", "🏨", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "🍺", "🚗", "🎭"
+        "📍", "🍴", "", "️", "🏛️", "🌄", "", "🛍️", "☕", "🍺", "", ""
     )
 
     private fun showCreateCategoryDialog() {
@@ -1794,16 +1473,7 @@ class MainActivity : ComponentActivity() {
     }
 
     // ============================================================
-    // PULISCI LOG
-    // ============================================================
-
-    private fun clearOutput() {
-        if (!::outputView.isInitialized) return
-        outputView.text = "TRAVELPINS NETWORK MONITOR\n\nMonitor pulito."
-    }
-
-    // ============================================================
-    // LOG DIAGNOSTICA (visibile per debug/supporto)
+    // LOG DIAGNOSTICA (ora nel tab Profilo)
     // ============================================================
 
     private fun showDebugLogDialog() {
