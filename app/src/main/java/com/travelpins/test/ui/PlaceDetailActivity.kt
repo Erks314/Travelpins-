@@ -43,6 +43,7 @@ class PlaceDetailActivity : ComponentActivity() {
     private var enrichmentStarted = false
     private var currentPlaceId: Long = -1L
     private var warmupDone = false
+    private var detailsProcessed = false
 
     private fun addDebug(msg: String) {
         if (debugMessages.size > 50) debugMessages.removeAt(0)
@@ -109,10 +110,13 @@ class PlaceDetailActivity : ComponentActivity() {
     private fun ensureWebView(place: Place, reload: Boolean) {
         val url = place.mapsUrl ?: "https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}"
         
+        detailsProcessed = false
+        
         val existing = webViewState.value
         if (existing != null) {
             if (reload) { 
                 consentAttempted = false
+                detailsProcessed = false
                 addDebug("Forzo ricarica: $url")
                 existing.loadUrl(url)
                 scheduleTimeout(existing) 
@@ -160,6 +164,15 @@ class PlaceDetailActivity : ComponentActivity() {
                 super.onPageFinished(view, pageUrl)
                 addDebug("Pagina caricata: $pageUrl")
                 
+                // Evita di riprocessare la stessa pagina più volte
+                if (pageUrl.contains("/place/") || pageUrl.contains("cid=")) {
+                    if (detailsProcessed) {
+                        addDebug("Pagina già processata, skip")
+                        return
+                    }
+                    detailsProcessed = true
+                }
+                
                 // INSTALLA L'HOOK IMMEDIATAMENTE (senza delay)
                 view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT, null)
                 
@@ -170,7 +183,6 @@ class PlaceDetailActivity : ComponentActivity() {
                         view.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT, null) 
                     }, 700)
                 }
-                // NIENTE ESTRATTAZIONE DOM - lasciamo che l'hook faccia il suo lavoro
             }
             
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
