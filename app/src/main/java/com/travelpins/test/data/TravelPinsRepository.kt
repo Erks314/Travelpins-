@@ -10,6 +10,7 @@ class TravelPinsRepository(context: Context) {
     private val categoryDao = db.categoryDao()
     private val placePhotoDao = db.placePhotoDao()
     private val placeReviewDao = db.placeReviewDao()
+    private val prefs = context.applicationContext.getSharedPreferences("travelpins_prefs", Context.MODE_PRIVATE)
 
     val places: Flow<List<Place>> = placeDao.observeAll()
     val categories: Flow<List<Category>> = categoryDao.observeAll()
@@ -74,5 +75,29 @@ class TravelPinsRepository(context: Context) {
         detailsFetchedAt: Long
     ) {
         placeDao.updateDetails(placeId, rating, reviewCount, description, websiteUrl, types, detailsFetchedAt)
+    }
+
+    // ============================================================
+    // COPERTINE
+    // ============================================================
+
+    // Copertina personalizzata dell'ELENCO (salvata nelle preferenze)
+    fun setListCover(listId: String?, url: String) {
+        if (listId.isNullOrBlank()) return
+        prefs.edit().putString("list_cover_$listId", url).apply()
+    }
+
+    fun getListCover(listId: String?): String? {
+        if (listId.isNullOrBlank()) return null
+        return prefs.getString("list_cover_$listId", null)
+    }
+
+    // Copertina del LUOGO: riordina le foto così quella scelta diventa la prima
+    suspend fun setPlaceCoverPhoto(placeId: Long, photoKey: String) {
+        val photos = placePhotoDao.getByPlace(placeId)
+        val chosen = photos.firstOrNull { it.photoKey == photoKey } ?: return
+        val reordered = listOf(chosen) + photos.filter { it.photoKey != photoKey }
+        placePhotoDao.deleteByPlace(placeId)
+        placePhotoDao.insertAll(reordered.mapIndexed { index, photo -> photo.copy(position = index) })
     }
 }
