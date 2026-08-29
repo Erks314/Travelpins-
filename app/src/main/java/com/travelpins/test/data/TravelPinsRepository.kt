@@ -78,10 +78,16 @@ class TravelPinsRepository(context: Context) {
     }
 
     // ============================================================
+    // NOTE
+    // ============================================================
+
+    suspend fun updateNote(placeId: Long, note: String?) =
+        placeDao.updateNote(placeId, note)
+
+    // ============================================================
     // COPERTINE
     // ============================================================
 
-    // Copertina personalizzata dell'ELENCO (salvata nelle preferenze)
     fun setListCover(listId: String?, url: String) {
         if (listId.isNullOrBlank()) return
         prefs.edit().putString("list_cover_$listId", url).apply()
@@ -92,7 +98,6 @@ class TravelPinsRepository(context: Context) {
         return prefs.getString("list_cover_$listId", null)
     }
 
-    // Copertina del LUOGO: riordina le foto così quella scelta diventa la prima
     suspend fun setPlaceCoverPhoto(placeId: Long, photoKey: String) {
         val photos = placePhotoDao.getByPlace(placeId)
         val chosen = photos.firstOrNull { it.photoKey == photoKey } ?: return
