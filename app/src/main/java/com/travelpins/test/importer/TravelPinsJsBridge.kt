@@ -72,15 +72,28 @@ class TravelPinsJsBridge(
                     if (cleanJson.startsWith("\n")) cleanJson = cleanJson.substring(1)
                 }
                 
-                // DIAGNOSTICA: loggiamo 3000 caratteri invece di 200 per capire la struttura
-                onLogMessage("📦 JSON RAW (primi 3000 char):")
-                onLogMessage(cleanJson.take(3000))
-                
                 val details = PlaceDetailsParser.parse(cleanJson)
                 if (details == null) {
                     onLogMessage("⚠️ Parser ha restituito null")
                     onDetailsError()
                     return@launch
+                }
+
+                // LOG DETTAGLIATO dei dati trovati
+                onLogMessage("📋 DATI TROVATI DAL PARSER:")
+                onLogMessage("  Nome: ${details.name}")
+                onLogMessage("  Rating: ${details.rating}")
+                onLogMessage("  Recensioni: ${details.reviewCount}")
+                onLogMessage("  Sito: ${details.websiteUrl}")
+                onLogMessage("  Tipi: ${details.types.joinToString(", ")}")
+                onLogMessage("  Descrizione: ${details.description?.take(100)}...")
+                onLogMessage("  Foto trovate: ${details.photos.size}")
+                details.photos.take(3).forEachIndexed { index, photo ->
+                    onLogMessage("    Foto $index: ${photo.url.take(80)}...")
+                }
+                onLogMessage("  Recensioni trovate: ${details.reviews.size}")
+                details.reviews.take(2).forEachIndexed { index, review ->
+                    onLogMessage("    Recensione $index: ${review.authorName} - ${review.rating}★ - ${review.reviewText?.take(50)}...")
                 }
 
                 var photosSaved = 0
