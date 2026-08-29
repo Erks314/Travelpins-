@@ -132,7 +132,7 @@ fun TravelPinsListDetailScreen(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            ListHeader(repository, listPlaces, listName, onBack, onManageCategories)
+            ListHeader(repository, listPlaces, listId, listName, onBack, onManageCategories)
             ControlsRow(query, { query = it }, filterId, { filterId = it }, categories, { onOpenMap(filterId) })
 
             Text(
@@ -168,12 +168,16 @@ fun TravelPinsListDetailScreen(
 private fun ListHeader(
     repository: TravelPinsRepository,
     listPlaces: List<Place>,
+    listId: String?,
     listName: String?,
     onBack: () -> Unit,
     onManageCategories: () -> Unit
 ) {
     val candidates = remember(listPlaces) { listPlaces.take(6).map { it.id } }
-    val url = rememberListCover(repository, candidates, 1200)
+    val fallbackUrl = rememberListCover(repository, candidates, 1200)
+    val manualCover = remember(listId) { repository.getListCover(listId) }
+    val url = manualCover?.let { it + "=w1200-k-no" } ?: fallbackUrl
+
     var menuOpen by remember { mutableStateOf(false) }
     val displayName = listName?.takeIf { it.isNotBlank() } ?: "Elenco senza titolo"
 
