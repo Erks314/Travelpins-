@@ -62,6 +62,7 @@ import coil.compose.AsyncImage
 import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -83,15 +84,25 @@ private class ListCurvedShape : Shape {
 @Composable
 private fun rememberListCover(repository: TravelPinsRepository, placeIds: List<Long>, width: Int): String? {
     var url by remember(placeIds) { mutableStateOf<String?>(null) }
+    
     LaunchedEffect(placeIds) {
-        for (id in placeIds) {
-            val photos = repository.observePhotosByPlace(id).first()
-            if (photos.isNotEmpty()) {
-                url = photos.first().sizedUrl(width)
-                return@LaunchedEffect
-            }
+        if (placeIds.isEmpty()) {
+            url = null
+            return@LaunchedEffect
         }
-        url = null
+        
+        val photoFlows = placeIds.map { id -> repository.observePhotosByPlace(id) }
+        
+        combine(photoFlows) { photoLists ->
+            for (photos in photoLists) {
+                if (photos.isNotEmpty()) {
+                    return@combine photos.first().sizedUrl(width)
+                }
+            }
+            null
+        }.collect { newUrl ->
+            url = newUrl
+        }
     }
     return url
 }
