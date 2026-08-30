@@ -47,8 +47,6 @@ import com.travelpins.test.ui.TravelPinsDarkTheme
 import com.travelpins.test.ui.TravelPinsHomeShell
 import com.travelpins.test.ui.TravelPinsListDetailScreen
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URLDecoder
@@ -93,6 +91,7 @@ class MainActivity : ComponentActivity() {
         repository = TravelPinsRepository(applicationContext)
         createWebView()
         EnrichmentManager.attach(this)
+        EnrichmentManager.start(applicationContext, repository) // <-- AGGIUNTO: Avvia l'osservazione della coda
         showAppShell(NavTab.HOME)
         handleIntent(intent)
         observeData()
@@ -458,32 +457,20 @@ class MainActivity : ComponentActivity() {
             repository = repository, scope = lifecycleScope, getCurrentSourceListId = { currentListId }, getCurrentSourceListName = { currentListName },
             onImportFinished = { savedCount ->
                 runOnUiThread { 
-                    updateImportStatus("Importazione completata.\n$savedCount luoghi salvati.\nArricchimento prioritario in corso...") 
+                    updateImportStatus("Importazione completata.\n$savedCount luoghi salvati.\nAvvio arricchimento prioritario...") 
                 }
                 lifecycleScope.launch {
                     val listId = currentListId
-                    val first10Places = repository.getPlacesByListId(listId)
-                        .take(10)
-                        .map { it.id }
-
-                    if (first10Places.isNotEmpty()) {
-                        EnrichmentManager.prioritize(first10Places)
+                    if (listId != null) {
+                        val first10Places = repository.getPlacesByListId(listId)
+                            .take(10)
+                            .map { it.id }
                         
-                        var waited = 0L
-                        val step = 500L
-                        while (waited < 8000L) {
-                            val places = repository.getPlacesByListId(listId)
-                            val enrichedCount = first10Places.count { id -> 
-                                places.firstOrNull { it.id == id }?.detailsFetchedAt != null 
-                            }
-                            if (enrichedCount == first10Places.size) {
-                                break
-                            }
-                            delay(step)
-                            waited += step
+                        if (first10Places.isNotEmpty()) {
+                            EnrichmentManager.prioritize(first10Places)
                         }
                     }
-
+                    
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@MainActivity, "$savedCount luoghi importati", Toast.LENGTH_SHORT).show()
                         webView.stopLoading()
