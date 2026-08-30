@@ -66,6 +66,27 @@ object EnrichmentManager {
         logCallback = callback
     }
 
+    // NUOVA FUNZIONE: Resetta lo stato per permettere import multipli
+    suspend fun reset() {
+        log("RESET: Pulizia stato per nuova importazione")
+        queueMutex.withLock {
+            queue.clear()
+            queued.clear()
+            inFlight.clear()
+            failed.clear()
+            attempts.clear()
+        }
+        
+        // Resetta i worker
+        workers.forEach { worker ->
+            worker.currentPlaceId = null
+            worker.currentDeferred?.cancel()
+            worker.currentDeferred = null
+            worker.consentAttempted = false
+        }
+        log("RESET: Completato")
+    }
+
     fun start(context: Context, repository: TravelPinsRepository) {
         if (started) return
         started = true
@@ -174,7 +195,6 @@ object EnrichmentManager {
             webView.addJavascriptInterface(bridge, TravelPinsJsBridge.BRIDGE_NAME)
 
             webView.webViewClient = object : WebViewClient() {
-                // CAMBIO CRUCIALE: onPageStarted invece di onPageFinished
                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
                     log("[W${worker.index}] Pagina start: ${url.take(80)}")
