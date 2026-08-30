@@ -62,7 +62,7 @@ object EnrichmentManager {
         started = true
         this.repository = repository
 
-        log("Start enrichment manager con $WORKER_COUNT worker")
+        log("START: Avvio osservazione luoghi")
 
         scope.launch {
             repository.places.collect { places ->
@@ -90,7 +90,7 @@ object EnrichmentManager {
                 }
 
                 if (added > 0) {
-                    log("Aggiunti $added luoghi in coda. Totale coda: ${queue.size}")
+                    log("COLLECT: Aggiunti $added luoghi in coda. Totale: ${queue.size}")
                 }
 
                 ensureWorkerLoops()
@@ -99,45 +99,51 @@ object EnrichmentManager {
     }
 
     fun prioritize(placeIds: List<Long>) {
-        val repo = repository ?: return
-        scope.launch {
-            val places = placeIds.mapNotNull { id -> repo.getPlaceById(id) }
-            val pendingIds = places.filter { it.detailsFetchedAt == null }.map { it.id }.toSet()
-            
-            log("PRIORITÀ: Richiesto per ${placeIds.size} luoghi. Trovati ${places.size} nel DB. Da arricchire: ${pendingIds.size}")
+        log("PRIORITÀ: Richiesta per ${placeIds.size} luoghi")
 
-            if (pendingIds.isEmpty()) {
-                log("PRIORITÀ: Nessun luogo da processare (già arricchiti o non trovati)")
-                return@launch
-            }
-
-            val iterator = queue.iterator()
-            while (iterator.hasNext()) {
-                val id = iterator.next()
-                if (id in pendingIds) {
-                    iterator.remove()
-                    queued.remove(id)
-                }
-            }
-
-            pendingIds.reversed().forEach { id ->
-                failed.remove(id)
-                attempts.remove(id)
-                
-                if (id !in inFlight && queued.add(id)) {
-                    queue.addFirst(id)
-                }
-            }
-
-            log("PRIORITÀ: ${pendingIds.size} luoghi messi in cima alla coda. Totale coda: ${queue.size}")
+        if (placeIds.isEmpty()) {
+            log("PRIORITÀ: Lista vuota")
+            return
         }
+
+        val iterator = queue.iterator()
+        var removedCount = 0
+        while (iterator.hasNext()) {
+            val id = iterator.next()
+            if (id in placeIds) {
+                iterator.remove()
+                queued.remove(id)
+                removedCount++
+            }
+        }
+
+        if (removedCount > 0) {
+            log("PRIORITÀ: Rimossi $removedCount luoghi dalla coda esistente")
+        }
+
+        var addedCount = 0
+        placeIds.reversed().forEach { id ->
+            failed.remove(id)
+            attempts.remove(id)
+            inFlight.remove(id)
+            
+            if (queued.add(id)) {
+                queue.addFirst(id)
+                addedCount++
+            }
+        }
+
+        log("PRIORITÀ: Aggiunti $addedCount luoghi in cima alla coda. Totale coda: ${queue.size}")
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     fun attach(activity: Activity) {
-        if (workers.isNotEmpty()) return
+        if (workers.isNotEmpty()) {
+            log("ATTACH: Worker già presenti (${workers.size})")
+            return
+        }
 
-        log("Attach di $WORKER_COUNT WebView invisibili")
+        log("ATTACH: Creazione $WORKER_COUNT WebView")
 
         val repo = repository ?: TravelPinsRepository(activity.applicationContext)
         repository = repo
@@ -164,12 +170,12 @@ object EnrichmentManager {
                 getEnrichmentPlaceId = { worker.currentPlaceId },
 
                 onDetailsFinished = { _, photos, reviews ->
-                    log("[W${worker.index}] dettagli salvati: foto=$photos recensioni=$reviews")
+                    log("[W${worker.index}] Dettagli salvati: foto=$photos recensioni=$reviews")
                     worker.currentDeferred?.complete(true)
                 },
 
                 onDetailsError = {
-                    log("[W${worker.index}] errore dettagli")
+                    log("[W${worker.index}] Errore dettagli")
                     worker.currentDeferred?.complete(false)
                 }
             )
@@ -227,13 +233,20 @@ object EnrichmentManager {
         }
 
         ensureWorkerLoops()
+        log("ATTACH: Completato. Worker: ${workers.size}")
     }
 
     private fun ensureWorkerLoops() {
-        if (loopsStarted) return
-        if (workers.isEmpty()) return
+        if (loopsStarted) {
+            return
+        }
+        if (workers.isEmpty()) {
+            log("WORKER_LOOPS: Nessun worker, rimando")
+            return
+        }
 
         loopsStarted = true
+        log("WORKER_LOOPS: Avvio ${workers.size} loop")
 
         workers.forEach { worker ->
             scope.launch {
@@ -243,14 +256,18 @@ object EnrichmentManager {
     }
 
     private suspend fun workerLoop(worker: Worker) {
+        log("[W${worker.index}] Loop avviato, attendo WebView...")
+        
         val webView = withTimeoutOrNull(15_000L) {
             worker.attached.await()
         }
 
         if (webView == null) {
-            log("[W${worker.index}] WebView non disponibile")
+            log("[W${worker.index}] WebView non disponibile dopo 15s")
             return
         }
+
+        log("[W${worker.index}] WebView pronto, inizio polling coda")
 
         while (true) {
             val placeId = queue.firstOrNull()
@@ -265,13 +282,20 @@ object EnrichmentManager {
 
             val repo = repository
             if (repo == null) {
+                log("[W${worker.index}] Repository null, aspetto 1s")
                 delay(1_000L)
                 continue
             }
 
             val place = repo.getPlaceById(placeId)
 
-            if (place == null || place.detailsFetchedAt != null) {
+            if (place == null) {
+                log("[W${worker.index}] Luogo $placeId non trovato nel DB")
+                continue
+            }
+
+            if (place.detailsFetchedAt != null) {
+                log("[W${worker.index}] Luogo ${place.name} già arricchito, skip")
                 continue
             }
 
@@ -285,7 +309,7 @@ object EnrichmentManager {
                 longitude = place.longitude
             )
 
-            log("[W${worker.index}] start: ${place.name}")
+            log("[W${worker.index}] Start: ${place.name}")
 
             withContext(Dispatchers.Main) {
                 webView.loadUrl(url)
@@ -309,11 +333,11 @@ object EnrichmentManager {
                     if (queued.add(placeId)) {
                         queue.addLast(placeId)
                     }
-                    log("[W${worker.index}] retry ${nextAttempt + 1}/$MAX_ATTEMPTS: ${place.name}")
+                    log("[W${worker.index}] Retry ${nextAttempt + 1}/$MAX_ATTEMPTS: ${place.name}")
                 } else {
                     attempts.remove(placeId)
                     failed.add(placeId)
-                    log("[W${worker.index}] skip dopo $MAX_ATTEMPTS tentativi: ${place.name}")
+                    log("[W${worker.index}] Skip dopo $MAX_ATTEMPTS tentativi: ${place.name}")
                 }
 
                 delay(FAIL_DELAY_MS)
