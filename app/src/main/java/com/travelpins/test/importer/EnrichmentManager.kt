@@ -104,8 +104,10 @@ object EnrichmentManager {
             val places = placeIds.mapNotNull { id -> repo.getPlaceById(id) }
             val pendingIds = places.filter { it.detailsFetchedAt == null }.map { it.id }.toSet()
             
+            log("PRIORITÀ: Richiesto per ${placeIds.size} luoghi. Trovati ${places.size} nel DB. Da arricchire: ${pendingIds.size}")
+
             if (pendingIds.isEmpty()) {
-                log("Nessun luogo da prioritizzare")
+                log("PRIORITÀ: Nessun luogo da processare (già arricchiti o non trovati)")
                 return@launch
             }
 
@@ -127,7 +129,7 @@ object EnrichmentManager {
                 }
             }
 
-            log("Prioritizzati ${pendingIds.size} luoghi. Totale coda: ${queue.size}")
+            log("PRIORITÀ: ${pendingIds.size} luoghi messi in cima alla coda. Totale coda: ${queue.size}")
         }
     }
 
