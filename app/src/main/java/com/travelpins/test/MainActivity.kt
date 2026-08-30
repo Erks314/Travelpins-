@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
         repository = TravelPinsRepository(applicationContext)
         createWebView()
         EnrichmentManager.attach(this)
-        EnrichmentManager.start(applicationContext, repository) // <-- CRUCIALE: avvia l'osservazione della coda
+        EnrichmentManager.start(applicationContext, repository)
         showAppShell(NavTab.HOME)
         handleIntent(intent)
         observeData()
@@ -471,7 +471,7 @@ class MainActivity : ComponentActivity() {
                         
                         var waited = 0L
                         val step = 500L
-                        while (waited < 8000L) {
+                        while (waited < 15000L) {
                             val places = repository.getPlacesByListId(listId)
                             val enrichedCount = first10Places.count { id -> 
                                 places.firstOrNull { it.id == id }?.detailsFetchedAt != null 
@@ -479,7 +479,7 @@ class MainActivity : ComponentActivity() {
                             runOnUiThread { 
                                 updateImportStatus("Importazione completata.\n$savedCount luoghi salvati.\nArricchiti $enrichedCount/${first10Places.size} luoghi prioritari...") 
                             }
-                            if (enrichedCount == first10Places.size) {
+                            if (enrichedCount >= 3) {
                                 break
                             }
                             delay(step)
