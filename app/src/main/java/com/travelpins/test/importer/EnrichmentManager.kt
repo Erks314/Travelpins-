@@ -98,6 +98,39 @@ object EnrichmentManager {
         }
     }
 
+    fun prioritize(placeIds: List<Long>) {
+        val repo = repository ?: return
+        scope.launch {
+            val places = placeIds.mapNotNull { id -> repo.getPlaceById(id) }
+            val pendingIds = places.filter { it.detailsFetchedAt == null }.map { it.id }.toSet()
+            
+            if (pendingIds.isEmpty()) {
+                log("Nessun luogo da prioritizzare")
+                return@launch
+            }
+
+            val iterator = queue.iterator()
+            while (iterator.hasNext()) {
+                val id = iterator.next()
+                if (id in pendingIds) {
+                    iterator.remove()
+                    queued.remove(id)
+                }
+            }
+
+            pendingIds.reversed().forEach { id ->
+                failed.remove(id)
+                attempts.remove(id)
+                
+                if (id !in inFlight && queued.add(id)) {
+                    queue.addFirst(id)
+                }
+            }
+
+            log("Prioritizzati ${pendingIds.size} luoghi. Totale coda: ${queue.size}")
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     fun attach(activity: Activity) {
         if (workers.isNotEmpty()) return
