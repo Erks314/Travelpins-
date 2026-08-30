@@ -15,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URLDecoder
@@ -27,9 +29,9 @@ object EnrichmentManager {
 
     private const val WORKER_COUNT = 3
     private const val MAX_ATTEMPTS = 2
-    private const val PLACE_TIMEOUT_MS = 12_000L
-    private const val SUCCESS_DELAY_MS = 300L
-    private const val FAIL_DELAY_MS = 1_000L
+    private const val PLACE_TIMEOUT_MS = 15_000L // Aumentato a 15s per dare tempo a Google Maps
+    private const val SUCCESS_DELAY_MS = 200L
+    private const val FAIL_DELAY_MS = 500L
 
     private class Worker(val index: Int) {
         var webView: WebView? = null
@@ -46,6 +48,8 @@ object EnrichmentManager {
     private val scope = MainScope()
     private val workers = mutableListOf<Worker>()
 
+    // Mutex per evitare che Room e prioritize si pestino i piedi
+    private val queueMutex = Mutex() 
     private val queue = ArrayDeque<Long>()
     private val queued = mutableSetOf<Long>()
     private val inFlight = mutableSetOf<Long>()
@@ -58,10 +62,8 @@ object EnrichmentManager {
 
     fun start(context: Context, repository: TravelPinsRepository) {
         if (started) return
-
         started = true
         this.repository = repository
-
         log("START: Avvio osservazione luoghi")
 
         scope.launch {
@@ -72,85 +74,67 @@ object EnrichmentManager {
                     .toSet()
 
                 var added = 0
-
-                for (id in pendingIds) {
-                    if (id !in failed && id !in inFlight && queued.add(id)) {
-                        queue.addLast(id)
-                        added++
+                
+                queueMutex.withLock {
+                    for (id in pendingIds) {
+                        if (id !in failed && id !in inFlight && queued.add(id)) {
+                            queue.addLast(id)
+                            added++
+                        }
+                    }
+                    val iterator = queue.iterator()
+                    while (iterator.hasNext()) {
+                        val id = iterator.next()
+                        if (id !in pendingIds && id !in inFlight) {
+                            iterator.remove()
+                            queued.remove(id)
+                        }
                     }
                 }
-
-                val iterator = queue.iterator()
-                while (iterator.hasNext()) {
-                    val id = iterator.next()
-                    if (id !in pendingIds && id !in inFlight) {
-                        iterator.remove()
-                        queued.remove(id)
-                    }
-                }
-
-                if (added > 0) {
-                    log("COLLECT: Aggiunti $added luoghi in coda. Totale: ${queue.size}")
-                }
-
+                if (added > 0) log("COLLECT: Aggiunti $added luoghi in coda. Totale: ${queue.size}")
                 ensureWorkerLoops()
             }
         }
     }
 
-    fun prioritize(placeIds: List<Long>) {
+    // Diventa suspend per poter usare withLock
+    suspend fun prioritize(placeIds: List<Long>) {
+        if (placeIds.isEmpty()) return
         log("PRIORITÀ: Richiesta per ${placeIds.size} luoghi")
 
-        if (placeIds.isEmpty()) {
-            log("PRIORITÀ: Lista vuota")
-            return
-        }
-
-        val iterator = queue.iterator()
-        var removedCount = 0
-        while (iterator.hasNext()) {
-            val id = iterator.next()
-            if (id in placeIds) {
-                iterator.remove()
-                queued.remove(id)
-                removedCount++
+        queueMutex.withLock {
+            // 1. Rimuovi eventuali duplicati dalla coda esistente
+            val iterator = queue.iterator()
+            while (iterator.hasNext()) {
+                val id = iterator.next()
+                if (id in placeIds) {
+                    iterator.remove()
+                    queued.remove(id)
+                }
             }
-        }
 
-        if (removedCount > 0) {
-            log("PRIORITÀ: Rimossi $removedCount luoghi dalla coda esistente")
-        }
-
-        var addedCount = 0
-        placeIds.reversed().forEach { id ->
-            failed.remove(id)
-            attempts.remove(id)
-            inFlight.remove(id)
-            
-            if (queued.add(id)) {
+            // 2. Inserisci in cima alla coda forzatamente
+            placeIds.reversed().forEach { id ->
+                failed.remove(id)
+                attempts.remove(id)
+                inFlight.remove(id)
+                queued.remove(id) // Rimuovi dal set per poterlo ri-aggiungere
+                queued.add(id)
                 queue.addFirst(id)
-                addedCount++
             }
+            log("PRIORITÀ: ${placeIds.size} luoghi messi in cima alla coda. Totale coda: ${queue.size}")
         }
-
-        log("PRIORITÀ: Aggiunti $addedCount luoghi in cima alla coda. Totale coda: ${queue.size}")
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     fun attach(activity: Activity) {
-        if (workers.isNotEmpty()) {
-            log("ATTACH: Worker già presenti (${workers.size})")
-            return
-        }
-
+        if (workers.isNotEmpty()) return
         log("ATTACH: Creazione $WORKER_COUNT WebView")
-
         val repo = repository ?: TravelPinsRepository(activity.applicationContext)
         repository = repo
 
         repeat(WORKER_COUNT) { index ->
             val worker = Worker(index)
-
             val webView = WebView(activity).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
@@ -159,21 +143,14 @@ object EnrichmentManager {
             }
 
             val bridge = TravelPinsJsBridge(
-                repository = repo,
-                scope = scope,
-                getCurrentSourceListId = { null },
-                getCurrentSourceListName = { null },
-                onImportFinished = { },
-                onImportError = { },
-                onLogMessage = { },
-
+                repository = repo, scope = scope,
+                getCurrentSourceListId = { null }, getCurrentSourceListName = { null },
+                onImportFinished = { }, onImportError = { }, onLogMessage = { },
                 getEnrichmentPlaceId = { worker.currentPlaceId },
-
                 onDetailsFinished = { _, photos, reviews ->
                     log("[W${worker.index}] Dettagli salvati: foto=$photos recensioni=$reviews")
                     worker.currentDeferred?.complete(true)
                 },
-
                 onDetailsError = {
                     log("[W${worker.index}] Errore dettagli")
                     worker.currentDeferred?.complete(false)
@@ -184,142 +161,68 @@ object EnrichmentManager {
             webView.addJavascriptInterface(bridge, TravelPinsJsBridge.BRIDGE_NAME)
 
             webView.webViewClient = object : WebViewClient() {
-
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
-
-                    view.evaluateJavascript(
-                        GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT,
-                        null
-                    )
-
+                    view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT, null)
                     if (url.contains("consent.google.com") && !worker.consentAttempted) {
                         worker.consentAttempted = true
                         view.postDelayed({
-                            view.evaluateJavascript(
-                                GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT,
-                                null
-                            )
+                            view.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT, null)
                         }, 700)
                     }
                 }
-
-                override fun shouldOverrideUrlLoading(
-                    view: WebView,
-                    request: WebResourceRequest
-                ): Boolean {
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val url = request.url.toString()
-
                     if (url.startsWith("intent://")) {
-                        extractFallbackUrl(url)?.let { fallback ->
-                            view.loadUrl(fallback)
-                        }
+                        extractFallbackUrl(url)?.let { fallback -> view.loadUrl(fallback) }
                         return true
                     }
-
                     return false
                 }
             }
 
             val parent = activity.window.decorView as? ViewGroup
-            parent?.addView(
-                webView,
-                FrameLayout.LayoutParams(1, 1)
-            )
-
+            parent?.addView(webView, FrameLayout.LayoutParams(1, 1))
             worker.webView = webView
             worker.attached.complete(webView)
             workers.add(worker)
         }
-
         ensureWorkerLoops()
-        log("ATTACH: Completato. Worker: ${workers.size}")
     }
 
     private fun ensureWorkerLoops() {
-        if (loopsStarted) {
-            return
-        }
-        if (workers.isEmpty()) {
-            log("WORKER_LOOPS: Nessun worker, rimando")
-            return
-        }
-
+        if (loopsStarted || workers.isEmpty()) return
         loopsStarted = true
-        log("WORKER_LOOPS: Avvio ${workers.size} loop")
-
-        workers.forEach { worker ->
-            scope.launch {
-                workerLoop(worker)
-            }
-        }
+        workers.forEach { worker -> scope.launch { workerLoop(worker) } }
     }
 
     private suspend fun workerLoop(worker: Worker) {
-        log("[W${worker.index}] Loop avviato, attendo WebView...")
-        
-        val webView = withTimeoutOrNull(15_000L) {
-            worker.attached.await()
-        }
-
-        if (webView == null) {
-            log("[W${worker.index}] WebView non disponibile dopo 15s")
-            return
-        }
-
-        log("[W${worker.index}] WebView pronto, inizio polling coda")
-
+        val webView = withTimeoutOrNull(15_000L) { worker.attached.await() } ?: return
         while (true) {
-            val placeId = queue.firstOrNull()
-
+            val placeId = queueMutex.withLock { queue.firstOrNull() }
             if (placeId == null) {
-                delay(700L)
+                delay(100L) // Ridotto da 700ms a 100ms per reazione immediata
                 continue
             }
-
-            queue.removeFirst()
-            queued.remove(placeId)
-
-            val repo = repository
-            if (repo == null) {
-                log("[W${worker.index}] Repository null, aspetto 1s")
-                delay(1_000L)
-                continue
+            queueMutex.withLock {
+                queue.removeFirst()
+                queued.remove(placeId)
             }
 
+            val repo = repository ?: continue
             val place = repo.getPlaceById(placeId)
+            if (place == null || place.detailsFetchedAt != null) continue
 
-            if (place == null) {
-                log("[W${worker.index}] Luogo $placeId non trovato nel DB")
-                continue
-            }
-
-            if (place.detailsFetchedAt != null) {
-                log("[W${worker.index}] Luogo ${place.name} già arricchito, skip")
-                continue
-            }
-
-            inFlight.add(placeId)
-
+            queueMutex.withLock { inFlight.add(placeId) }
             worker.currentPlaceId = placeId
             worker.currentDeferred = CompletableDeferred()
 
-            val url = place.mapsUrl ?: buildFallbackMapsUrl(
-                latitude = place.latitude,
-                longitude = place.longitude
-            )
-
+            val url = place.mapsUrl ?: buildFallbackMapsUrl(place.latitude, place.longitude)
             log("[W${worker.index}] Start: ${place.name}")
+            withContext(Dispatchers.Main) { webView.loadUrl(url) }
 
-            withContext(Dispatchers.Main) {
-                webView.loadUrl(url)
-            }
-
-            val ok = withTimeoutOrNull(PLACE_TIMEOUT_MS) {
-                worker.currentDeferred?.await()
-            } ?: false
-
-            inFlight.remove(placeId)
+            val ok = withTimeoutOrNull(PLACE_TIMEOUT_MS) { worker.currentDeferred?.await() } ?: false
+            queueMutex.withLock { inFlight.remove(placeId) }
 
             if (ok) {
                 attempts.remove(placeId)
@@ -328,47 +231,35 @@ object EnrichmentManager {
             } else {
                 val nextAttempt = (attempts[placeId] ?: 0) + 1
                 attempts[placeId] = nextAttempt
-
                 if (nextAttempt < MAX_ATTEMPTS) {
-                    if (queued.add(placeId)) {
-                        queue.addLast(placeId)
+                    queueMutex.withLock {
+                        if (queued.add(placeId)) queue.addLast(placeId)
                     }
                     log("[W${worker.index}] Retry ${nextAttempt + 1}/$MAX_ATTEMPTS: ${place.name}")
                 } else {
                     attempts.remove(placeId)
-                    failed.add(placeId)
+                    queueMutex.withLock { failed.add(placeId) }
                     log("[W${worker.index}] Skip dopo $MAX_ATTEMPTS tentativi: ${place.name}")
                 }
-
                 delay(FAIL_DELAY_MS)
             }
-
             worker.currentPlaceId = null
             worker.currentDeferred = null
         }
     }
 
-    private fun buildFallbackMapsUrl(latitude: Double, longitude: Double): String {
-        return "https://www.google.com/maps/search/?api=1&query=$latitude,$longitude"
-    }
+    private fun buildFallbackMapsUrl(latitude: Double, longitude: Double): String =
+        "https://www.google.com/maps/search/?api=1&query=$latitude,$longitude"
 
     private fun extractFallbackUrl(intentUrl: String): String? {
         return try {
             val marker = "S.browser_fallback_url="
             val start = intentUrl.indexOf(marker)
-
             if (start == -1) return null
-
             var value = intentUrl.substring(start + marker.length)
-
             val end = value.indexOf("#Intent")
-            if (end != -1) {
-                value = value.substring(0, end)
-            }
-
+            if (end != -1) value = value.substring(0, end)
             URLDecoder.decode(value, "UTF-8")
-        } catch (_: Exception) {
-            null
-        }
+        } catch (_: Exception) { null }
     }
 }
