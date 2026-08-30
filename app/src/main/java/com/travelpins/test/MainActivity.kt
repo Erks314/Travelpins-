@@ -497,6 +497,9 @@ class MainActivity : ComponentActivity() {
             onImportError = { error -> runOnUiThread { updateImportStatus("Si è verificato un errore.\n\n${error.message}"); Toast.makeText(this, "Errore durante l'importazione", Toast.LENGTH_LONG).show() } },
             onLogMessage = { message -> if (::outputView.isInitialized) appendOutput(message) }
         )
+        
+        EnrichmentManager.setLogCallback { message -> if (::outputView.isInitialized) appendOutput(message) }
+        
         webView.addJavascriptInterface(bridge, TravelPinsJsBridge.NAME); webView.addJavascriptInterface(bridge, TravelPinsJsBridge.BRIDGE_NAME)
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
