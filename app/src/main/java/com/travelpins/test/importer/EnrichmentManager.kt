@@ -174,12 +174,18 @@ object EnrichmentManager {
             webView.addJavascriptInterface(bridge, TravelPinsJsBridge.BRIDGE_NAME)
 
             webView.webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView, url: String) {
-                    super.onPageFinished(view, url)
-                    log("[W${worker.index}] Pagina caricata: $url")
+                // CAMBIO CRUCIALE: onPageStarted invece di onPageFinished
+                override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                    super.onPageStarted(view, url, favicon)
+                    log("[W${worker.index}] Pagina start: ${url.take(80)}")
                     view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT) { result ->
                         log("[W${worker.index}] Network hook installato: $result")
                     }
+                }
+                
+                override fun onPageFinished(view: WebView, url: String) {
+                    super.onPageFinished(view, url)
+                    log("[W${worker.index}] Pagina finish: ${url.take(80)}")
                     if (url.contains("consent.google.com") && !worker.consentAttempted) {
                         worker.consentAttempted = true
                         view.postDelayed({
@@ -189,12 +195,12 @@ object EnrichmentManager {
                         }, 700)
                     }
                 }
+                
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val url = request.url.toString()
-                    log("[W${worker.index}] Redirect: $url")
                     if (url.startsWith("intent://")) {
                         extractFallbackUrl(url)?.let { fallback ->
-                            log("[W${worker.index}] Intent fallback: $fallback")
+                            log("[W${worker.index}] Intent fallback: ${fallback.take(80)}")
                             view.loadUrl(fallback)
                         }
                         return true
@@ -254,7 +260,7 @@ object EnrichmentManager {
             worker.currentDeferred = CompletableDeferred()
 
             val url = place.mapsUrl ?: buildFallbackMapsUrl(place.latitude, place.longitude)
-            log("[W${worker.index}] Start: ${place.name} - URL: ${url.take(80)}...")
+            log("[W${worker.index}] Start: ${place.name}")
             withContext(Dispatchers.Main) { webView.loadUrl(url) }
 
             val ok = withTimeoutOrNull(PLACE_TIMEOUT_MS) { worker.currentDeferred?.await() } ?: false
