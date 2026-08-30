@@ -29,7 +29,7 @@ object EnrichmentManager {
 
     private const val WORKER_COUNT = 3
     private const val MAX_ATTEMPTS = 2
-    private const val PLACE_TIMEOUT_MS = 15_000L // Aumentato a 15s per dare tempo a Google Maps
+    private const val PLACE_TIMEOUT_MS = 15_000L
     private const val SUCCESS_DELAY_MS = 200L
     private const val FAIL_DELAY_MS = 500L
 
@@ -48,16 +48,23 @@ object EnrichmentManager {
     private val scope = MainScope()
     private val workers = mutableListOf<Worker>()
 
-    // Mutex per evitare che Room e prioritize si pestino i piedi
-    private val queueMutex = Mutex() 
+    private val queueMutex = Mutex()
     private val queue = ArrayDeque<Long>()
     private val queued = mutableSetOf<Long>()
     private val inFlight = mutableSetOf<Long>()
     private val failed = mutableSetOf<Long>()
     private val attempts = mutableMapOf<Long, Int>()
 
+    // Callback per i log visibile nell'app
+    private var logCallback: ((String) -> Unit)? = null
+
     private fun log(message: String) {
         println("[EnrichmentManager] $message")
+        logCallback?.invoke("[EM] $message") // Invia anche all'app
+    }
+
+    fun setLogCallback(callback: (String) -> Unit) {
+        logCallback = callback
     }
 
     fun start(context: Context, repository: TravelPinsRepository) {
@@ -97,28 +104,31 @@ object EnrichmentManager {
         }
     }
 
-    // Diventa suspend per poter usare withLock
     suspend fun prioritize(placeIds: List<Long>) {
-        if (placeIds.isEmpty()) return
+        if (placeIds.isEmpty()) {
+            log("PRIORITÀ: Lista vuota")
+            return
+        }
         log("PRIORITÀ: Richiesta per ${placeIds.size} luoghi")
 
         queueMutex.withLock {
-            // 1. Rimuovi eventuali duplicati dalla coda esistente
             val iterator = queue.iterator()
+            var removed = 0
             while (iterator.hasNext()) {
                 val id = iterator.next()
                 if (id in placeIds) {
                     iterator.remove()
                     queued.remove(id)
+                    removed++
                 }
             }
+            if (removed > 0) log("PRIORITÀ: Rimossi $removed luoghi dalla coda esistente")
 
-            // 2. Inserisci in cima alla coda forzatamente
             placeIds.reversed().forEach { id ->
                 failed.remove(id)
                 attempts.remove(id)
                 inFlight.remove(id)
-                queued.remove(id) // Rimuovi dal set per poterlo ri-aggiungere
+                queued.remove(id)
                 queued.add(id)
                 queue.addFirst(id)
             }
@@ -128,7 +138,10 @@ object EnrichmentManager {
 
     @SuppressLint("SetJavaScriptEnabled")
     fun attach(activity: Activity) {
-        if (workers.isNotEmpty()) return
+        if (workers.isNotEmpty()) {
+            log("ATTACH: Worker già presenti (${workers.size})")
+            return
+        }
         log("ATTACH: Creazione $WORKER_COUNT WebView")
         val repo = repository ?: TravelPinsRepository(activity.applicationContext)
         repository = repo
@@ -193,15 +206,22 @@ object EnrichmentManager {
     private fun ensureWorkerLoops() {
         if (loopsStarted || workers.isEmpty()) return
         loopsStarted = true
+        log("WORKER_LOOPS: Avvio ${workers.size} loop")
         workers.forEach { worker -> scope.launch { workerLoop(worker) } }
     }
 
     private suspend fun workerLoop(worker: Worker) {
-        val webView = withTimeoutOrNull(15_000L) { worker.attached.await() } ?: return
+        log("[W${worker.index}] Loop avviato, attendo WebView...")
+        val webView = withTimeoutOrNull(15_000L) { worker.attached.await() } ?: run {
+            log("[W${worker.index}] WebView non disponibile dopo 15s")
+            return
+        }
+        log("[W${worker.index}] WebView pronto, inizio polling coda")
+
         while (true) {
             val placeId = queueMutex.withLock { queue.firstOrNull() }
             if (placeId == null) {
-                delay(100L) // Ridotto da 700ms a 100ms per reazione immediata
+                delay(100L)
                 continue
             }
             queueMutex.withLock {
@@ -211,7 +231,14 @@ object EnrichmentManager {
 
             val repo = repository ?: continue
             val place = repo.getPlaceById(placeId)
-            if (place == null || place.detailsFetchedAt != null) continue
+            if (place == null) {
+                log("[W${worker.index}] Luogo $placeId non trovato nel DB")
+                continue
+            }
+            if (place.detailsFetchedAt != null) {
+                log("[W${worker.index}] Luogo ${place.name} già arricchito, skip")
+                continue
+            }
 
             queueMutex.withLock { inFlight.add(placeId) }
             worker.currentPlaceId = placeId
