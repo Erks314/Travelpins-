@@ -63,7 +63,6 @@ import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Locale
 
