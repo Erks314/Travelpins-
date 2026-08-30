@@ -25,6 +25,9 @@ interface PlaceDao {
     @Query("SELECT * FROM places WHERE id = :placeId")
     suspend fun getPlaceById(placeId: Long): Place?
 
+    @Query("SELECT * FROM places WHERE sourceListId = :listId ORDER BY importedAt ASC")
+    suspend fun getPlacesByListId(listId: String?): List<Place>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(places: List<Place>): List<Long>
 
