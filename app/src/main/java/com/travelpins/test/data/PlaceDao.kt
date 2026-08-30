@@ -63,4 +63,4 @@ interface PlaceDao {
 
     @Query("UPDATE places SET note = :note WHERE id = :placeId")
     suspend fun updateNote(placeId: Long, note: String?)
-},
+}
