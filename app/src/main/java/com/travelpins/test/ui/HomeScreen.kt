@@ -56,7 +56,6 @@ import com.travelpins.test.R
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlin.math.abs
 
 private enum class HomeTab { HOME, ELENCHI, MAPPA, PROFILO }
@@ -337,9 +336,8 @@ private fun EmptyState(onImport: () -> Unit) {
             fontSize = 12.sp
         )
     }
-}
 
-@Composable
+    @Composable
 private fun ElenchiTabContent(
     repository: TravelPinsRepository,
     onOpenList: (String?, String?) -> Unit,
@@ -411,4 +409,5 @@ private fun PlaceholderTab(icon: String, title: String, message: String) {
         Spacer(Modifier.height(8.dp))
         Text(message, color = TPColors.TextSecondary, fontSize = 14.sp)
     }
+}
 }
