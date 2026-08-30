@@ -55,12 +55,11 @@ object EnrichmentManager {
     private val failed = mutableSetOf<Long>()
     private val attempts = mutableMapOf<Long, Int>()
 
-    // Callback per i log visibile nell'app
     private var logCallback: ((String) -> Unit)? = null
 
     private fun log(message: String) {
         println("[EnrichmentManager] $message")
-        logCallback?.invoke("[EM] $message") // Invia anche all'app
+        logCallback?.invoke("[EM] $message")
     }
 
     fun setLogCallback(callback: (String) -> Unit) {
@@ -158,7 +157,8 @@ object EnrichmentManager {
             val bridge = TravelPinsJsBridge(
                 repository = repo, scope = scope,
                 getCurrentSourceListId = { null }, getCurrentSourceListName = { null },
-                onImportFinished = { }, onImportError = { }, onLogMessage = { },
+                onImportFinished = { }, onImportError = { },
+                onLogMessage = { message -> log("[W${worker.index}] JS: $message") },
                 getEnrichmentPlaceId = { worker.currentPlaceId },
                 onDetailsFinished = { _, photos, reviews ->
                     log("[W${worker.index}] Dettagli salvati: foto=$photos recensioni=$reviews")
@@ -176,18 +176,27 @@ object EnrichmentManager {
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
-                    view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT, null)
+                    log("[W${worker.index}] Pagina caricata: $url")
+                    view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT) { result ->
+                        log("[W${worker.index}] Network hook installato: $result")
+                    }
                     if (url.contains("consent.google.com") && !worker.consentAttempted) {
                         worker.consentAttempted = true
                         view.postDelayed({
-                            view.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT, null)
+                            view.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT) { result ->
+                                log("[W${worker.index}] Consenso: $result")
+                            }
                         }, 700)
                     }
                 }
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val url = request.url.toString()
+                    log("[W${worker.index}] Redirect: $url")
                     if (url.startsWith("intent://")) {
-                        extractFallbackUrl(url)?.let { fallback -> view.loadUrl(fallback) }
+                        extractFallbackUrl(url)?.let { fallback ->
+                            log("[W${worker.index}] Intent fallback: $fallback")
+                            view.loadUrl(fallback)
+                        }
                         return true
                     }
                     return false
@@ -245,7 +254,7 @@ object EnrichmentManager {
             worker.currentDeferred = CompletableDeferred()
 
             val url = place.mapsUrl ?: buildFallbackMapsUrl(place.latitude, place.longitude)
-            log("[W${worker.index}] Start: ${place.name}")
+            log("[W${worker.index}] Start: ${place.name} - URL: ${url.take(80)}...")
             withContext(Dispatchers.Main) { webView.loadUrl(url) }
 
             val ok = withTimeoutOrNull(PLACE_TIMEOUT_MS) { worker.currentDeferred?.await() } ?: false
@@ -262,7 +271,7 @@ object EnrichmentManager {
                     queueMutex.withLock {
                         if (queued.add(placeId)) queue.addLast(placeId)
                     }
-                    log("[W${worker.index}] Retry ${nextAttempt + 1}/$MAX_ATTEMPTS: ${place.name}")
+                    log("[W${worker.index}] Timeout/Retry ${nextAttempt + 1}/$MAX_ATTEMPTS: ${place.name}")
                 } else {
                     attempts.remove(placeId)
                     queueMutex.withLock { failed.add(placeId) }
