@@ -46,7 +46,11 @@ import com.travelpins.test.scraper.GoogleMapsScraperScript
 import com.travelpins.test.ui.TravelPinsDarkTheme
 import com.travelpins.test.ui.TravelPinsHomeShell
 import com.travelpins.test.ui.TravelPinsListDetailScreen
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.net.URLDecoder
 
 class MainActivity : ComponentActivity() {
@@ -267,8 +271,6 @@ class MainActivity : ComponentActivity() {
         val button = Button(this).apply { this.text = text; textSize = 12f; setTextColor(if (selected) Color.WHITE else COLOR_TEXT_SECONDARY); background = roundedBackground(if (selected) COLOR_ACCENT else COLOR_SURFACE, 14f); setPadding(16, 0, 16, 0); setOnClickListener { selectedCategoryId = categoryId; refreshContent() } }
         container.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 44).apply { rightMargin = 8 })
     }
-// === FINE PARTE 1/2 - INCOLLA LA PARTE 2/2 SUBITO SOTTO QUESTA RIGA ===
-
 
     private fun refreshPlaces(content: View, scopedPlaces: List<Place>) {
         val container = content.findViewWithTag<LinearLayout>("places_container") ?: return
@@ -454,7 +456,41 @@ class MainActivity : ComponentActivity() {
         webView = WebView(this).apply { settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.userAgentString = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"; alpha = 0f }
         val bridge = TravelPinsJsBridge(
             repository = repository, scope = lifecycleScope, getCurrentSourceListId = { currentListId }, getCurrentSourceListName = { currentListName },
-            onImportFinished = { savedCount -> runOnUiThread { updateImportStatus("Importazione completata.\n$savedCount luoghi salvati."); Toast.makeText(this, "$savedCount luoghi importati", Toast.LENGTH_SHORT).show(); webView.stopLoading(); webView.postDelayed({ showAppShell(NavTab.HOME) }, 700) } },
+            onImportFinished = { savedCount ->
+                runOnUiThread { 
+                    updateImportStatus("Importazione completata.\n$savedCount luoghi salvati.\nArricchimento prioritario in corso...") 
+                }
+                lifecycleScope.launch {
+                    val listId = currentListId
+                    val first10Places = repository.getPlacesByListId(listId)
+                        .take(10)
+                        .map { it.id }
+
+                    if (first10Places.isNotEmpty()) {
+                        EnrichmentManager.prioritize(first10Places)
+                        
+                        var waited = 0L
+                        val step = 500L
+                        while (waited < 8000L) {
+                            val places = repository.getPlacesByListId(listId)
+                            val enrichedCount = first10Places.count { id -> 
+                                places.firstOrNull { it.id == id }?.detailsFetchedAt != null 
+                            }
+                            if (enrichedCount == first10Places.size) {
+                                break
+                            }
+                            delay(step)
+                            waited += step
+                        }
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "$savedCount luoghi importati", Toast.LENGTH_SHORT).show()
+                        webView.stopLoading()
+                        webView.postDelayed({ showAppShell(NavTab.HOME) }, 300)
+                    }
+                }
+            },
             onImportError = { error -> runOnUiThread { updateImportStatus("Si è verificato un errore.\n\n${error.message}"); Toast.makeText(this, "Errore durante l'importazione", Toast.LENGTH_LONG).show() } },
             onLogMessage = { message -> if (::outputView.isInitialized) appendOutput(message) }
         )
@@ -490,10 +526,15 @@ class MainActivity : ComponentActivity() {
 
     private fun handleGoogleIntent(intentUrl: String) {
         try {
-            val marker = "S.browser_fallback_url="; val start = intentUrl.indexOf(marker)
+            val marker = "S.browser_fallback_url=";
+            val start = intentUrl.indexOf(marker)
             if (start == -1) { updateImportStatus("Impossibile aprire la lista Google Maps."); appendOutput("FALLBACK URL NON TROVATO"); return }
-            var value = intentUrl.substring(start + marker.length); val end = value.indexOf("#Intent"); if (end != -1) value = value.substring(0, end)
-            val decoded = URLDecoder.decode(value, "UTF-8"); appendOutput("GOOGLE INTENT INTERCETTATO\nFALLBACK WEB:\n$decoded"); webView.loadUrl(decoded)
+            var value = intentUrl.substring(start + marker.length);
+            val end = value.indexOf("#Intent");
+            if (end != -1) value = value.substring(0, end)
+            val decoded = URLDecoder.decode(value, "UTF-8");
+            appendOutput("GOOGLE INTENT INTERCETTATO\nFALLBACK WEB:\n$decoded");
+            webView.loadUrl(decoded)
         } catch (e: Exception) { appendOutput("ERRORE PARSING INTENT:\n$e"); updateImportStatus("Errore durante l'apertura della lista.") }
     }
 
