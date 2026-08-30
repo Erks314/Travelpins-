@@ -458,6 +458,9 @@ class MainActivity : ComponentActivity() {
             repository = repository, scope = lifecycleScope, getCurrentSourceListId = { currentListId }, getCurrentSourceListName = { currentListName },
             onImportFinished = { savedCount ->
                 lifecycleScope.launch {
+                    // MODIFICA CHIAVE: Resetta lo stato prima della nuova importazione
+                    EnrichmentManager.reset()
+                    
                     val listId = currentListId
                     val first10Places = if (listId != null) {
                         repository.getPlacesByListId(listId).take(10).map { it.id }
