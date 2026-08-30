@@ -27,6 +27,9 @@ class TravelPinsRepository(context: Context) {
     suspend fun getPlaceById(placeId: Long): Place? =
         placeDao.getPlaceById(placeId)
 
+    suspend fun getPlacesByListId(listId: String?): List<Place> =
+        placeDao.getPlacesByListId(listId)
+
     fun observePhotosByPlace(placeId: Long): Flow<List<PlacePhoto>> =
         placePhotoDao.observeByPlace(placeId)
 
@@ -77,16 +80,8 @@ class TravelPinsRepository(context: Context) {
         placeDao.updateDetails(placeId, rating, reviewCount, description, websiteUrl, types, detailsFetchedAt)
     }
 
-    // ============================================================
-    // NOTE
-    // ============================================================
-
     suspend fun updateNote(placeId: Long, note: String?) =
         placeDao.updateNote(placeId, note)
-
-    // ============================================================
-    // COPERTINE
-    // ============================================================
 
     fun setListCover(listId: String?, url: String) {
         if (listId.isNullOrBlank()) return
