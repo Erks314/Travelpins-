@@ -55,6 +55,7 @@ import coil.compose.AsyncImage
 import com.travelpins.test.R
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlin.math.abs
 
@@ -103,19 +104,30 @@ private class CurvedBottomShape : Shape {
 @Composable
 private fun rememberCoverUrl(repository: TravelPinsRepository, placeIds: List<Long>, width: Int, manualUrl: String? = null): String? {
     var url by remember(placeIds, manualUrl) { mutableStateOf<String?>(null) }
+    
     LaunchedEffect(placeIds, manualUrl) {
         if (manualUrl != null) {
             url = manualUrl + "=w" + width + "-k-no"
             return@LaunchedEffect
         }
-        for (id in placeIds) {
-            val photos = repository.observePhotosByPlace(id).first()
-            if (photos.isNotEmpty()) {
-                url = photos.first().sizedUrl(width)
-                return@LaunchedEffect
-            }
+        
+        if (placeIds.isEmpty()) {
+            url = null
+            return@LaunchedEffect
         }
-        url = null
+        
+        val photoFlows = placeIds.map { id -> repository.observePhotosByPlace(id) }
+        
+        combine(photoFlows) { photoLists ->
+            for (photos in photoLists) {
+                if (photos.isNotEmpty()) {
+                    return@combine photos.first().sizedUrl(width)
+                }
+            }
+            null
+        }.collect { newUrl ->
+            url = newUrl
+        }
     }
     return url
 }
@@ -228,7 +240,6 @@ private fun HomeTabContent(
     }
 }
 
-// HERO FISSA: usa l'immagine home_hero.png (contiene già logo e tagline)
 @Composable
 private fun Hero() {
     Box(Modifier.fillMaxWidth().height(260.dp).clip(CurvedBottomShape())) {
