@@ -365,7 +365,7 @@ class MainActivity : ComponentActivity() {
         Color.parseColor("#6B7280"), Color.parseColor("#78716C")
     )
 
-    private val categoryIconPalette = listOf("📍", "🍴", "🏨", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "🍺", "🎭", "")
+    private val categoryIconPalette = listOf("📍", "", "🏨", "🏖️", "🏛️", "🌄", "🎯", "️", "☕", "🍺", "🎭", "")
 
     private fun showCreateCategoryDialog() {
         var selectedIcon = categoryIconPalette.first()
@@ -444,7 +444,11 @@ class MainActivity : ComponentActivity() {
         val info = TextView(this).apply { text = "Non chiudere TravelPins.\nL'importazione potrebbe richiedere alcuni secondi."; textSize = 14f; setTextColor(COLOR_TEXT_MUTED); gravity = Gravity.CENTER; setPadding(10, 0, 10, 30) }; root.addView(info)
         val cancelButton = Button(this).apply { text = "ANNULLA"; textSize = 13f; setTextColor(COLOR_TEXT_PRIMARY); background = roundedBackground(COLOR_SURFACE, 14f); setOnClickListener { webView.stopLoading(); showAppShell(NavTab.HOME) } }
         root.addView(cancelButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 52))
+
+        // Rimuovi il webView dal vecchio layout prima di riaggiungerlo (fix secondo import)
+        (webView.parent as? ViewGroup)?.removeView(webView)
         webView.alpha = 0f; root.addView(webView, LinearLayout.LayoutParams(1, 1))
+
         outputView = TextView(this).apply { text = "TRAVELPINS NETWORK MONITOR"; visibility = View.GONE }
         root.addView(outputView, LinearLayout.LayoutParams(1, 1)); setContentView(root)
     }
@@ -458,9 +462,8 @@ class MainActivity : ComponentActivity() {
             repository = repository, scope = lifecycleScope, getCurrentSourceListId = { currentListId }, getCurrentSourceListName = { currentListName },
             onImportFinished = { savedCount ->
                 lifecycleScope.launch {
-                    // MODIFICA CHIAVE: Resetta lo stato prima della nuova importazione
                     EnrichmentManager.reset()
-                    
+
                     val listId = currentListId
                     val first10Places = if (listId != null) {
                         repository.getPlacesByListId(listId).take(10).map { it.id }
@@ -471,16 +474,16 @@ class MainActivity : ComponentActivity() {
                     if (first10Places.isNotEmpty()) {
                         runOnUiThread { updateImportStatus("Importazione completata.\n$savedCount luoghi salvati.\nArricchimento prioritario in corso...") }
                         EnrichmentManager.prioritize(first10Places)
-                        
+
                         var waited = 0L
                         val step = 500L
                         while (waited < 15000L) {
                             val places = repository.getPlacesByListId(listId)
-                            val enrichedCount = first10Places.count { id -> 
-                                places.firstOrNull { it.id == id }?.detailsFetchedAt != null 
+                            val enrichedCount = first10Places.count { id ->
+                                places.firstOrNull { it.id == id }?.detailsFetchedAt != null
                             }
-                            runOnUiThread { 
-                                updateImportStatus("Importazione completata.\n$savedCount luoghi salvati.\nArricchiti $enrichedCount/${first10Places.size} luoghi prioritari...") 
+                            runOnUiThread {
+                                updateImportStatus("Importazione completata.\n$savedCount luoghi salvati.\nArricchiti $enrichedCount/${first10Places.size} luoghi prioritari...")
                             }
                             if (enrichedCount >= 3) {
                                 break
@@ -498,11 +501,11 @@ class MainActivity : ComponentActivity() {
                 }
             },
             onImportError = { error -> runOnUiThread { updateImportStatus("Si è verificato un errore.\n\n${error.message}"); Toast.makeText(this, "Errore durante l'importazione", Toast.LENGTH_LONG).show() } },
-            onLogMessage = { message -> if (::outputView.isInitialized) appendOutput(message) }
+            onLogMessage = { message -> appendOutput(message) }
         )
-        
-        EnrichmentManager.setLogCallback { message -> if (::outputView.isInitialized) appendOutput(message) }
-        
+
+        EnrichmentManager.setLogCallback { message -> appendOutput(message) }
+
         webView.addJavascriptInterface(bridge, TravelPinsJsBridge.NAME); webView.addJavascriptInterface(bridge, TravelPinsJsBridge.BRIDGE_NAME)
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
@@ -555,7 +558,14 @@ class MainActivity : ComponentActivity() {
         showImporter(); updateImportStatus("Apertura della lista Google Maps…"); appendOutput("LINK RICEVUTO\n$url"); webView.loadUrl(url)
     }
 
-    private fun appendOutput(section: String) { if (!::outputView.isInitialized) return; outputView.append("\n$section\n") }
+    // FIX CRASH: questa funzione viene chiamata anche dai thread JavaScript dei WebView.
+    // Ora è thread-safe: l'aggiornamento della TextView avviene sempre sul thread UI.
+    private fun appendOutput(section: String) {
+        runOnUiThread {
+            if (!::outputView.isInitialized) return@runOnUiThread
+            outputView.append("\n$section\n")
+        }
+    }
 
     private fun copyOutputToClipboard() { if (!::outputView.isInitialized) return; val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return; clipboard.setPrimaryClip(ClipData.newPlainText("TravelPins", outputView.text)); Toast.makeText(this, "Copiato!", Toast.LENGTH_SHORT).show() }
 
