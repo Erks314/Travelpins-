@@ -83,6 +83,7 @@ import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
+import kotlin.math.abs
 
 object TPColors {
     val Bg = Color(0xFF12121A)
@@ -116,6 +117,18 @@ fun PlacePhoto.sizedUrl(width: Int, height: Int? = null): String =
 
 fun formatRating(rating: Double): String = rating.toString().replace('.', ',')
 fun formatCount(count: Int): String = NumberFormat.getInstance(Locale.ITALY).format(count.toLong())
+
+// FIX: un voto Google valido è tra 1 e 5, con al massimo 2 decimali,
+// e non deve coincidere con le coordinate del luogo (i paesi/città
+// hanno il JSON diverso e il parser può leggere la longitudine come voto).
+fun isPlausibleRating(rating: Double?, lat: Double, lng: Double): Boolean {
+    if (rating == null) return false
+    if (rating < 1.0 || rating > 5.0) return false
+    if (abs(rating - lng) < 0.0001) return false
+    if (abs(rating - lat) < 0.0001) return false
+    if (rating.toString().substringAfter('.', "").length > 2) return false
+    return true
+}
 
 private enum class DetailScreen { Detail, Gallery, Reviews, Map, AllPhotos }
 
@@ -362,7 +375,6 @@ fun PlaceDetailScreen(
             }
 
             // Mostra l'indirizzo solo se contiene almeno una lettera o un numero.
-            // Questo nasconde gli indirizzi "spazzatura" (es. ✅✅✅✅) salvati dallo scraper.
             val cleanAddress = place.address?.takeIf { addr ->
                 addr.isNotBlank() && addr.any { c -> c.isLetterOrDigit() }
             }
@@ -370,7 +382,8 @@ fun PlaceDetailScreen(
                 Text("📍  $cleanAddress", color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
             }
 
-            if (place.rating != null) {
+            // FIX: mostra il rating solo se è un voto plausibile
+            if (isPlausibleRating(place.rating, place.latitude, place.longitude)) {
                 Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Star, contentDescription = null, tint = TPColors.Star, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
