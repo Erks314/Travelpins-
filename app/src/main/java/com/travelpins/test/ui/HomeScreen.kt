@@ -55,11 +55,9 @@ import coil.compose.AsyncImage
 import com.travelpins.test.R
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
-import kotlin.math.abs
 
 private enum class HomeTab { HOME, ELENCHI, MAPPA, PROFILO }
 
@@ -106,33 +104,24 @@ private class CurvedBottomShape : Shape {
 @Composable
 private fun rememberCoverUrl(repository: TravelPinsRepository, placeIds: List<Long>, width: Int, manualUrl: String? = null): String? {
     var url by remember(placeIds, manualUrl) { mutableStateOf<String?>(null) }
-    
+
     LaunchedEffect(placeIds, manualUrl) {
         if (manualUrl != null) {
             url = manualUrl + "=w" + width + "-k-no"
             return@LaunchedEffect
         }
-        
         if (placeIds.isEmpty()) {
             url = null
             return@LaunchedEffect
         }
-        
-        // MODIFICA CHIAVE: Usa merge invece di combine per reagire immediatamente
-        // quando QUALSIASI luogo ottiene una foto
-        val photoFlows = placeIds.map { id -> 
+
+        // FIX: first() prende la prima foto disponibile e si ferma → copertina stabile
+        val photoFlows = placeIds.map { id ->
             repository.observePhotosByPlace(id).mapNotNull { photos ->
                 if (photos.isNotEmpty()) photos.first().sizedUrl(width) else null
             }
         }
-        
-        // merge emette valori da tutti i flussi, reagendo immediatamente
-        merge(*photoFlows.toTypedArray())
-            .filterNotNull()
-            .distinctUntilChanged()
-            .collect { photoUrl ->
-                url = photoUrl
-            }
+        url = merge(*photoFlows.toTypedArray()).first()
     }
     return url
 }
