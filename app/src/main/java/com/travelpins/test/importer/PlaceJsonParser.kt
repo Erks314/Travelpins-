@@ -25,7 +25,7 @@ object PlaceJsonParser {
                 result.add(
                     Place(
                         name = obj.optString("name"),
-                        address = obj.optString("address").ifBlank { null },
+                        address = sanitizeAddress(obj.optString("address")),
                         latitude = obj.optDouble("lat"),
                         longitude = obj.optDouble("lng"),
                         placeId = obj.optString("placeId").ifBlank { null },
@@ -40,5 +40,13 @@ object PlaceJsonParser {
         }
 
         return result
+    }
+
+    // Scarta gli indirizzi vuoti o composti solo da simboli/emoji (es. ✅✅✅✅)
+    private fun sanitizeAddress(raw: String): String? {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return null
+        if (!trimmed.any { it.isLetterOrDigit() }) return null
+        return trimmed
     }
 }
