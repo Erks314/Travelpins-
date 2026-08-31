@@ -62,8 +62,7 @@ import coil.compose.AsyncImage
 import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -86,26 +85,20 @@ private class ListCurvedShape : Shape {
 @Composable
 private fun rememberListCover(repository: TravelPinsRepository, placeIds: List<Long>, width: Int): String? {
     var url by remember(placeIds) { mutableStateOf<String?>(null) }
-    
+
     LaunchedEffect(placeIds) {
         if (placeIds.isEmpty()) {
             url = null
             return@LaunchedEffect
         }
-        
-        // MODIFICA CHIAVE: Usa merge invece di combine per reagire immediatamente
-        val photoFlows = placeIds.map { id -> 
+
+        // FIX: first() prende la prima foto disponibile e si ferma → copertina stabile
+        val photoFlows = placeIds.map { id ->
             repository.observePhotosByPlace(id).mapNotNull { photos ->
                 if (photos.isNotEmpty()) photos.first().sizedUrl(width) else null
             }
         }
-        
-        merge(*photoFlows.toTypedArray())
-            .filterNotNull()
-            .distinctUntilChanged()
-            .collect { photoUrl ->
-                url = photoUrl
-            }
+        url = merge(*photoFlows.toTypedArray()).first()
     }
     return url
 }
