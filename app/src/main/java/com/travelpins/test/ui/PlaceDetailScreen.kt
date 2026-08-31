@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -115,7 +117,7 @@ fun PlacePhoto.sizedUrl(width: Int, height: Int? = null): String =
 fun formatRating(rating: Double): String = rating.toString().replace('.', ',')
 fun formatCount(count: Int): String = NumberFormat.getInstance(Locale.ITALY).format(count.toLong())
 
-private enum class DetailScreen { Detail, Gallery, Reviews, Map }
+private enum class DetailScreen { Detail, Gallery, Reviews, Map, AllPhotos }
 
 @Composable
 fun PlaceDetailRoot(
@@ -140,6 +142,7 @@ fun PlaceDetailRoot(
 
     var screen by remember { mutableStateOf(DetailScreen.Detail) }
     var galleryStartIndex by remember { mutableIntStateOf(0) }
+    var galleryReturnToGrid by remember { mutableStateOf(false) }
 
     LaunchedEffect(place?.id, place?.detailsFetchedAt) {
         val p = place
@@ -149,7 +152,11 @@ fun PlaceDetailRoot(
     }
 
     BackHandler(enabled = screen != DetailScreen.Detail) {
-        screen = DetailScreen.Detail
+        screen = if (screen == DetailScreen.Gallery && galleryReturnToGrid) {
+            DetailScreen.AllPhotos
+        } else {
+            DetailScreen.Detail
+        }
     }
 
     Box(Modifier.fillMaxSize().background(TPColors.Bg)) {
@@ -170,8 +177,10 @@ fun PlaceDetailRoot(
                 onShare = onShare,
                 onOpenGallery = { index ->
                     galleryStartIndex = index
+                    galleryReturnToGrid = false
                     screen = DetailScreen.Gallery
                 },
+                onOpenAllPhotos = { screen = DetailScreen.AllPhotos },
                 onOpenReviews = { screen = DetailScreen.Reviews },
                 onForceRefresh = onForceRefresh,
                 onDelete = onDelete
@@ -180,7 +189,19 @@ fun PlaceDetailRoot(
                 photos = photos,
                 startIndex = galleryStartIndex,
                 title = place?.name ?: "",
-                onBack = { screen = DetailScreen.Detail }
+                onBack = {
+                    screen = if (galleryReturnToGrid) DetailScreen.AllPhotos else DetailScreen.Detail
+                }
+            )
+            DetailScreen.AllPhotos -> PhotoGridScreen(
+                photos = photos,
+                title = place?.name ?: "",
+                onBack = { screen = DetailScreen.Detail },
+                onOpenPhoto = { index ->
+                    galleryStartIndex = index
+                    galleryReturnToGrid = true
+                    screen = DetailScreen.Gallery
+                }
             )
             DetailScreen.Reviews -> ReviewsScreen(
                 reviews = reviews,
@@ -224,6 +245,7 @@ fun PlaceDetailScreen(
     onOpenGoogleMaps: (Place) -> Unit,
     onShare: (Place) -> Unit,
     onOpenGallery: (Int) -> Unit,
+    onOpenAllPhotos: () -> Unit,
     onOpenReviews: () -> Unit,
     onForceRefresh: (Place) -> Unit,
     onDelete: (Place) -> Unit
@@ -281,7 +303,7 @@ fun PlaceDetailScreen(
                         DropdownMenuItem(
                             leadingIcon = { Icon(Icons.Filled.Image, contentDescription = null) },
                             text = { Text("Galleria (${photos.size})") },
-                            onClick = { showMenu = false; onOpenGallery(0) }
+                            onClick = { showMenu = false; onOpenAllPhotos() }
                         )
                     }
                     if (reviews.isNotEmpty()) {
@@ -339,7 +361,7 @@ fun PlaceDetailScreen(
                 }
             }
 
-            // FIX: mostra l'indirizzo solo se contiene almeno una lettera o un numero.
+            // Mostra l'indirizzo solo se contiene almeno una lettera o un numero.
             // Questo nasconde gli indirizzi "spazzatura" (es. ✅✅✅✅) salvati dallo scraper.
             val cleanAddress = place.address?.takeIf { addr ->
                 addr.isNotBlank() && addr.any { c -> c.isLetterOrDigit() }
@@ -440,7 +462,7 @@ fun PlaceDetailScreen(
             if (photos.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(top = 26.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Galleria", color = TPColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Text("Vedi tutte (${photos.size})", color = TPColors.Accent, fontSize = 13.sp, modifier = Modifier.clickable { onOpenGallery(0) })
+                    Text("Vedi tutte (${photos.size})", color = TPColors.Accent, fontSize = 13.sp, modifier = Modifier.clickable { onOpenAllPhotos() })
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val visible = photos.take(4)
@@ -537,6 +559,46 @@ fun PlaceDetailScreen(
 }
 
 @Composable
+fun PhotoGridScreen(
+    photos: List<PlacePhoto>,
+    title: String,
+    onBack: () -> Unit,
+    onOpenPhoto: (Int) -> Unit
+) {
+    Column(Modifier.fillMaxSize().background(TPColors.Bg)) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircleIconButton(icon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro", tint = Color.White) }, onClick = onBack)
+            Spacer(Modifier.width(12.dp))
+            Text("Foto (${photos.size}) • $title", color = TPColors.TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(photos.size) { index ->
+                Box(
+                    Modifier
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(TPColors.SurfaceAlt)
+                        .clickable { onOpenPhoto(index) }
+                ) {
+                    AsyncImage(
+                        model = photos[index].sizedUrl(300, 300),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun NoteDialog(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
@@ -622,7 +684,7 @@ fun PlaceDetailCategoryPickerDialog(categories: List<Category>, onPick: (Long?) 
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onDismiss = onDismiss) { Text("Annulla") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
     )
 }
 
@@ -633,7 +695,7 @@ private val categoryColorPalette = listOf(
     0xFFEC4899, 0xFFF43F5E, 0xFF64748B, 0xFF6B7280, 0xFF78716C
 ).map { it.toInt() }
 
-private val categoryIconPalette = listOf("📍", "", "", "🏖️", "🏛️", "🌄", "", "🛍️", "☕", "🍺", "", "")
+private val categoryIconPalette = listOf("📍", "🍴", "🏨", "🏖️", "🏛️", "🌄", "", "🛍️", "☕", "🍺", "", "")
 
 @Composable
 fun PlaceDetailCreateCategoryDialog(onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit, onDismiss: () -> Unit) {
