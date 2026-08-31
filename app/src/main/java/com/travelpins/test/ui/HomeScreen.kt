@@ -115,7 +115,8 @@ private fun rememberCoverUrl(repository: TravelPinsRepository, placeIds: List<Lo
             return@LaunchedEffect
         }
 
-        // FIX: first() prende la prima foto disponibile e si ferma → copertina stabile
+        // first() prende la prima foto disponibile tra i candidati e si ferma:
+        // la copertina è stabile e appare appena un luogo prioritario ha una foto.
         val photoFlows = placeIds.map { id ->
             repository.observePhotosByPlace(id).mapNotNull { photos ->
                 if (photos.isNotEmpty()) photos.first().sizedUrl(width) else null
@@ -253,7 +254,9 @@ private fun ListCard(
     badgeIndex: Int,
     onOpenList: (String?, String?) -> Unit
 ) {
-    val candidates = remember(group) { group.places.take(6).map { it.id } }
+    // FIX: i candidati copertina coincidono con i luoghi arricchiti per primi
+    // (i primi importati, stesso ordine di getPlacesByListId), non gli ultimi.
+    val candidates = remember(group) { group.places.sortedBy { it.importedAt }.take(10).map { it.id } }
     val manualCover = remember(group.listId) { repository.getListCover(group.listId) }
     val coverUrl = rememberCoverUrl(repository, candidates, 900, manualCover)
     val (emoji, badgeColor) = badgeAt(badgeIndex)
