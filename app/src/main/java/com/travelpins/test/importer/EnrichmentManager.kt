@@ -66,7 +66,6 @@ object EnrichmentManager {
         logCallback = callback
     }
 
-    // NUOVA FUNZIONE: Resetta lo stato per permettere import multipli
     suspend fun reset() {
         log("RESET: Pulizia stato per nuova importazione")
         queueMutex.withLock {
@@ -76,11 +75,11 @@ object EnrichmentManager {
             failed.clear()
             attempts.clear()
         }
-        
-        // Resetta i worker
+
+        // FIX: complete(false) invece di cancel() per non uccidere il worker loop
         workers.forEach { worker ->
             worker.currentPlaceId = null
-            worker.currentDeferred?.cancel()
+            worker.currentDeferred?.complete(false)
             worker.currentDeferred = null
             worker.consentAttempted = false
         }
@@ -101,7 +100,7 @@ object EnrichmentManager {
                     .toSet()
 
                 var added = 0
-                
+
                 queueMutex.withLock {
                     for (id in pendingIds) {
                         if (id !in failed && id !in inFlight && queued.add(id)) {
@@ -202,7 +201,7 @@ object EnrichmentManager {
                         log("[W${worker.index}] Network hook installato: $result")
                     }
                 }
-                
+
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
                     log("[W${worker.index}] Pagina finish: ${url.take(80)}")
@@ -215,7 +214,7 @@ object EnrichmentManager {
                         }, 700)
                     }
                 }
-                
+
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val url = request.url.toString()
                     if (url.startsWith("intent://")) {
