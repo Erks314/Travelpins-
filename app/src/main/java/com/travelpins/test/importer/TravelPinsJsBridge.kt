@@ -7,6 +7,7 @@ import com.travelpins.test.data.PlaceReview
 import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 class TravelPinsJsBridge(
     private val repository: TravelPinsRepository,
@@ -79,11 +80,20 @@ class TravelPinsJsBridge(
                     return@launch
                 }
 
-                // LOG DETTAGLIATO dei dati trovati
+                // FIX: per i luoghi "locality" (paesi/città) il JSON di Google ha una
+                // struttura diversa e il parser può leggere come rating una coordinata
+                // (longitudine/latitudine) e come recensioni un contatore sbagliato.
+                val place = repository.getPlaceById(placeId)
+                val safeRating = sanitizeRating(details.rating, place?.latitude, place?.longitude)
+                val safeReviewCount = if (safeRating != null) details.reviewCount else null
+                if (details.rating != null && safeRating == null) {
+                    onLogMessage("⚠️ Rating sospetto scartato (${details.rating}): non è un voto Google valido")
+                }
+
                 onLogMessage("📋 DATI TROVATI DAL PARSER:")
                 onLogMessage("  Nome: ${details.name}")
-                onLogMessage("  Rating: ${details.rating}")
-                onLogMessage("  Recensioni: ${details.reviewCount}")
+                onLogMessage("  Rating: $safeRating")
+                onLogMessage("  Recensioni: $safeReviewCount")
                 onLogMessage("  Sito: ${details.websiteUrl}")
                 onLogMessage("  Tipi: ${details.types.joinToString(", ")}")
                 onLogMessage("  Descrizione: ${details.description?.take(100)}...")
@@ -115,8 +125,8 @@ class TravelPinsJsBridge(
 
                 repository.updatePlaceDetails(
                     placeId = placeId,
-                    rating = details.rating,
-                    reviewCount = details.reviewCount,
+                    rating = safeRating,
+                    reviewCount = safeReviewCount,
                     description = details.description,
                     websiteUrl = details.websiteUrl,
                     types = details.types.joinToString(","),
@@ -131,6 +141,17 @@ class TravelPinsJsBridge(
                 onDetailsError()
             }
         }
+    }
+
+    // Un voto Google valido è tra 1 e 5, con al massimo 2 decimali,
+    // e non deve coincidere con le coordinate del luogo.
+    private fun sanitizeRating(rating: Double?, lat: Double?, lng: Double?): Double? {
+        if (rating == null) return null
+        if (rating < 1.0 || rating > 5.0) return null
+        if (lng != null && abs(rating - lng) < 0.0001) return null
+        if (lat != null && abs(rating - lat) < 0.0001) return null
+        if (rating.toString().substringAfter('.', "").length > 2) return null
+        return rating
     }
 
     companion object {
