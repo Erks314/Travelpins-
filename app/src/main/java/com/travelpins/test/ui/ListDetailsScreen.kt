@@ -92,7 +92,6 @@ private fun rememberListCover(repository: TravelPinsRepository, placeIds: List<L
             return@LaunchedEffect
         }
 
-        // FIX: first() prende la prima foto disponibile e si ferma → copertina stabile
         val photoFlows = placeIds.map { id ->
             repository.observePhotosByPlace(id).mapNotNull { photos ->
                 if (photos.isNotEmpty()) photos.first().sizedUrl(width) else null
@@ -234,7 +233,8 @@ private fun ListHeader(
     onBack: () -> Unit,
     onManageCategories: () -> Unit
 ) {
-    val candidates = remember(listPlaces) { listPlaces.take(6).map { it.id } }
+    // FIX: stessi candidati della Home = i primi importati = i primi arricchiti.
+    val candidates = remember(listPlaces) { listPlaces.sortedBy { it.importedAt }.take(10).map { it.id } }
     val fallbackUrl = rememberListCover(repository, candidates, 1200)
     val manualCover = remember(listId) { repository.getListCover(listId) }
     val url = manualCover?.let { it + "=w1200-k-no" } ?: fallbackUrl
