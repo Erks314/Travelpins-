@@ -339,8 +339,13 @@ fun PlaceDetailScreen(
                 }
             }
 
-            if (!place.address.isNullOrBlank()) {
-                Text("📍  ${place.address}", color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
+            // FIX: mostra l'indirizzo solo se contiene almeno una lettera o un numero.
+            // Questo nasconde gli indirizzi "spazzatura" (es. ✅✅✅✅) salvati dallo scraper.
+            val cleanAddress = place.address?.takeIf { addr ->
+                addr.isNotBlank() && addr.any { c -> c.isLetterOrDigit() }
+            }
+            if (cleanAddress != null) {
+                Text("📍  $cleanAddress", color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
             }
 
             if (place.rating != null) {
@@ -525,7 +530,7 @@ fun PlaceDetailScreen(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Eliminare luogo?") },
             text = { Text("\"${place.name}\" verrà eliminato insieme a foto e recensioni salvate.") },
-            confirmButton = { TextButton(onClick = { showDeleteConfirm = false; onDelete(place) }) { Text("ELIMINA") } },
+            confirmButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("ELIMINA") } },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("ANNULLA") } }
         )
     }
@@ -617,7 +622,7 @@ fun PlaceDetailCategoryPickerDialog(categories: List<Category>, onPick: (Long?) 
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
+        dismissButton = { TextButton(onDismiss = onDismiss) { Text("Annulla") } }
     )
 }
 
@@ -628,7 +633,7 @@ private val categoryColorPalette = listOf(
     0xFFEC4899, 0xFFF43F5E, 0xFF64748B, 0xFF6B7280, 0xFF78716C
 ).map { it.toInt() }
 
-private val categoryIconPalette = listOf("📍", "🍴", "🏨", "🏖️", "🏛️", "🌄", "", "🛍️", "☕", "🍺", "", "")
+private val categoryIconPalette = listOf("📍", "", "", "🏖️", "🏛️", "🌄", "", "🛍️", "☕", "🍺", "", "")
 
 @Composable
 fun PlaceDetailCreateCategoryDialog(onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit, onDismiss: () -> Unit) {
