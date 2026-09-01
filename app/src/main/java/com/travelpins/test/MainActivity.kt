@@ -17,14 +17,14 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
-import android.widget.EditText
+import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
@@ -39,10 +39,12 @@ import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
+import com.travelpins.test.data.SyncResult
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.importer.EnrichmentManager
 import com.travelpins.test.importer.TravelPinsJsBridge
 import com.travelpins.test.scraper.GoogleMapsScraperScript
+import com.travelpins.test.ui.ImportUiState
 import com.travelpins.test.ui.TravelPinsDarkTheme
 import com.travelpins.test.ui.TravelPinsHomeShell
 import com.travelpins.test.ui.TravelPinsListDetailScreen
@@ -58,12 +60,9 @@ class MainActivity : ComponentActivity() {
         private val COLOR_SURFACE = Color.parseColor("#1C1C28")
         private val COLOR_SURFACE_ALT = Color.parseColor("#242432")
         private val COLOR_ACCENT = Color.parseColor("#2EBD95")
-        private val COLOR_ACCENT_DARK = Color.parseColor("#249B7B")
         private val COLOR_TEXT_PRIMARY = Color.parseColor("#FFFFFF")
         private val COLOR_TEXT_SECONDARY = Color.parseColor("#9A9AB0")
         private val COLOR_TEXT_MUTED = Color.parseColor("#6E6E85")
-        private val COLOR_NAV_BG = Color.parseColor("#1A1A24")
-        private val COLOR_FAVORITE = Color.parseColor("#FF6B6B")
     }
 
     private enum class Screen { HOME, LIST_DETAIL, LIST_MAP }
@@ -83,15 +82,25 @@ class MainActivity : ComponentActivity() {
     private var consentAttempted = false
     private var scanStarted = false
     private var importStarted = false
+    private var pendingRefreshListId: String? = null
+    private var pendingImportUrl: String? = null
+    private var preExistingCount = 0
+    private var lastSync: SyncResult? = null
+    private val importState = mutableStateOf<ImportUiState?>(null)
+
+    private var mapSelectedCategories: MutableSet<Long> = mutableSetOf()
+    private var mapIncludeUncategorized: Boolean = true
+
     private var currentPlaces: List<Place> = emptyList()
     private var currentCategories: List<Category> = emptyList()
-    private var selectedCategoryId: Long? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = TravelPinsRepository(applicationContext)
+        outputView = TextView(this).apply { text = "TRAVELPINS NETWORK MONITOR" }
         EnrichmentManager.attach(this)
         EnrichmentManager.start(applicationContext, repository)
+        EnrichmentManager.setLogCallback { message -> appendOutput(message) }
         showAppShell(NavTab.HOME)
         handleIntent(intent)
         observeData()
@@ -100,11 +109,6 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        consentAttempted = false
-        scanStarted = false
-        importStarted = false
-        currentListId = null
-        currentListName = null
         handleIntent(intent)
     }
 
@@ -131,17 +135,19 @@ class MainActivity : ComponentActivity() {
 
     private fun showAppShell(tab: NavTab) {
         currentScreen = Screen.HOME; currentNavTab = tab
-        viewingListId = null; viewingListName = null; selectedCategoryId = null
+        viewingListId = null; viewingListName = null
         val composeView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 TravelPinsDarkTheme {
                     TravelPinsHomeShell(
                         repository = repository,
+                        importState = importState.value,
                         onOpenList = { listId, listName -> showListDetail(listId, listName) },
-                        onImport = { showImporter() },
+                        onImport = { openGoogleMapsLists() },
                         onOpenGoogleLists = { openGoogleMapsLists() },
-                        onShowDebugLog = { showDebugLogDialog() }
+                        onShowDebugLog = { showDebugLogDialog() },
+                        onRefreshList = { listId -> startRefresh(listId) }
                     )
                 }
             }
@@ -154,19 +160,9 @@ class MainActivity : ComponentActivity() {
         catch (e: Exception) { Toast.makeText(this, "Impossibile aprire Google Maps.", Toast.LENGTH_SHORT).show() }
     }
 
-    private fun refreshContent() {
-        if (!::repository.isInitialized) return
-        val content = findViewById<View>(android.R.id.content) ?: return
-        when (currentScreen) {
-            Screen.HOME -> { }
-            Screen.LIST_DETAIL -> { }
-            Screen.LIST_MAP -> { refreshFilters(content); updateMapMarkers(placesInCurrentList()) }
-        }
-    }
-
     private fun showListDetail(listId: String?, listName: String?) {
         currentScreen = Screen.LIST_DETAIL
-        viewingListId = listId; viewingListName = listName; selectedCategoryId = null
+        viewingListId = listId; viewingListName = listName
         val composeView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
@@ -174,7 +170,7 @@ class MainActivity : ComponentActivity() {
                     TravelPinsListDetailScreen(
                         repository = repository, listId = listId, listName = listName,
                         onBack = { showAppShell(NavTab.HOME) },
-                        onOpenMap = { filter -> selectedCategoryId = filter; showListMap(viewingListId, viewingListName) },
+                        onOpenMap = { filter -> showListMap(viewingListId, viewingListName, filter) },
                         onOpenPlace = { placeId -> startActivity(com.travelpins.test.ui.PlaceDetailActivity.newIntent(this@MainActivity, placeId)) },
                         onChangeCategory = { place -> showCategoryPicker(place) },
                         onCreateCategory = { showCreateCategoryDialog() },
@@ -186,9 +182,259 @@ class MainActivity : ComponentActivity() {
         setContentView(composeView)
     }
 
-    private fun showListMap(listId: String?, listName: String?) {
+    // ============================================================
+    // IMPORT / REFRESH
+    // ============================================================
+
+    private fun startImport(url: String) {
+        consentAttempted = false; scanStarted = false; importStarted = false
+        currentListId = null; currentListName = null
+        pendingRefreshListId = null
+        pendingImportUrl = url
+        preExistingCount = 0
+        importState.value = ImportUiState("Importazione", "Apertura della lista Google Maps…")
+        ensureImportWebView()
+        webView?.loadUrl(url)
+    }
+
+    private fun startRefresh(listId: String) {
+        lifecycleScope.launch {
+            val list = repository.getSourceList(listId)
+            val url = list?.sourceUrl
+            if (url.isNullOrBlank()) {
+                Toast.makeText(this@MainActivity, "URL della lista non disponibile.", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            consentAttempted = false; scanStarted = false; importStarted = false
+            currentListId = listId; currentListName = list?.name
+            pendingRefreshListId = listId
+            pendingImportUrl = url
+            importState.value = ImportUiState("Aggiornamento", "Lettura della lista Google Maps…", listId)
+            ensureImportWebView()
+            webView?.loadUrl(url)
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun ensureImportWebView() {
+        if (webView != null) return
+        val wv = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.userAgentString = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+            alpha = 0f
+        }
+        val bridge = TravelPinsJsBridge(
+            repository = repository, scope = lifecycleScope,
+            getCurrentSourceListId = { currentListId },
+            getCurrentSourceListName = { currentListName },
+            onImportFinished = { savedCount -> onImportOrRefreshFinished(savedCount) },
+            onImportError = { error ->
+                runOnUiThread {
+                    importState.value = null
+                    Toast.makeText(this, "Errore durante l'importazione", Toast.LENGTH_LONG).show()
+                }
+                appendOutput("ERRORE IMPORT: ${error.message}")
+            },
+            onLogMessage = { message -> appendOutput(message) },
+            savePlaces = { places ->
+                val listId = places.firstOrNull()?.sourceListId ?: currentListId ?: pendingRefreshListId
+                if (listId == null) {
+                    repository.saveImportedPlaces(places)
+                } else {
+                    val name = places.firstOrNull()?.sourceListName ?: currentListName
+                    val res = repository.syncListPlaces(listId, name, pendingImportUrl, places)
+                    lastSync = res
+                    res.added
+                }
+            }
+        )
+        wv.addJavascriptInterface(bridge, TravelPinsJsBridge.NAME)
+        wv.addJavascriptInterface(bridge, TravelPinsJsBridge.BRIDGE_NAME)
+        wv.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url); appendOutput("PAGINA CARICATA: $url")
+                view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT, null)
+                if (url.contains("consent.google.com")) {
+                    if (!consentAttempted) {
+                        consentAttempted = true
+                        setImportMessage("Autorizzazione Google in corso…")
+                        view.postDelayed({ acceptGoogleConsent() }, 700)
+                    }
+                    return
+                }
+                if (GoogleMapsScraperScript.isGoogleListUrl(url)) {
+                    if (pendingRefreshListId == null) {
+                        currentListId = extractListId(url)
+                        currentListName = view.title?.replace(" - Google Maps", "")?.replace("Google Maps", "")?.trim()?.takeIf { it.isNotBlank() }
+                        val lid = currentListId
+                        if (lid != null) {
+                            lifecycleScope.launch { preExistingCount = repository.getPlacesByListId(lid).size }
+                        }
+                    }
+                    appendOutput("LISTA GOOGLE MAPS RILEVATA\n$url\nTITOLO: $currentListName")
+                    setImportMessage("Lista trovata.\nLettura dei luoghi in corso…")
+                    if (currentListId != null && !scanStarted) { scanStarted = true; view.postDelayed({ scanGoogleList() }, 500) }
+                }
+            }
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                appendOutput("WEBVIEW RENDERER TERMINATO\nCRASH: $detail")
+                runOnUiThread {
+                    importState.value = null
+                    Toast.makeText(this@MainActivity, "Google Maps ha interrotto il caricamento.", Toast.LENGTH_LONG).show()
+                    (view.parent as? ViewGroup)?.removeView(view)
+                    try { view.destroy() } catch (_: Exception) { }
+                    webView = null
+                }
+                return true
+            }
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val url = request.url.toString()
+                if (url.startsWith("intent://")) { handleGoogleIntent(url); return true }
+                return false
+            }
+        }
+        val parent = window.decorView as? ViewGroup
+        parent?.addView(wv, FrameLayout.LayoutParams(1, 1))
+        webView = wv
+    }
+
+    private fun onImportOrRefreshFinished(savedCount: Int) {
+        lifecycleScope.launch {
+            val sync = lastSync
+            val refreshId = pendingRefreshListId
+            pendingImportUrl = null
+            lastSync = null
+
+            if (refreshId != null) {
+                // REFRESH: nessun attesa, solo riepilogo
+                pendingRefreshListId = null
+                importState.value = null
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Aggiornamento: +${sync?.added ?: 0} aggiunti, -${sync?.removed ?: 0} rimossi",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                return@launch
+            }
+
+            // IMPORT (nuovo o re-import condiviso)
+            val listId = currentListId
+            if (preExistingCount == 0 && listId != null) {
+                // Vero nuovo import: attendi la first-wave
+                EnrichmentManager.reset()
+                val first10 = repository.getPlacesByListId(listId).take(10).map { it.id }
+                if (first10.isNotEmpty()) {
+                    setImportMessage("Importazione completata.\n$savedCount luoghi salvati.\nArricchimento prioritario in corso...")
+                    EnrichmentManager.prioritize(first10)
+                    var waited = 0L
+                    val step = 500L
+                    while (waited < 15000L) {
+                        val places = repository.getPlacesByListId(listId)
+                        val enriched = first10.count { id -> places.firstOrNull { it.id == id }?.detailsFetchedAt != null }
+                        setImportMessage("Importazione completata.\n$savedCount luoghi salvati.\nArricchiti $enriched/${first10.size} luoghi prioritari...")
+                        if (enriched >= 3) break
+                        delay(step); waited += step
+                    }
+                }
+            } else {
+                // Re-import di una lista esistente = refresh
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Elenco aggiornato: +${sync?.added ?: 0} aggiunti, -${sync?.removed ?: 0} rimossi",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+            importState.value = null
+            preExistingCount = 0
+        }
+    }
+
+    private fun setImportMessage(message: String) {
+        runOnUiThread { importState.value = importState.value?.copy(message = message) }
+    }
+
+    private fun acceptGoogleConsent() {
+        webView?.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT) { result -> appendOutput("CONSENSO RISULTATO\n$result") }
+    }
+
+    private fun scanGoogleList() {
+        if (importStarted) return
+        importStarted = true
+        setImportMessage("Lettura dei luoghi in corso…")
+        appendOutput("SCANSIONE LISTA AVVIATA\nMetodo: entitylist/getlist")
+        webView?.evaluateJavascript(GoogleMapsScraperScript.GETLIST_SCRIPT) { result -> appendOutput("CALLBACK GETLIST\n$result") }
+    }
+
+    private fun handleGoogleIntent(intentUrl: String) {
+        try {
+            val marker = "S.browser_fallback_url="
+            val start = intentUrl.indexOf(marker)
+            if (start == -1) { setImportMessage("Impossibile aprire la lista Google Maps."); appendOutput("FALLBACK URL NON TROVATO"); return }
+            var value = intentUrl.substring(start + marker.length)
+            val end = value.indexOf("#Intent")
+            if (end != -1) value = value.substring(0, end)
+            val decoded = URLDecoder.decode(value, "UTF-8")
+            appendOutput("GOOGLE INTENT INTERCETTATO\nFALLBACK WEB:\n$decoded")
+            webView?.loadUrl(decoded)
+        } catch (e: Exception) { appendOutput("ERRORE PARSING INTENT:\n$e"); setImportMessage("Errore durante l'apertura della lista.") }
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+        if (text.isNullOrBlank()) { Toast.makeText(this, "Nessun testo ricevuto", Toast.LENGTH_SHORT).show(); return }
+        val match = Regex("""https?://\S+""").find(text)
+        if (match == null) { Toast.makeText(this, "Nessun URL trovato", Toast.LENGTH_SHORT).show(); return }
+        appendOutput("LINK RICEVUTO\n${match.value}")
+        startImport(match.value)
+    }
+
+    private fun appendOutput(section: String) {
+        runOnUiThread { outputView.append("\n$section\n") }
+    }
+
+    private fun copyOutputToClipboard() {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText("TravelPins", outputView.text))
+        Toast.makeText(this, "Copiato!", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showDebugLogDialog() {
+        val logText = outputView.text.toString().takeIf { it.isNotBlank() } ?: "Nessun log disponibile ancora.\nImporta un elenco prima di aprire questo log."
+        val scroll = ScrollView(this)
+        val textView = TextView(this).apply { text = logText; textSize = 11f; setTextColor(COLOR_TEXT_PRIMARY); setPadding(24, 16, 24, 16); setTextIsSelectable(true) }
+        scroll.addView(textView)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
+            .setTitle("Log diagnostica").setView(scroll)
+            .setPositiveButton("COPIA") { _, _ -> copyOutputToClipboard() }
+            .setNegativeButton("CHIUDI", null)
+            .show()
+    }
+
+    // ============================================================
+    // MAPPA ELENCO CON FILTRI MULTI-CATEGORIA
+    // ============================================================
+
+    private fun showListMap(listId: String?, listName: String?, initialFilter: Long? = null) {
         currentScreen = Screen.LIST_MAP
         viewingListId = listId; viewingListName = listName
+
+        // Default: tutte le categorie visibili
+        mapSelectedCategories = currentCategories.map { it.id }.toMutableSet()
+        mapIncludeUncategorized = true
+        if (initialFilter != null) {
+            if (initialFilter == -1L) {
+                mapSelectedCategories.clear(); mapIncludeUncategorized = true
+            } else {
+                mapSelectedCategories = mutableSetOf(initialFilter); mapIncludeUncategorized = false
+            }
+        }
+
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(COLOR_BG); setPadding(20, 28, 20, 20) }
         val backButton = TextView(this).apply { text = "←"; textSize = 18f; setTextColor(COLOR_TEXT_PRIMARY); gravity = Gravity.CENTER; background = roundedBackground(COLOR_SURFACE, 20f); setOnClickListener { showListDetail(listId, listName) } }
         root.addView(backButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply { bottomMargin = 14 })
@@ -205,6 +451,63 @@ class MainActivity : ComponentActivity() {
         setContentView(root); refreshContent()
     }
 
+    private fun refreshFilters(content: View) {
+        val container = content.findViewWithTag<LinearLayout>("filter_container") ?: return
+        container.removeAllViews()
+        val count = (if (mapIncludeUncategorized) 1 else 0) + mapSelectedCategories.size
+        val button = Button(this).apply {
+            text = "🏷️  FILTRI ($count)"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            background = roundedBackground(COLOR_ACCENT, 14f)
+            setPadding(16, 0, 16, 0)
+            setOnClickListener { showMapFilterDialog() }
+        }
+        container.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 44))
+    }
+
+    private fun showMapFilterDialog() {
+        val scroll = ScrollView(this)
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(30, 10, 30, 0) }
+
+        val uncatBox = CheckBox(this).apply {
+            text = "⚪  Senza categoria"
+            setTextColor(COLOR_TEXT_PRIMARY)
+            isChecked = mapIncludeUncategorized
+        }
+        layout.addView(uncatBox)
+
+        val categoryBoxes = currentCategories.map { category ->
+            val count = currentPlaces.count { it.categoryId == category.id }
+            CheckBox(this).apply {
+                text = "${category.iconKey}  ${category.name}  ($count)"
+                setTextColor(COLOR_TEXT_PRIMARY)
+                isChecked = category.id in mapSelectedCategories
+                tag = category.id
+            }
+        }
+        categoryBoxes.forEach { layout.addView(it) }
+
+        val actionsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 20, 0, 10) }
+        val allButton = Button(this).apply { text = "TUTTE"; textSize = 11f; setOnClickListener { uncatBox.isChecked = true; categoryBoxes.forEach { it.isChecked = true } } }
+        val noneButton = Button(this).apply { text = "NESSUNA"; textSize = 11f; setOnClickListener { uncatBox.isChecked = false; categoryBoxes.forEach { it.isChecked = false } } }
+        actionsRow.addView(allButton, LinearLayout.LayoutParams(0, 44, 1f).apply { rightMargin = 8 })
+        actionsRow.addView(noneButton, LinearLayout.LayoutParams(0, 44, 1f))
+        layout.addView(actionsRow)
+
+        scroll.addView(layout)
+        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
+            .setTitle("Categorie visibili sulla mappa")
+            .setView(scroll)
+            .setPositiveButton("APPLICA") { _, _ ->
+                mapIncludeUncategorized = uncatBox.isChecked
+                mapSelectedCategories = categoryBoxes.filter { it.isChecked }.map { it.tag as Long }.toMutableSet()
+                refreshContent()
+            }
+            .setNegativeButton("ANNULLA", null)
+            .show()
+    }
+
     private fun placesInCurrentList(): List<Place> = currentPlaces.filter { it.sourceListId == viewingListId }
 
     private fun prepareMapView() {
@@ -219,10 +522,8 @@ class MainActivity : ComponentActivity() {
         val map = googleMap ?: return
         mapView?.post {
             map.clear()
-            val placesToShow = when {
-                selectedCategoryId == null -> scopedPlaces
-                selectedCategoryId == -1L -> scopedPlaces.filter { it.categoryId == null }
-                else -> scopedPlaces.filter { it.categoryId == selectedCategoryId }
+            val placesToShow = scopedPlaces.filter { p ->
+                if (p.categoryId == null) mapIncludeUncategorized else p.categoryId in mapSelectedCategories
             }
             if (placesToShow.isEmpty()) return@post
             val boundsBuilder = LatLngBounds.Builder()
@@ -258,64 +559,19 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { repository.categories.collect { categories -> currentCategories = categories; runOnUiThread { refreshContent() } } }
     }
 
-    private fun refreshFilters(content: View) {
-        val container = content.findViewWithTag<LinearLayout>("filter_container") ?: return
-        container.removeAllViews()
-        addFilterButton(container, "Tutti", null)
-        addFilterButton(container, "Senza categoria", -1L)
-        currentCategories.forEach { category -> addFilterButton(container, "${category.iconKey}  ${category.name}", category.id) }
+    private fun refreshContent() {
+        if (!::repository.isInitialized) return
+        val content = findViewById<View>(android.R.id.content) ?: return
+        when (currentScreen) {
+            Screen.HOME -> { }
+            Screen.LIST_DETAIL -> { }
+            Screen.LIST_MAP -> { refreshFilters(content); updateMapMarkers() }
+        }
     }
 
-    private fun addFilterButton(container: LinearLayout, text: String, categoryId: Long?) {
-        val selected = selectedCategoryId == categoryId
-        val button = Button(this).apply { this.text = text; textSize = 12f; setTextColor(if (selected) Color.WHITE else COLOR_TEXT_SECONDARY); background = roundedBackground(if (selected) COLOR_ACCENT else COLOR_SURFACE, 14f); setPadding(16, 0, 16, 0); setOnClickListener { selectedCategoryId = categoryId; refreshContent() } }
-        container.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 44).apply { rightMargin = 8 })
-    }
-
-    private fun refreshPlaces(content: View, scopedPlaces: List<Place>) {
-        val container = content.findViewWithTag<LinearLayout>("places_container") ?: return
-        container.removeAllViews()
-        val placesToShow = when {
-            selectedCategoryId == null -> scopedPlaces
-            selectedCategoryId == -1L -> scopedPlaces.filter { it.categoryId == null }
-            else -> scopedPlaces.filter { it.categoryId == selectedCategoryId }
-        }
-        if (placesToShow.isEmpty()) {
-            val emptyCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(24, 32, 24, 32); background = roundedBackground(COLOR_SURFACE, 18f) }
-            val emptyTitle = TextView(this).apply { text = if (scopedPlaces.isEmpty()) "Nessun luogo in questo elenco" else "Nessun luogo in questa categoria"; textSize = 17f; setTextColor(COLOR_TEXT_PRIMARY); gravity = Gravity.CENTER }
-            emptyCard.addView(emptyTitle)
-            container.addView(emptyCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            return
-        }
-        placesToShow.forEach { place -> container.addView(createPlaceView(place), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 10 }) }
-    }
-
-    private fun createPlaceView(place: Place): View {
-        val category = currentCategories.firstOrNull { it.id == place.categoryId }
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18, 16, 18, 16); background = roundedBackground(COLOR_SURFACE, 18f); setOnClickListener { startActivity(com.travelpins.test.ui.PlaceDetailActivity.newIntent(this@MainActivity, place.id)) } }
-        val name = TextView(this).apply { text = if (category != null) "${category.iconKey}  ${place.name}" else "📍  ${place.name}"; textSize = 17f; setTextColor(COLOR_TEXT_PRIMARY); setPadding(0, 0, 0, 7) }
-        box.addView(name)
-        if (category != null) {
-            val categoryView = TextView(this).apply { text = category.name; textSize = 12f; setTextColor(category.colorArgb); setPadding(0, 0, 0, 7) }
-            box.addView(categoryView)
-        } else {
-            val uncategorized = TextView(this).apply { text = "Senza categoria"; textSize = 12f; setTextColor(COLOR_TEXT_MUTED); setPadding(0, 0, 0, 7) }
-            box.addView(uncategorized)
-        }
-        if (!place.address.isNullOrBlank()) {
-            val address = TextView(this).apply { text = place.address; textSize = 14f; setTextColor(COLOR_TEXT_SECONDARY); setPadding(0, 0, 0, 7) }
-            box.addView(address)
-        }
-        val coordinates = TextView(this).apply { text = "📍 ${place.latitude}, ${place.longitude}"; textSize = 11f; setTextColor(COLOR_TEXT_MUTED) }
-        box.addView(coordinates)
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, 10, 0, 0) }
-        val mapsButton = Button(this).apply { text = "MAPS"; textSize = 11f; setOnClickListener { openInGoogleMaps(place) } }
-        val categoryButton = Button(this).apply { text = if (category == null) "CATEGORIZZA" else "CAMBIA CATEGORIA"; textSize = 11f; setOnClickListener { showCategoryPicker(place) } }
-        actions.addView(categoryButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 42).apply { rightMargin = 6 })
-        actions.addView(mapsButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 42))
-        box.addView(actions)
-        return box
-    }
+    // ============================================================
+    // CATEGORIE (dialog)
+    // ============================================================
 
     private fun showCategoryPicker(place: Place) {
         if (currentCategories.isEmpty()) { Toast.makeText(this, "Prima crea almeno una categoria.", Toast.LENGTH_LONG).show(); showCreateCategoryDialog(); return }
@@ -348,14 +604,18 @@ class MainActivity : ComponentActivity() {
     private fun showCategoryOptions(category: Category) {
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("${category.iconKey}  ${category.name}")
-            .setItems(arrayOf("Filtra per questa categoria", "Elimina categoria")) { _, which ->
-                when (which) { 0 -> { selectedCategoryId = category.id; refreshContent() }; 1 -> confirmDeleteCategory(category) }
+            .setItems(arrayOf("Elimina categoria")) { _, which ->
+                when (which) { 0 -> confirmDeleteCategory(category) }
             }
             .setNegativeButton("Annulla", null)
             .show()
     }
 
-    private val categoryColorPalette = listOf(
+    // === FINE PARTE 1/2 - INCOLLA LA PARTE 2/2 SUBITO SOTTO ===
+
+
+
+        private val categoryColorPalette = listOf(
         Color.parseColor("#EF4444"), Color.parseColor("#F97316"), Color.parseColor("#F59E0B"),
         Color.parseColor("#EAB308"), Color.parseColor("#84CC16"), Color.parseColor("#22C55E"),
         Color.parseColor("#10B981"), Color.parseColor("#14B8A6"), Color.parseColor("#06B6D4"),
@@ -365,7 +625,7 @@ class MainActivity : ComponentActivity() {
         Color.parseColor("#6B7280"), Color.parseColor("#78716C")
     )
 
-    private val categoryIconPalette = listOf("📍", "🍴", "🏨", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "🍺", "🎭", "")
+    private val categoryIconPalette = listOf("📍", "🍴", "", "🏖️", "🏛️", "🌄", "🎯", "️", "", "🍺", "🎭", "")
 
     private fun showCreateCategoryDialog() {
         var selectedIcon = categoryIconPalette.first()
@@ -420,7 +680,7 @@ class MainActivity : ComponentActivity() {
     private fun confirmDeleteCategory(category: Category) {
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("Eliminare categoria?").setMessage("La categoria \"${category.name}\" verrà eliminata.\n\nI luoghi resteranno salvati, ma torneranno senza categoria.")
-            .setPositiveButton("ELIMINA") { _, _ -> lifecycleScope.launch { repository.deleteCategory(category); runOnUiThread { if (selectedCategoryId == category.id) selectedCategoryId = null; Toast.makeText(this@MainActivity, "Categoria eliminata", Toast.LENGTH_SHORT).show() } } }
+            .setPositiveButton("ELIMINA") { _, _ -> lifecycleScope.launch { repository.deleteCategory(category); runOnUiThread { Toast.makeText(this@MainActivity, "Categoria eliminata", Toast.LENGTH_SHORT).show() } } }
             .setNegativeButton("ANNULLA", null)
             .show()
     }
@@ -433,160 +693,4 @@ class MainActivity : ComponentActivity() {
     private fun roundedBackground(color: Int, radius: Float): GradientDrawable = GradientDrawable().apply { setColor(color); cornerRadius = radius * resources.displayMetrics.density }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-
-    private fun showImporter() {
-        consentAttempted = false; scanStarted = false; importStarted = false; currentListId = null; currentListName = null
-        
-        // Distruggi il vecchio WebView se esiste
-        webView?.let { old ->
-            (old.parent as? ViewGroup)?.removeView(old)
-            old.stopLoading()
-            old.destroy()
-        }
-        webView = null
-        
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setBackgroundColor(COLOR_BG); setPadding(28, 80, 28, 40) }
-        val title = TextView(this).apply { text = "TRAVELPINS"; textSize = 30f; setTextColor(COLOR_TEXT_PRIMARY); gravity = Gravity.CENTER; setPadding(0, 0, 0, 12) }; root.addView(title)
-        val importTitle = TextView(this).apply { text = "Importazione in corso"; textSize = 22f; setTextColor(COLOR_TEXT_PRIMARY); gravity = Gravity.CENTER; setPadding(0, 0, 0, 10) }; root.addView(importTitle)
-        val status = TextView(this).apply { tag = "import_status"; text = "Sto leggendo la lista di Google Maps…"; textSize = 15f; setTextColor(COLOR_TEXT_SECONDARY); gravity = Gravity.CENTER; setPadding(0, 0, 0, 24) }; root.addView(status)
-        val progress = ProgressBar(this).apply { isIndeterminate = true; tag = "import_progress" }; root.addView(progress, LinearLayout.LayoutParams(60, 60).apply { bottomMargin = 24 })
-        val info = TextView(this).apply { text = "Non chiudere TravelPins.\nL'importazione potrebbe richiedere alcuni secondi."; textSize = 14f; setTextColor(COLOR_TEXT_MUTED); gravity = Gravity.CENTER; setPadding(10, 0, 10, 30) }; root.addView(info)
-        val cancelButton = Button(this).apply { text = "ANNULLA"; textSize = 13f; setTextColor(COLOR_TEXT_PRIMARY); background = roundedBackground(COLOR_SURFACE, 14f); setOnClickListener { webView?.stopLoading(); showAppShell(NavTab.HOME) } }
-        root.addView(cancelButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 52))
-
-        // Crea un nuovo WebView fresco
-        createWebView()
-        webView?.let { wv ->
-            wv.alpha = 0f
-            root.addView(wv, LinearLayout.LayoutParams(1, 1))
-        }
-
-        outputView = TextView(this).apply { text = "TRAVELPINS NETWORK MONITOR"; visibility = View.GONE }
-        root.addView(outputView, LinearLayout.LayoutParams(1, 1))
-        setContentView(root)
-    }
-
-    private fun updateImportStatus(message: String) { runOnUiThread { val content = findViewById<View>(android.R.id.content); val status = content.findViewWithTag<TextView>("import_status"); status?.text = message } }
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun createWebView() {
-        val wv = WebView(this).apply { settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.userAgentString = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"; alpha = 0f }
-        val bridge = TravelPinsJsBridge(
-            repository = repository, scope = lifecycleScope, getCurrentSourceListId = { currentListId }, getCurrentSourceListName = { currentListName },
-            onImportFinished = { savedCount ->
-                lifecycleScope.launch {
-                    EnrichmentManager.reset()
-
-                    val listId = currentListId
-                    val first10Places = if (listId != null) {
-                        repository.getPlacesByListId(listId).take(10).map { it.id }
-                    } else {
-                        emptyList()
-                    }
-
-                    if (first10Places.isNotEmpty()) {
-                        runOnUiThread { updateImportStatus("Importazione completata.\n$savedCount luoghi salvati.\nArricchimento prioritario in corso...") }
-                        EnrichmentManager.prioritize(first10Places)
-
-                        var waited = 0L
-                        val step = 500L
-                        while (waited < 15000L) {
-                            val places = repository.getPlacesByListId(listId)
-                            val enrichedCount = first10Places.count { id ->
-                                places.firstOrNull { it.id == id }?.detailsFetchedAt != null
-                            }
-                            runOnUiThread {
-                                updateImportStatus("Importazione completata.\n$savedCount luoghi salvati.\nArricchiti $enrichedCount/${first10Places.size} luoghi prioritari...")
-                            }
-                            if (enrichedCount >= 3) {
-                                break
-                            }
-                            delay(step)
-                            waited += step
-                        }
-                    }
-
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "$savedCount luoghi importati", Toast.LENGTH_SHORT).show()
-                        webView?.stopLoading()
-                        webView?.postDelayed({ showAppShell(NavTab.HOME) }, 300)
-                    }
-                }
-            },
-            onImportError = { error -> runOnUiThread { updateImportStatus("Si è verificato un errore.\n\n${error.message}"); Toast.makeText(this, "Errore durante l'importazione", Toast.LENGTH_LONG).show() } },
-            onLogMessage = { message -> appendOutput(message) }
-        )
-
-        EnrichmentManager.setLogCallback { message -> appendOutput(message) }
-
-        wv.addJavascriptInterface(bridge, TravelPinsJsBridge.NAME); wv.addJavascriptInterface(bridge, TravelPinsJsBridge.BRIDGE_NAME)
-        wv.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String) {
-                super.onPageFinished(view, url); appendOutput("PAGINA CARICATA: $url")
-                view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT, null)
-                if (url.contains("consent.google.com")) { if (!consentAttempted) { consentAttempted = true; updateImportStatus("Autorizzazione Google in corso…"); view.postDelayed({ acceptGoogleConsent() }, 700) }; return }
-                if (GoogleMapsScraperScript.isGoogleListUrl(url)) {
-                    currentListId = extractListId(url)
-                    currentListName = view.title?.replace(" - Google Maps", "")?.replace("Google Maps", "")?.trim()?.takeIf { it.isNotBlank() }
-                    appendOutput("LISTA GOOGLE MAPS RILEVATA\n$url\nTITOLO: $currentListName")
-                    updateImportStatus("Lista trovata.\nLettura dei luoghi in corso…")
-                    if (currentListId != null && !scanStarted) { scanStarted = true; view.postDelayed({ scanGoogleList() }, 500) }
-                }
-            }
-            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean { 
-                appendOutput("WEBVIEW RENDERER TERMINATO\nCRASH: $detail")
-                updateImportStatus("Google Maps ha interrotto l'importazione.")
-                return true 
-            }
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean { val url = request.url.toString(); if (url.startsWith("intent://")) { handleGoogleIntent(url); return true }; return false }
-        }
-        webView = wv
-    }
-
-    private fun extractListId(url: String): String? {
-        Regex("!11m2!2s([^!&]+)", RegexOption.IGNORE_CASE).find(url)?.let { return it.groupValues[1] }
-        Regex("""/local/userlists/list/([^?/]+)""", RegexOption.IGNORE_CASE).find(url)?.let { return it.groupValues[1] }
-        Regex("2s([A-Za-z0-9_-]{20,})").find(url)?.let { return it.groupValues[1] }
-        return null
-    }
-
-    private fun acceptGoogleConsent() { webView?.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT) { result -> appendOutput("CONSENSO RISULTATO\n$result") } }
-
-    private fun scanGoogleList() { if (importStarted) return; importStarted = true; updateImportStatus("Lettura dei luoghi in corso…"); appendOutput("SCANSIONE LISTA AVVIATA\nMetodo: entitylist/getlist"); webView?.evaluateJavascript(GoogleMapsScraperScript.GETLIST_SCRIPT) { result -> appendOutput("CALLBACK GETLIST\n$result") } }
-
-    private fun handleGoogleIntent(intentUrl: String) {
-        try {
-            val marker = "S.browser_fallback_url=";
-            val start = intentUrl.indexOf(marker)
-            if (start == -1) { updateImportStatus("Impossibile aprire la lista Google Maps."); appendOutput("FALLBACK URL NON TROVATO"); return }
-            var value = intentUrl.substring(start + marker.length);
-            val end = value.indexOf("#Intent");
-            if (end != -1) value = value.substring(0, end)
-            val decoded = URLDecoder.decode(value, "UTF-8");
-            appendOutput("GOOGLE INTENT INTERCETTATO\nFALLBACK WEB:\n$decoded");
-            webView?.loadUrl(decoded)
-        } catch (e: Exception) { appendOutput("ERRORE PARSING INTENT:\n$e"); updateImportStatus("Errore durante l'apertura della lista.") }
-    }
-
-    private fun handleIntent(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_SEND) return
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT); if (text.isNullOrBlank()) { Toast.makeText(this, "Nessun testo ricevuto", Toast.LENGTH_SHORT).show(); return }
-        val match = Regex("""https?://\S+""").find(text); if (match == null) { Toast.makeText(this, "Nessun URL trovato", Toast.LENGTH_SHORT).show(); return }
-        val url = match.value; consentAttempted = false; scanStarted = false; importStarted = false; currentListId = null; currentListName = null
-        showImporter(); updateImportStatus("Apertura della lista Google Maps…"); appendOutput("LINK RICEVUTO\n$url"); webView?.loadUrl(url)
-    }
-
-    private fun appendOutput(section: String) { runOnUiThread { outputView.append("\n$section\n") } }
-
-    private fun copyOutputToClipboard() { val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return; clipboard.setPrimaryClip(ClipData.newPlainText("TravelPins", outputView.text)); Toast.makeText(this, "Copiato!", Toast.LENGTH_SHORT).show() }
-
-    private fun showDebugLogDialog() {
-        val logText = outputView.text.toString().takeIf { it.isNotBlank() } ?: "Nessun log disponibile ancora.\nImporta un elenco prima di aprire questo log."
-        val scroll = ScrollView(this); val textView = TextView(this).apply { text = logText; textSize = 11f; setTextColor(COLOR_TEXT_PRIMARY); setPadding(24, 16, 24, 16); setTextIsSelectable(true) }; scroll.addView(textView)
-        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
-            .setTitle("Log diagnostica").setView(scroll)
-            .setPositiveButton("COPIA") { _, _ -> copyOutputToClipboard() }
-            .setNegativeButton("CHIUDI", null)
-            .show()
-    }
 }
