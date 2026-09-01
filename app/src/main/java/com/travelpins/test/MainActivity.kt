@@ -50,6 +50,7 @@ import com.travelpins.test.ui.TravelPinsDarkTheme
 import com.travelpins.test.ui.TravelPinsHomeShell
 import com.travelpins.test.ui.TravelPinsListDetailScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -88,6 +89,8 @@ class MainActivity : ComponentActivity() {
     private var preExistingCount = 0
     private var lastSync: SyncResult? = null
     private val importState = mutableStateOf<ImportUiState?>(null)
+    private var getlistAttempts = 0
+    private var importTimeoutJob: Job? = null
 
     private var mapSelectedCategories: MutableSet<Long> = mutableSetOf()
     private var mapIncludeUncategorized: Boolean = true
@@ -183,19 +186,19 @@ class MainActivity : ComponentActivity() {
         setContentView(composeView)
     }
 
-    // ============================================================
-    // IMPORT / REFRESH
-    // ============================================================
-
     private fun startImport(url: String) {
         consentAttempted = false; scanStarted = false; importStarted = false
         currentListId = null; currentListName = null
         pendingRefreshListId = null
         pendingImportUrl = url
         preExistingCount = 0
+        getlistAttempts = 0
         importState.value = ImportUiState("Importazione", "Apertura della lista Google Maps…")
+        
+        destroyImportWebView()
         ensureImportWebView()
         webView?.loadUrl(url)
+        startImportTimeout()
     }
 
     private fun startRefresh(listId: String) {
@@ -210,10 +213,42 @@ class MainActivity : ComponentActivity() {
             currentListId = listId; currentListName = list?.name
             pendingRefreshListId = listId
             pendingImportUrl = url
+            getlistAttempts = 0
             importState.value = ImportUiState("Aggiornamento", "Lettura della lista Google Maps…", listId)
+            
+            destroyImportWebView()
             ensureImportWebView()
             webView?.loadUrl(url)
+            startImportTimeout()
         }
+    }
+
+    private fun destroyImportWebView() {
+        webView?.let { wv ->
+            wv.stopLoading()
+            (wv.parent as? ViewGroup)?.removeView(wv)
+            try { wv.destroy() } catch (_: Exception) { }
+        }
+        webView = null
+    }
+
+    private fun startImportTimeout() {
+        importTimeoutJob?.cancel()
+        importTimeoutJob = lifecycleScope.launch {
+            delay(90_000L)
+            if (importState.value != null) {
+                runOnUiThread {
+                    importState.value = null
+                    Toast.makeText(this@MainActivity, "Importazione scaduta. Riprova.", Toast.LENGTH_LONG).show()
+                    destroyImportWebView()
+                }
+            }
+        }
+    }
+
+    private fun cancelImportTimeout() {
+        importTimeoutJob?.cancel()
+        importTimeoutJob = null
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -232,6 +267,7 @@ class MainActivity : ComponentActivity() {
             onImportFinished = { savedCount -> onImportOrRefreshFinished(savedCount) },
             onImportError = { error ->
                 runOnUiThread {
+                    cancelImportTimeout()
                     importState.value = null
                     Toast.makeText(this, "Errore durante l'importazione", Toast.LENGTH_LONG).show()
                 }
@@ -275,12 +311,13 @@ class MainActivity : ComponentActivity() {
                     }
                     appendOutput("LISTA GOOGLE MAPS RILEVATA\n$url\nTITOLO: $currentListName")
                     setImportMessage("Lista trovata.\nLettura dei luoghi in corso…")
-                    if (currentListId != null && !scanStarted) { scanStarted = true; view.postDelayed({ scanGoogleList() }, 500) }
+                    if (currentListId != null && !scanStarted) { scanStarted = true; view.postDelayed({ scanGoogleList() }, 1500) }
                 }
             }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 appendOutput("WEBVIEW RENDERER TERMINATO\nCRASH: $detail")
                 runOnUiThread {
+                    cancelImportTimeout()
                     importState.value = null
                     Toast.makeText(this@MainActivity, "Google Maps ha interrotto il caricamento.", Toast.LENGTH_LONG).show()
                     (view.parent as? ViewGroup)?.removeView(view)
@@ -301,6 +338,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun onImportOrRefreshFinished(savedCount: Int) {
+        cancelImportTimeout()
         lifecycleScope.launch {
             val sync = lastSync
             val refreshId = pendingRefreshListId
@@ -360,11 +398,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun scanGoogleList() {
-        if (importStarted) return
+        if (importStarted && getlistAttempts >= 3) return
         importStarted = true
-        setImportMessage("Lettura dei luoghi in corso…")
-        appendOutput("SCANSIONE LISTA AVVIATA\nMetodo: entitylist/getlist")
-        webView?.evaluateJavascript(GoogleMapsScraperScript.GETLIST_SCRIPT) { result -> appendOutput("CALLBACK GETLIST\n$result") }
+        getlistAttempts++
+        setImportMessage("Lettura dei luoghi in corso… (tentativo $getlistAttempts)")
+        appendOutput("SCANSIONE LISTA AVVIATA (tentativo $getlistAttempts)\nMetodo: entitylist/getlist")
+        webView?.evaluateJavascript(GoogleMapsScraperScript.GETLIST_SCRIPT) { result ->
+            appendOutput("CALLBACK GETLIST\n$result")
+            val isEmpty = result.isNullOrBlank() || result == "{}" || result == "null" || result.contains("Failed to fetch")
+            if (isEmpty && getlistAttempts < 3) {
+                appendOutput("RISULTATO VUOTO, RETRY TRA 3s...")
+                webView?.postDelayed({
+                    importStarted = false
+                    scanGoogleList()
+                }, 3000L)
+            }
+        }
     }
 
     private fun handleGoogleIntent(intentUrl: String) {
@@ -419,10 +468,6 @@ class MainActivity : ComponentActivity() {
             .setNegativeButton("CHIUDI", null)
             .show()
     }
-
-    // ============================================================
-    // MAPPA ELENCO CON FILTRI MULTI-CATEGORIA
-    // ============================================================
 
     private fun showListMap(listId: String?, listName: String?, initialFilter: Long? = null) {
         currentScreen = Screen.LIST_MAP
@@ -572,11 +617,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ============================================================
-    // CATEGORIE (dialog)
-    // ============================================================
-
-    private fun showCategoryPicker(place: Place) {
+        private fun showCategoryPicker(place: Place) {
         if (currentCategories.isEmpty()) { Toast.makeText(this, "Prima crea almeno una categoria.", Toast.LENGTH_LONG).show(); showCreateCategoryDialog(); return }
         val items = mutableListOf<String>(); items.add("⚪  Senza categoria")
         currentCategories.forEach { category -> items.add("${category.iconKey}  ${category.name}") }
