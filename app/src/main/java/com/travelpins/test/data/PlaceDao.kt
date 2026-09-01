@@ -34,6 +34,9 @@ interface PlaceDao {
     @Query("UPDATE places SET categoryId = :categoryId WHERE id = :placeId")
     suspend fun assignCategory(placeId: Long, categoryId: Long?)
 
+    @Query("UPDATE places SET address = :address, mapsUrl = :mapsUrl, placeId = :googlePlaceId, mapsPlaceRef = :mapsPlaceRef WHERE id = :placeId")
+    suspend fun updateBaseInfo(placeId: Long, address: String?, mapsUrl: String?, googlePlaceId: String?, mapsPlaceRef: String?)
+
     @Delete
     suspend fun delete(place: Place)
 
