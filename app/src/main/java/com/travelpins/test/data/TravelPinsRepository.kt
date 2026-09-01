@@ -2,6 +2,9 @@ package com.travelpins.test.data
 
 import android.content.Context
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+
+data class SyncResult(val added: Int, val removed: Int, val updated: Int)
 
 class TravelPinsRepository(context: Context) {
 
@@ -10,6 +13,7 @@ class TravelPinsRepository(context: Context) {
     private val categoryDao = db.categoryDao()
     private val placePhotoDao = db.placePhotoDao()
     private val placeReviewDao = db.placeReviewDao()
+    private val sourceListDao = db.sourceListDao()
     private val prefs = context.applicationContext.getSharedPreferences("travelpins_prefs", Context.MODE_PRIVATE)
 
     val places: Flow<List<Place>> = placeDao.observeAll()
@@ -42,6 +46,74 @@ class TravelPinsRepository(context: Context) {
         return inserted.count { it != -1L }
     }
 
+    // ============================================================
+    // SYNC / REFRESH ELENCO
+    // ============================================================
+
+    suspend fun getSourceList(id: String): SourceList? = sourceListDao.getById(id)
+
+    suspend fun syncListPlaces(
+        listId: String,
+        listName: String?,
+        sourceUrl: String?,
+        incoming: List<Place>
+    ): SyncResult {
+        val existing = placeDao.getPlacesByListId(listId)
+        fun key(p: Place) = Triple(p.name, p.latitude, p.longitude)
+
+        val existingByKey = existing.associateBy(::key)
+        val incomingKeys = incoming.map(::key).toSet()
+
+        // 1) Luoghi rimossi da Google -> elimina completamente
+        val removedPlaces = existing.filter { key(it) !in incomingKeys }
+        for (p in removedPlaces) deletePlaceCompletely(p)
+
+        // 2) Luoghi ancora presenti -> sovrascrivi dati base e ri-arricchisci
+        var updated = 0
+        for (inc in incoming) {
+            val ex = existingByKey[key(inc)]
+            if (ex != null) {
+                placeDao.updateBaseInfo(ex.id, inc.address, inc.mapsUrl, inc.placeId, inc.mapsPlaceRef)
+                placeDao.clearDetailsFetched(ex.id)
+                updated++
+            }
+        }
+
+        // 3) Luoghi nuovi -> inserisci
+        val inserted = placeDao.insertAll(incoming)
+        val added = inserted.count { it != -1L }
+
+        // 4) Aggiorna intestazione lista
+        val now = System.currentTimeMillis()
+        val prev = sourceListDao.getById(listId)
+        sourceListDao.upsert(
+            SourceList(
+                id = listId,
+                name = listName ?: prev?.name,
+                sourceUrl = sourceUrl ?: prev?.sourceUrl,
+                coverUrl = prev?.coverUrl,
+                createdAt = prev?.createdAt ?: now,
+                updatedAt = now,
+                placeCount = 0
+            )
+        )
+        val total = placeDao.getPlacesByListId(listId).size
+        sourceListDao.updateStats(listId, total, now)
+
+        return SyncResult(added, removedPlaces.size, updated)
+    }
+
+    suspend fun deletePlaceCompletely(place: Place) {
+        placePhotoDao.deleteByPlace(place.id)
+        val reviews = placeReviewDao.observeByPlace(place.id).first()
+        if (reviews.isNotEmpty()) placeReviewDao.deleteAll(reviews)
+        placeDao.delete(place)
+    }
+
+    // ============================================================
+    // CATEGORIE
+    // ============================================================
+
     suspend fun createCategory(name: String, colorArgb: Int, iconKey: String): Long =
         categoryDao.insert(Category(name = name, colorArgb = colorArgb, iconKey = iconKey))
 
@@ -57,6 +129,10 @@ class TravelPinsRepository(context: Context) {
     suspend fun clearDetailsFetched(placeId: Long) = placeDao.clearDetailsFetched(placeId)
 
     suspend fun clearAllPlaces() = placeDao.deleteAll()
+
+    // ============================================================
+    // FOTO / RECENSIONI / DETTAGLI
+    // ============================================================
 
     suspend fun insertPhotos(photos: List<PlacePhoto>): Int {
         if (photos.isEmpty()) return 0
@@ -80,8 +156,16 @@ class TravelPinsRepository(context: Context) {
         placeDao.updateDetails(placeId, rating, reviewCount, description, websiteUrl, types, detailsFetchedAt)
     }
 
+    // ============================================================
+    // NOTE
+    // ============================================================
+
     suspend fun updateNote(placeId: Long, note: String?) =
         placeDao.updateNote(placeId, note)
+
+    // ============================================================
+    // COPERTINE
+    // ============================================================
 
     fun setListCover(listId: String?, url: String) {
         if (listId.isNullOrBlank()) return
