@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,6 +60,12 @@ import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
+
+data class ImportUiState(
+    val title: String,
+    val message: String,
+    val refreshingListId: String? = null
+)
 
 private enum class HomeTab { HOME, ELENCHI, MAPPA, PROFILO }
 
@@ -115,8 +123,6 @@ private fun rememberCoverUrl(repository: TravelPinsRepository, placeIds: List<Lo
             return@LaunchedEffect
         }
 
-        // first() prende la prima foto disponibile tra i candidati e si ferma:
-        // la copertina è stabile e appare appena un luogo prioritario ha una foto.
         val photoFlows = placeIds.map { id ->
             repository.observePhotosByPlace(id).mapNotNull { photos ->
                 if (photos.isNotEmpty()) photos.first().sizedUrl(width) else null
@@ -130,10 +136,12 @@ private fun rememberCoverUrl(repository: TravelPinsRepository, placeIds: List<Lo
 @Composable
 fun TravelPinsHomeShell(
     repository: TravelPinsRepository,
+    importState: ImportUiState?,
     onOpenList: (String?, String?) -> Unit,
     onImport: () -> Unit,
     onOpenGoogleLists: () -> Unit,
-    onShowDebugLog: () -> Unit
+    onShowDebugLog: () -> Unit,
+    onRefreshList: (String) -> Unit
 ) {
     var currentTab by remember { mutableStateOf(HomeTab.HOME) }
 
@@ -142,14 +150,18 @@ fun TravelPinsHomeShell(
             when (currentTab) {
                 HomeTab.HOME -> HomeTabContent(
                     repository = repository,
+                    importState = importState,
                     onOpenList = onOpenList,
                     onSeeAll = { currentTab = HomeTab.ELENCHI },
-                    onImport = onImport
+                    onImport = onImport,
+                    onRefreshList = onRefreshList
                 )
                 HomeTab.ELENCHI -> ElenchiTabContent(
                     repository = repository,
+                    importState = importState,
                     onOpenList = onOpenList,
-                    onImport = onImport
+                    onImport = onImport,
+                    onRefreshList = onRefreshList
                 )
                 HomeTab.MAPPA -> PlaceholderTab("🗺️", "Mappa generale", "Presto disponibile: tutti i tuoi luoghi su un'unica mappa.")
                 HomeTab.PROFILO -> ProfiloTabContent(onShowDebugLog)
@@ -200,11 +212,31 @@ private fun NavItem(
 }
 
 @Composable
+private fun ImportProgressCard(state: ImportUiState) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(TPColors.Surface)
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = TPColors.Accent, strokeWidth = 2.dp)
+            Spacer(Modifier.width(10.dp))
+            Text(state.title, color = TPColors.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(state.message, color = TPColors.TextSecondary, fontSize = 13.sp)
+    }
+}
+
+@Composable
 private fun HomeTabContent(
     repository: TravelPinsRepository,
+    importState: ImportUiState?,
     onOpenList: (String?, String?) -> Unit,
     onSeeAll: () -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onRefreshList: (String) -> Unit
 ) {
     val places by repository.places.collectAsState(initial = emptyList())
     val groups = remember(places) { groupLists(places) }
@@ -225,10 +257,23 @@ private fun HomeTabContent(
             Text("Vedi tutti ›", color = TPColors.Accent, fontSize = 14.sp, modifier = Modifier.clickable { onSeeAll() })
         }
 
-        if (groups.isEmpty()) {
+        if (importState != null) {
+            ImportProgressCard(importState)
+        }
+
+        if (groups.isEmpty() && importState == null) {
             EmptyState(onImport)
         } else {
-            groups.forEachIndexed { index, group -> ListCard(repository, group, index, onOpenList) }
+            groups.forEachIndexed { index, group ->
+                ListCard(
+                    repository = repository,
+                    group = group,
+                    badgeIndex = index,
+                    onOpenList = onOpenList,
+                    onRefreshList = onRefreshList,
+                    isRefreshing = importState?.refreshingListId == group.listId
+                )
+            }
         }
 
         Spacer(Modifier.height(24.dp))
@@ -252,10 +297,10 @@ private fun ListCard(
     repository: TravelPinsRepository,
     group: ListGroup,
     badgeIndex: Int,
-    onOpenList: (String?, String?) -> Unit
+    onOpenList: (String?, String?) -> Unit,
+    onRefreshList: (String) -> Unit,
+    isRefreshing: Boolean
 ) {
-    // FIX: i candidati copertina coincidono con i luoghi arricchiti per primi
-    // (i primi importati, stesso ordine di getPlacesByListId), non gli ultimi.
     val candidates = remember(group) { group.places.sortedBy { it.importedAt }.take(10).map { it.id } }
     val manualCover = remember(group.listId) { repository.getListCover(group.listId) }
     val coverUrl = rememberCoverUrl(repository, candidates, 900, manualCover)
@@ -276,6 +321,24 @@ private fun ListCard(
                 Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))
             )
         )
+
+        // Tasto aggiorna elenco
+        if (group.listId != null) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(12.dp).size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .clickable(enabled = !isRefreshing) { onRefreshList(group.listId) },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Refresh,
+                    contentDescription = "Aggiorna elenco",
+                    tint = if (isRefreshing) Color.White.copy(alpha = 0.4f) else Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
 
         Row(
             Modifier.align(Alignment.BottomStart).padding(16.dp),
@@ -339,8 +402,10 @@ private fun EmptyState(onImport: () -> Unit) {
 @Composable
 private fun ElenchiTabContent(
     repository: TravelPinsRepository,
+    importState: ImportUiState?,
     onOpenList: (String?, String?) -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onRefreshList: (String) -> Unit
 ) {
     val places by repository.places.collectAsState(initial = emptyList())
     val groups = remember(places) { groupLists(places) }
@@ -361,10 +426,23 @@ private fun ElenchiTabContent(
             Text("Apri un elenco in Google Maps, tocca Condividi e scegli TravelPins.", color = TPColors.TextMuted, fontSize = 12.sp)
         }
 
-        if (groups.isEmpty()) {
+        if (importState != null) {
+            ImportProgressCard(importState)
+        }
+
+        if (groups.isEmpty() && importState == null) {
             EmptyState(onImport)
         } else {
-            groups.forEachIndexed { index, group -> ListCard(repository, group, index, onOpenList) }
+            groups.forEachIndexed { index, group ->
+                ListCard(
+                    repository = repository,
+                    group = group,
+                    badgeIndex = index,
+                    onOpenList = onOpenList,
+                    onRefreshList = onRefreshList,
+                    isRefreshing = importState?.refreshingListId == group.listId
+                )
+            }
         }
 
         Spacer(Modifier.height(24.dp))
