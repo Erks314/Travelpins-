@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.view.ViewGroup
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -44,6 +45,7 @@ object EnrichmentManager {
     private var started = false
     private var loopsStarted = false
     private var repository: TravelPinsRepository? = null
+    private var workerParent: ViewGroup? = null
 
     private val scope = MainScope()
     private val workers = mutableListOf<Worker>()
@@ -76,7 +78,6 @@ object EnrichmentManager {
             attempts.clear()
         }
 
-        // FIX: complete(false) invece di cancel() per non uccidere il worker loop
         workers.forEach { worker ->
             worker.currentPlaceId = null
             worker.currentDeferred?.complete(false)
@@ -164,77 +165,108 @@ object EnrichmentManager {
         log("ATTACH: Creazione $WORKER_COUNT WebView")
         val repo = repository ?: TravelPinsRepository(activity.applicationContext)
         repository = repo
+        workerParent = activity.window.decorView as? ViewGroup
 
         repeat(WORKER_COUNT) { index ->
             val worker = Worker(index)
-            val webView = WebView(activity).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.userAgentString = USER_AGENT
-                alpha = 0f
-            }
-
-            val bridge = TravelPinsJsBridge(
-                repository = repo, scope = scope,
-                getCurrentSourceListId = { null }, getCurrentSourceListName = { null },
-                onImportFinished = { }, onImportError = { },
-                onLogMessage = { message -> log("[W${worker.index}] JS: $message") },
-                getEnrichmentPlaceId = { worker.currentPlaceId },
-                onDetailsFinished = { _, photos, reviews ->
-                    log("[W${worker.index}] Dettagli salvati: foto=$photos recensioni=$reviews")
-                    worker.currentDeferred?.complete(true)
-                },
-                onDetailsError = {
-                    log("[W${worker.index}] Errore dettagli")
-                    worker.currentDeferred?.complete(false)
-                }
-            )
-
-            webView.addJavascriptInterface(bridge, TravelPinsJsBridge.NAME)
-            webView.addJavascriptInterface(bridge, TravelPinsJsBridge.BRIDGE_NAME)
-
-            webView.webViewClient = object : WebViewClient() {
-                override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
-                    super.onPageStarted(view, url, favicon)
-                    log("[W${worker.index}] Pagina start: ${url.take(80)}")
-                    view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT) { result ->
-                        log("[W${worker.index}] Network hook installato: $result")
-                    }
-                }
-
-                override fun onPageFinished(view: WebView, url: String) {
-                    super.onPageFinished(view, url)
-                    log("[W${worker.index}] Pagina finish: ${url.take(80)}")
-                    if (url.contains("consent.google.com") && !worker.consentAttempted) {
-                        worker.consentAttempted = true
-                        view.postDelayed({
-                            view.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT) { result ->
-                                log("[W${worker.index}] Consenso: $result")
-                            }
-                        }, 700)
-                    }
-                }
-
-                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                    val url = request.url.toString()
-                    if (url.startsWith("intent://")) {
-                        extractFallbackUrl(url)?.let { fallback ->
-                            log("[W${worker.index}] Intent fallback: ${fallback.take(80)}")
-                            view.loadUrl(fallback)
-                        }
-                        return true
-                    }
-                    return false
-                }
-            }
-
-            val parent = activity.window.decorView as? ViewGroup
-            parent?.addView(webView, FrameLayout.LayoutParams(1, 1))
+            val webView = buildWorkerWebView(worker, repo, activity)
+            workerParent?.addView(webView, FrameLayout.LayoutParams(1, 1))
             worker.webView = webView
             worker.attached.complete(webView)
             workers.add(worker)
         }
         ensureWorkerLoops()
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun buildWorkerWebView(worker: Worker, repo: TravelPinsRepository, context: Context): WebView {
+        val webView = WebView(context).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.userAgentString = USER_AGENT
+            alpha = 0f
+        }
+
+        val bridge = TravelPinsJsBridge(
+            repository = repo, scope = scope,
+            getCurrentSourceListId = { null }, getCurrentSourceListName = { null },
+            onImportFinished = { }, onImportError = { },
+            onLogMessage = { message -> log("[W${worker.index}] JS: $message") },
+            getEnrichmentPlaceId = { worker.currentPlaceId },
+            onDetailsFinished = { _, photos, reviews ->
+                log("[W${worker.index}] Dettagli salvati: foto=$photos recensioni=$reviews")
+                worker.currentDeferred?.complete(true)
+            },
+            onDetailsError = {
+                log("[W${worker.index}] Errore dettagli")
+                worker.currentDeferred?.complete(false)
+            }
+        )
+
+        webView.addJavascriptInterface(bridge, TravelPinsJsBridge.NAME)
+        webView.addJavascriptInterface(bridge, TravelPinsJsBridge.BRIDGE_NAME)
+
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                log("[W${worker.index}] Pagina start: ${url.take(80)}")
+                view.evaluateJavascript(GoogleMapsScraperScript.NETWORK_HOOK_SCRIPT) { result ->
+                    log("[W${worker.index}] Network hook installato: $result")
+                }
+            }
+
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
+                log("[W${worker.index}] Pagina finish: ${url.take(80)}")
+                if (url.contains("consent.google.com") && !worker.consentAttempted) {
+                    worker.consentAttempted = true
+                    view.postDelayed({
+                        view.evaluateJavascript(GoogleMapsScraperScript.ACCEPT_CONSENT_SCRIPT) { result ->
+                            log("[W${worker.index}] Consenso: $result")
+                        }
+                    }, 700)
+                }
+            }
+
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val url = request.url.toString()
+                if (url.startsWith("intent://")) {
+                    extractFallbackUrl(url)?.let { fallback ->
+                        log("[W${worker.index}] Intent fallback: ${fallback.take(80)}")
+                        view.loadUrl(fallback)
+                    }
+                    return true
+                }
+                return false
+            }
+
+            // FIX: se il renderer Chromium muore, ricreiamo il WebView del worker
+            // invece di lasciar crashare l'app o di perdere il worker per sempre.
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                log("[W${worker.index}] Renderer terminato (crash=${detail.didCrash()}). Ricreo il WebView.")
+                scope.launch(Dispatchers.Main) { recreateWorkerWebView(worker) }
+                return true
+            }
+        }
+
+        return webView
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun recreateWorkerWebView(worker: Worker) {
+        val parent = workerParent ?: return
+        val repo = repository ?: return
+
+        val old = worker.webView
+        worker.webView = null
+        (old?.parent as? ViewGroup)?.removeView(old)
+        try { old?.destroy() } catch (_: Exception) { }
+
+        val webView = buildWorkerWebView(worker, repo, parent.context)
+        parent.addView(webView, FrameLayout.LayoutParams(1, 1))
+        worker.webView = webView
+        worker.consentAttempted = false
+        log("[W${worker.index}] WebView ricreato, il loop riprende la coda")
     }
 
     private fun ensureWorkerLoops() {
@@ -246,7 +278,8 @@ object EnrichmentManager {
 
     private suspend fun workerLoop(worker: Worker) {
         log("[W${worker.index}] Loop avviato, attendo WebView...")
-        val webView = withTimeoutOrNull(15_000L) { worker.attached.await() } ?: run {
+        val ready = withTimeoutOrNull(15_000L) { worker.attached.await() }
+        if (ready == null) {
             log("[W${worker.index}] WebView non disponibile dopo 15s")
             return
         }
@@ -274,13 +307,21 @@ object EnrichmentManager {
                 continue
             }
 
+            // Legge il WebView corrente al momento del carico: se è stato
+            // ricreato dopo un crash del renderer, usa automaticamente quello nuovo.
+            val wv = worker.webView
+            if (wv == null) {
+                delay(300L)
+                continue
+            }
+
             queueMutex.withLock { inFlight.add(placeId) }
             worker.currentPlaceId = placeId
             worker.currentDeferred = CompletableDeferred()
 
             val url = place.mapsUrl ?: buildFallbackMapsUrl(place.latitude, place.longitude)
             log("[W${worker.index}] Start: ${place.name}")
-            withContext(Dispatchers.Main) { webView.loadUrl(url) }
+            withContext(Dispatchers.Main) { wv.loadUrl(url) }
 
             val ok = withTimeoutOrNull(PLACE_TIMEOUT_MS) { worker.currentDeferred?.await() } ?: false
             queueMutex.withLock { inFlight.remove(placeId) }
