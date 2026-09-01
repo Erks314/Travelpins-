@@ -83,6 +83,8 @@ class MainActivity : ComponentActivity() {
     private var consentAttempted = false
     private var scanStarted = false
     private var importStarted = false
+    private var importerVisible = false
+    private var pendingImportUrl: String? = null
     private var currentPlaces: List<Place> = emptyList()
     private var currentCategories: List<Category> = emptyList()
     private var selectedCategoryId: Long? = null
@@ -132,6 +134,7 @@ class MainActivity : ComponentActivity() {
     private fun showAppShell(tab: NavTab) {
         currentScreen = Screen.HOME; currentNavTab = tab
         viewingListId = null; viewingListName = null; selectedCategoryId = null
+        importerVisible = false
         val composeView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
@@ -167,6 +170,7 @@ class MainActivity : ComponentActivity() {
     private fun showListDetail(listId: String?, listName: String?) {
         currentScreen = Screen.LIST_DETAIL
         viewingListId = listId; viewingListName = listName; selectedCategoryId = null
+        importerVisible = false
         val composeView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
@@ -189,6 +193,7 @@ class MainActivity : ComponentActivity() {
     private fun showListMap(listId: String?, listName: String?) {
         currentScreen = Screen.LIST_MAP
         viewingListId = listId; viewingListName = listName
+        importerVisible = false
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(COLOR_BG); setPadding(20, 28, 20, 20) }
         val backButton = TextView(this).apply { text = "←"; textSize = 18f; setTextColor(COLOR_TEXT_PRIMARY); gravity = Gravity.CENTER; background = roundedBackground(COLOR_SURFACE, 20f); setOnClickListener { showListDetail(listId, listName) } }
         root.addView(backButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply { bottomMargin = 14 })
@@ -365,7 +370,7 @@ class MainActivity : ComponentActivity() {
         Color.parseColor("#6B7280"), Color.parseColor("#78716C")
     )
 
-    private val categoryIconPalette = listOf("📍", "", "🏨", "🏖️", "🏛️", "🌄", "🎯", "️", "☕", "🍺", "🎭", "")
+    private val categoryIconPalette = listOf("📍", "🍴", "", "🏖️", "🏛️", "🌄", "🎯", "🛍️", "☕", "", "", "")
 
     private fun showCreateCategoryDialog() {
         var selectedIcon = categoryIconPalette.first()
@@ -436,6 +441,7 @@ class MainActivity : ComponentActivity() {
 
     private fun showImporter() {
         consentAttempted = false; scanStarted = false; importStarted = false; currentListId = null; currentListName = null
+        importerVisible = true
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setBackgroundColor(COLOR_BG); setPadding(28, 80, 28, 40) }
         val title = TextView(this).apply { text = "TRAVELPINS"; textSize = 30f; setTextColor(COLOR_TEXT_PRIMARY); gravity = Gravity.CENTER; setPadding(0, 0, 0, 12) }; root.addView(title)
         val importTitle = TextView(this).apply { text = "Importazione in corso"; textSize = 22f; setTextColor(COLOR_TEXT_PRIMARY); gravity = Gravity.CENTER; setPadding(0, 0, 0, 10) }; root.addView(importTitle)
@@ -445,7 +451,6 @@ class MainActivity : ComponentActivity() {
         val cancelButton = Button(this).apply { text = "ANNULLA"; textSize = 13f; setTextColor(COLOR_TEXT_PRIMARY); background = roundedBackground(COLOR_SURFACE, 14f); setOnClickListener { webView.stopLoading(); showAppShell(NavTab.HOME) } }
         root.addView(cancelButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 52))
 
-        // Rimuovi il webView dal vecchio layout prima di riaggiungerlo (fix secondo import)
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.alpha = 0f; root.addView(webView, LinearLayout.LayoutParams(1, 1))
 
@@ -461,6 +466,7 @@ class MainActivity : ComponentActivity() {
         val bridge = TravelPinsJsBridge(
             repository = repository, scope = lifecycleScope, getCurrentSourceListId = { currentListId }, getCurrentSourceListName = { currentListName },
             onImportFinished = { savedCount ->
+                pendingImportUrl = null
                 lifecycleScope.launch {
                     EnrichmentManager.reset()
 
@@ -500,7 +506,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             },
-            onImportError = { error -> runOnUiThread { updateImportStatus("Si è verificato un errore.\n\n${error.message}"); Toast.makeText(this, "Errore durante l'importazione", Toast.LENGTH_LONG).show() } },
+            onImportError = { error -> pendingImportUrl = null; runOnUiThread { updateImportStatus("Si è verificato un errore.\n\n${error.message}"); Toast.makeText(this, "Errore durante l'importazione", Toast.LENGTH_LONG).show() } },
             onLogMessage = { message -> appendOutput(message) }
         )
 
@@ -520,8 +526,45 @@ class MainActivity : ComponentActivity() {
                     if (currentListId != null && !scanStarted) { scanStarted = true; view.postDelayed({ scanGoogleList() }, 500) }
                 }
             }
-            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean { appendOutput("WEBVIEW RENDERER TERMINATO\nCRASH: $detail"); updateImportStatus("Google Maps ha interrotto l'importazione."); return true }
+            // FIX: se il renderer Chromium muore, il vecchio WebView è inutilizzabile.
+            // Lo ricreiamo e rilanciamo l'import invece di restare bloccati.
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                appendOutput("WEBVIEW RENDERER TERMINATO\nCRASH: $detail")
+                updateImportStatus("Google Maps ha interrotto il caricamento.\nRiprovo automaticamente…")
+                recreateImportWebView()
+                return true
+            }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean { val url = request.url.toString(); if (url.startsWith("intent://")) { handleGoogleIntent(url); return true }; return false }
+        }
+    }
+
+    // Distrugge il WebView morto e ne crea uno nuovo; se eravamo in fase di
+    // import, lo riaggancia al layout e rilancia il caricamento del link.
+    private fun recreateImportWebView() {
+        runOnUiThread {
+            val dead = webView
+            (dead.parent as? ViewGroup)?.removeView(dead)
+            try { dead.destroy() } catch (_: Exception) { }
+
+            createWebView()
+
+            val url = pendingImportUrl
+            if (importerVisible && url != null) {
+                consentAttempted = false
+                scanStarted = false
+                importStarted = false
+                currentListId = null
+                currentListName = null
+
+                val content = findViewById<ViewGroup>(android.R.id.content)
+                val root = content?.getChildAt(0) as? LinearLayout
+                if (root != null) {
+                    (webView.parent as? ViewGroup)?.removeView(webView)
+                    webView.alpha = 0f
+                    root.addView(webView, LinearLayout.LayoutParams(1, 1))
+                    webView.loadUrl(url)
+                }
+            }
         }
     }
 
@@ -555,11 +598,11 @@ class MainActivity : ComponentActivity() {
         val text = intent.getStringExtra(Intent.EXTRA_TEXT); if (text.isNullOrBlank()) { Toast.makeText(this, "Nessun testo ricevuto", Toast.LENGTH_SHORT).show(); return }
         val match = Regex("""https?://\S+""").find(text); if (match == null) { Toast.makeText(this, "Nessun URL trovato", Toast.LENGTH_SHORT).show(); return }
         val url = match.value; consentAttempted = false; scanStarted = false; importStarted = false; currentListId = null; currentListName = null
+        pendingImportUrl = url
         showImporter(); updateImportStatus("Apertura della lista Google Maps…"); appendOutput("LINK RICEVUTO\n$url"); webView.loadUrl(url)
     }
 
-    // FIX CRASH: questa funzione viene chiamata anche dai thread JavaScript dei WebView.
-    // Ora è thread-safe: l'aggiornamento della TextView avviene sempre sul thread UI.
+    // FIX CRASH: chiamata anche dai thread JavaScript dei WebView, ora è thread-safe.
     private fun appendOutput(section: String) {
         runOnUiThread {
             if (!::outputView.isInitialized) return@runOnUiThread
