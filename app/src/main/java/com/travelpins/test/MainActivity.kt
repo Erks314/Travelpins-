@@ -18,6 +18,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -307,7 +308,6 @@ class MainActivity : ComponentActivity() {
             lastSync = null
 
             if (refreshId != null) {
-                // REFRESH: nessun attesa, solo riepilogo
                 pendingRefreshListId = null
                 importState.value = null
                 withContext(Dispatchers.Main) {
@@ -320,10 +320,8 @@ class MainActivity : ComponentActivity() {
                 return@launch
             }
 
-            // IMPORT (nuovo o re-import condiviso)
             val listId = currentListId
             if (preExistingCount == 0 && listId != null) {
-                // Vero nuovo import: attendi la first-wave
                 EnrichmentManager.reset()
                 val first10 = repository.getPlacesByListId(listId).take(10).map { it.id }
                 if (first10.isNotEmpty()) {
@@ -340,7 +338,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } else {
-                // Re-import di una lista esistente = refresh
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@MainActivity,
@@ -394,6 +391,13 @@ class MainActivity : ComponentActivity() {
         startImport(match.value)
     }
 
+    private fun extractListId(url: String): String? {
+        Regex("!11m2!2s([^!&]+)", RegexOption.IGNORE_CASE).find(url)?.let { return it.groupValues[1] }
+        Regex("""/local/userlists/list/([^?/]+)""", RegexOption.IGNORE_CASE).find(url)?.let { return it.groupValues[1] }
+        Regex("2s([A-Za-z0-9_-]{20,})").find(url)?.let { return it.groupValues[1] }
+        return null
+    }
+
     private fun appendOutput(section: String) {
         runOnUiThread { outputView.append("\n$section\n") }
     }
@@ -424,7 +428,6 @@ class MainActivity : ComponentActivity() {
         currentScreen = Screen.LIST_MAP
         viewingListId = listId; viewingListName = listName
 
-        // Default: tutte le categorie visibili
         mapSelectedCategories = currentCategories.map { it.id }.toMutableSet()
         mapIncludeUncategorized = true
         if (initialFilter != null) {
@@ -611,11 +614,7 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    // === FINE PARTE 1/2 - INCOLLA LA PARTE 2/2 SUBITO SOTTO ===
-
-
-
-        private val categoryColorPalette = listOf(
+    private val categoryColorPalette = listOf(
         Color.parseColor("#EF4444"), Color.parseColor("#F97316"), Color.parseColor("#F59E0B"),
         Color.parseColor("#EAB308"), Color.parseColor("#84CC16"), Color.parseColor("#22C55E"),
         Color.parseColor("#10B981"), Color.parseColor("#14B8A6"), Color.parseColor("#06B6D4"),
@@ -625,7 +624,7 @@ class MainActivity : ComponentActivity() {
         Color.parseColor("#6B7280"), Color.parseColor("#78716C")
     )
 
-    private val categoryIconPalette = listOf("📍", "🍴", "", "🏖️", "🏛️", "🌄", "🎯", "️", "", "🍺", "🎭", "")
+    private val categoryIconPalette = listOf("📍", "", "🏨", "🏖️", "🏛️", "🌄", "🎯", "️", "", "🍺", "🎭", "")
 
     private fun showCreateCategoryDialog() {
         var selectedIcon = categoryIconPalette.first()
