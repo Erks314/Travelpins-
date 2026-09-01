@@ -2,6 +2,7 @@ package com.travelpins.test.importer
 
 import android.util.Log
 import android.webkit.JavascriptInterface
+import com.travelpins.test.data.Place
 import com.travelpins.test.data.PlacePhoto
 import com.travelpins.test.data.PlaceReview
 import com.travelpins.test.data.TravelPinsRepository
@@ -19,7 +20,8 @@ class TravelPinsJsBridge(
     private val onLogMessage: (String) -> Unit = {},
     private val getEnrichmentPlaceId: () -> Long? = { null },
     private val onDetailsFinished: (placeId: Long, photosSaved: Int, reviewsSaved: Int) -> Unit = { _, _, _ -> },
-    private val onDetailsError: () -> Unit = {}
+    private val onDetailsError: () -> Unit = {},
+    private val savePlaces: suspend (List<Place>) -> Int = { repository.saveImportedPlaces(it) }
 ) {
     private var extractedListName: String? = null
 
@@ -52,7 +54,7 @@ class TravelPinsJsBridge(
                 val sourceListName = extractedListName ?: getCurrentSourceListName()
                 val places = PlaceJsonParser.parse(json = rawJson, sourceListId = sourceListId, sourceListName = sourceListName)
                 onLogMessage("LUOGHI PARSATI: ${places.size}")
-                val saved = repository.saveImportedPlaces(places)
+                val saved = savePlaces(places)
                 onImportFinished(saved)
             } catch (t: Throwable) {
                 Log.e("TravelPins", "Errore importazione", t)
@@ -66,13 +68,13 @@ class TravelPinsJsBridge(
         scope.launch {
             try {
                 val placeId = getEnrichmentPlaceId() ?: return@launch
-                
+
                 var cleanJson = rawJson
                 if (cleanJson.startsWith(")]}'")) {
                     cleanJson = cleanJson.substring(4)
                     if (cleanJson.startsWith("\n")) cleanJson = cleanJson.substring(1)
                 }
-                
+
                 val details = PlaceDetailsParser.parse(cleanJson)
                 if (details == null) {
                     onLogMessage("⚠️ Parser ha restituito null")
@@ -80,14 +82,11 @@ class TravelPinsJsBridge(
                     return@launch
                 }
 
-                // FIX: per i luoghi "locality" (paesi/città) il JSON di Google ha una
-                // struttura diversa e il parser può leggere come rating una coordinata
-                // (longitudine/latitudine) e come recensioni un contatore sbagliato.
                 val place = repository.getPlaceById(placeId)
                 val safeRating = sanitizeRating(details.rating, place?.latitude, place?.longitude)
                 val safeReviewCount = if (safeRating != null) details.reviewCount else null
                 if (details.rating != null && safeRating == null) {
-                    onLogMessage("⚠️ Rating sospetto scartato (${details.rating}): non è un voto Google valido")
+                    onLogMessage("⚠️ Rating sospetto scartato (${details.rating})")
                 }
 
                 onLogMessage("📋 DATI TROVATI DAL PARSER:")
@@ -98,13 +97,7 @@ class TravelPinsJsBridge(
                 onLogMessage("  Tipi: ${details.types.joinToString(", ")}")
                 onLogMessage("  Descrizione: ${details.description?.take(100)}...")
                 onLogMessage("  Foto trovate: ${details.photos.size}")
-                details.photos.take(3).forEachIndexed { index, photo ->
-                    onLogMessage("    Foto $index: ${photo.url.take(80)}...")
-                }
                 onLogMessage("  Recensioni trovate: ${details.reviews.size}")
-                details.reviews.take(2).forEachIndexed { index, review ->
-                    onLogMessage("    Recensione $index: ${review.authorName} - ${review.rating}★ - ${review.reviewText?.take(50)}...")
-                }
 
                 var photosSaved = 0
                 var reviewsSaved = 0
@@ -143,8 +136,6 @@ class TravelPinsJsBridge(
         }
     }
 
-    // Un voto Google valido è tra 1 e 5, con al massimo 2 decimali,
-    // e non deve coincidere con le coordinate del luogo.
     private fun sanitizeRating(rating: Double?, lat: Double?, lng: Double?): Double? {
         if (rating == null) return null
         if (rating < 1.0 || rating > 5.0) return null
