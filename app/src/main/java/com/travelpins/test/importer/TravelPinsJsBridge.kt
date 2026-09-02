@@ -7,8 +7,10 @@ import com.travelpins.test.data.PlacePhoto
 import com.travelpins.test.data.PlaceReview
 import com.travelpins.test.data.TravelPinsRepository
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 class TravelPinsJsBridge(
@@ -45,6 +47,18 @@ class TravelPinsJsBridge(
         if (cleanTitle.isNotBlank()) {
             extractedListName = cleanTitle
             onLogMessage("NOME LISTA: $cleanTitle")
+        }
+    }
+
+    // 🔥 FIX: Metodo per ricevere e loggare gli errori di scansione lista dal JS
+    @JavascriptInterface
+    fun onListScanError(errorCode: String) {
+        onLogMessage("🚨 ERRORE SCANSIONE LISTA: $errorCode")
+        scope.launch {
+            withContext(Dispatchers.Main) {
+                // Notifica l'Activity che l'importazione è fallita per un errore specifico
+                onImportError(RuntimeException("Errore scansione lista: $errorCode"))
+            }
         }
     }
 
@@ -113,8 +127,6 @@ class TravelPinsJsBridge(
                         PlacePhoto(placeId = placeId, photoKey = photoDto.key, imageUrl = photoDto.url, width = photoDto.width, height = photoDto.height, position = index)
                     }
                     val inserted = repository.insertPhotos(placePhotos)
-                    // Se insertPhotos ritorna 0 perché le foto erano già presenti (conflitto ignorato),
-                    // consideriamo comunque le foto come "salvate" per non farle sembrare perse.
                     photosSaved = if (inserted == 0 && existingPhotos.isNotEmpty()) existingPhotos.size else inserted
                 } else if (existingPhotos.isNotEmpty()) {
                     // 🛡️ PROTEZIONE: Se il parser non trova foto ma ne esistono già, NON sovrascrivere
