@@ -84,6 +84,9 @@ class TravelPinsJsBridge(
         scope.launch {
             try {
                 val placeId = getEnrichmentPlaceId() ?: return@launch
+                
+                // 🔥 FIX: Recuperiamo il 'place' dal database PRIMA di usarlo per il parser
+                val place = repository.getPlaceById(placeId)
 
                 var cleanJson = rawJson
                 if (cleanJson.startsWith(")]}'")) {
@@ -91,6 +94,7 @@ class TravelPinsJsBridge(
                     if (cleanJson.startsWith("\n")) cleanJson = cleanJson.substring(1)
                 }
 
+                // Ora 'place' è disponibile e possiamo passare il suo nome come fallback sicuro
                 val details = PlaceDetailsParser.parse(cleanJson, place?.name) 
                 if (details == null) {
                     onLogMessage("⚠️ Parser ha restituito null")
@@ -98,7 +102,6 @@ class TravelPinsJsBridge(
                     return@launch
                 }
 
-                val place = repository.getPlaceById(placeId)
                 val safeRating = sanitizeRating(details.rating, place?.latitude, place?.longitude)
                 val safeReviewCount = if (safeRating != null) details.reviewCount else null
 
