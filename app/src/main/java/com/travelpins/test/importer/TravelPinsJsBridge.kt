@@ -18,7 +18,7 @@ class TravelPinsJsBridge(
     private val onImportFinished: (Int) -> Unit = {},
     private val onImportError: (Throwable) -> Unit = {},
     private val onLogMessage: (String) -> Unit = {},
-    private val savePlaces: ((List<Place>) -> Int)? = null,
+    private val savePlaces: (suspend (List<Place>) -> Int)? = null,
     private val getEnrichmentPlaceId: (() -> Long?)? = null,
     private val onDetailsFinished: ((Long, Int, Int) -> Unit)? = null,
     private val onDetailsError: (() -> Unit)? = null
