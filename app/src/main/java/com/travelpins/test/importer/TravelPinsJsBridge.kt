@@ -15,12 +15,13 @@ class TravelPinsJsBridge(
     private val scope: CoroutineScope,
     private val getCurrentSourceListId: () -> String?,
     private val getCurrentSourceListName: () -> String?,
-    private val onImportFinished: () -> Unit,
-    private val onImportError: (String) -> Unit,
-    private val onLogMessage: (String) -> Unit,
-    private val getEnrichmentPlaceId: () -> Long?,
-    private val onDetailsFinished: (Long, Int, Int) -> Unit,
-    private val onDetailsError: () -> Unit
+    private val onImportFinished: (Int) -> Unit = {},
+    private val onImportError: (Throwable) -> Unit = {},
+    private val onLogMessage: (String) -> Unit = {},
+    private val savePlaces: ((List<Place>) -> Int)? = null,
+    private val getEnrichmentPlaceId: (() -> Long?)? = null,
+    private val onDetailsFinished: ((Long, Int, Int) -> Unit)? = null,
+    private val onDetailsError: (() -> Unit)? = null
 ) {
     companion object {
         const val NAME = "Android"
@@ -34,19 +35,19 @@ class TravelPinsJsBridge(
 
     @JavascriptInterface
     fun onImportFinishedJs(savedCount: Int) {
-        onImportFinished()
+        onImportFinished(savedCount)
     }
 
     @JavascriptInterface
     fun onImportErrorJs(message: String) {
-        onImportError(message)
+        onImportError(RuntimeException(message))
     }
 
     @JavascriptInterface
     fun onPlaceDetailsExtracted(rawJson: String) {
         scope.launch {
             try {
-                val placeId = getEnrichmentPlaceId() ?: return@launch
+                val placeId = getEnrichmentPlaceId?.invoke() ?: return@launch
 
                 var cleanJson = rawJson
                 if (cleanJson.startsWith(")]}'")) {
@@ -57,7 +58,7 @@ class TravelPinsJsBridge(
                 val details = PlaceDetailsParser.parse(cleanJson)
                 if (details == null) {
                     onLogMessage("⚠️ Parser ha restituito null")
-                    onDetailsError()
+                    onDetailsError?.invoke()
                     return@launch
                 }
 
@@ -129,12 +130,12 @@ class TravelPinsJsBridge(
                 }
 
                 onLogMessage("✓ Dettagli salvati: $photosSaved foto, $reviewsSaved recensioni")
-                onDetailsFinished(placeId, photosSaved, reviewsSaved)
+                onDetailsFinished?.invoke(placeId, photosSaved, reviewsSaved)
 
             } catch (t: Throwable) {
                 Log.e("TravelPins", "Errore parsing dettagli", t)
                 onLogMessage("✗ Errore parsing: ${t.message}")
-                onDetailsError()
+                onDetailsError?.invoke()
             }
         }
     }
@@ -143,7 +144,6 @@ class TravelPinsJsBridge(
         if (rating == null) return null
         if (rating < 1.0 || rating > 5.0) return null
         if (lat == null || lng == null) return rating
-        // Se le coordinate sono valide, il rating è probabilmente affidabile
         if (lat in -90.0..90.0 && lng in -180.0..180.0) return rating
         return null
     }
