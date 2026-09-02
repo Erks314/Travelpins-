@@ -91,7 +91,7 @@ class TravelPinsJsBridge(
                     if (cleanJson.startsWith("\n")) cleanJson = cleanJson.substring(1)
                 }
 
-                val details = PlaceDetailsParser.parse(cleanJson)
+                val details = PlaceDetailsParser.parse(cleanJson, place?.name) 
                 if (details == null) {
                     onLogMessage("⚠️ Parser ha restituito null")
                     onDetailsError()
