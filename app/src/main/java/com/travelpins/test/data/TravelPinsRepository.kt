@@ -14,7 +14,6 @@ class TravelPinsRepository(context: Context) {
     private val placePhotoDao = db.placePhotoDao()
     private val placeReviewDao = db.placeReviewDao()
     private val sourceListDao = db.sourceListDao()
-
     private val prefs = context.applicationContext.getSharedPreferences("travelpins_prefs", Context.MODE_PRIVATE)
 
     val places: Flow<List<Place>> = placeDao.observeAll()
@@ -56,8 +55,8 @@ class TravelPinsRepository(context: Context) {
         incoming: List<Place>
     ): SyncResult {
         val existing = placeDao.getPlacesByListId(listId)
-
         fun key(p: Place) = Triple(p.name, p.latitude, p.longitude)
+
         val existingByKey = existing.associateBy(::key)
         val incomingKeys = incoming.map(::key).toSet()
 
@@ -115,10 +114,13 @@ class TravelPinsRepository(context: Context) {
         placeDao.assignCategory(placeId, categoryId)
 
     suspend fun deletePlace(place: Place) = placeDao.delete(place)
+
     suspend fun deleteCategory(category: Category) = categoryDao.delete(category)
 
     suspend fun resetAllDetailsFetched() = placeDao.resetAllDetailsFetched()
+
     suspend fun clearDetailsFetched(placeId: Long) = placeDao.clearDetailsFetched(placeId)
+
     suspend fun clearAllPlaces() = placeDao.deleteAll()
 
     suspend fun insertPhotos(photos: List<PlacePhoto>): Int {
