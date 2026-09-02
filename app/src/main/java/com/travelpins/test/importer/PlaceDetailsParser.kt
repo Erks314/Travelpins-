@@ -1,214 +1,253 @@
-package com.travelpins.test.importer // <-- Assicurati che il package combaci col tuo Bridge
+package com.travelpins.test.importer
 
 import org.json.JSONArray
-import android.util.Log
+
+data class PlaceDetails(
+    val name: String,
+    val rating: Double?,
+    val reviewCount: Int?,
+    val description: String?,
+    val websiteUrl: String?,
+    val types: List<String>,
+    val photos: List<PhotoDto>,
+    val reviews: List<ReviewDto>
+)
+
+data class PhotoDto(val key: String, val url: String, val width: Int?, val height: Int?)
+data class ReviewDto(
+    val authorName: String?, 
+    val authorPhotoUrl: String?, 
+    val rating: Int?, 
+    val timeText: String?, 
+    val reviewText: String?
+)
 
 object PlaceDetailsParser {
 
-    data class ParsedDetails(
-        val name: String?,
-        val rating: Double?,
-        val reviewCount: Int?,
-        val websiteUrl: String?,
-        val types: List<String>,
-        val description: String?,
-        val photos: List<PhotoDto>,
-        val reviews: List<ReviewDto>
-    )
-
-    data class PhotoDto(val key: String, val url: String, val width: Int, val height: Int)
-    data class ReviewDto(val authorName: String, val authorPhotoUrl: String?, val rating: Int, val timeText: String, val reviewText: String)
-
-    fun parse(rawJson: String, fallbackName: String?): ParsedDetails? {
-        try {
-            val cleanJson = if (rawJson.startsWith(")]}'")) rawJson.substring(4).trim() else rawJson
-            val root = JSONArray(cleanJson)
-
-            // 1. NOME: Usiamo il fallbackName (il nome estratto dalla lista). 
-            // È già corretto al 100% e ci evita di leggere token tecnici dal JSON.
-            val name = fallbackName
-
-            // 2. RATING E RECENSIONI: Scansione ricorsiva (non più legata all'indice 12/13)
-            val (rating, reviewCount) = findRatingAndReviews(root)
-
-            // 3. SITO WEB: Cerca il primo URL valido non-Google nel JSON
-            val websiteUrl = extractWebsite(cleanJson)
-
-            // 4. TIPI: Estrazione euristica basata su parole chiave
-            val types = extractTypes(root)
-
-            // 5. Descrizione, Foto e Recensioni
-            val description = extractDescription(cleanJson)
+    fun parse(rawJson: String): PlaceDetails? {
+        return try {
+            val root = JSONArray(rawJson)
+            
+            val placeData = findPlaceDataArray(root)
+            
+            val name = if (placeData != null) extractName(placeData) else ""
+            val rating = if (placeData != null) extractRating(placeData) else findRatingDeep(root)
+            val reviewCount = if (placeData != null) extractReviewCount(placeData) else null
+            val websiteUrl = if (placeData != null) extractWebsite(placeData) else null
+            val types = if (placeData != null) extractTypes(placeData) else emptyList()
+            val description = findDescriptionDeep(root)
             val photos = extractPhotos(root)
-            val reviews = extractReviews(root)
-
-            return ParsedDetails(
+            
+            PlaceDetails(
                 name = name,
                 rating = rating,
                 reviewCount = reviewCount,
+                description = description,
                 websiteUrl = websiteUrl,
                 types = types,
-                description = description,
-                photos = photos,
-                reviews = reviews
+                photos = photos.take(10),
+                reviews = emptyList()
             )
-
         } catch (e: Exception) {
-            Log.e("PlaceDetailsParser", "Errore parsing", e)
+            null
+        }
+    }
+    
+    private fun findPlaceDataArray(root: JSONArray): JSONArray? {
+        for (i in 0 until minOf(root.length(), 10)) {
+            val item = root.opt(i)
+            if (item is JSONArray && item.length() >= 8) {
+                for (j in 0 until item.length()) {
+                    val sub = item.opt(j)
+                    if (sub is String && sub.length in 4..100 && !isToken(sub) && 
+                        !sub.contains("http") && !sub.startsWith("0x") &&
+                        !sub.contains(",")) {
+                        return item
+                    }
+                }
+            }
+        }
+        return null
+    }
+    
+    private fun extractName(array: JSONArray): String {
+        for (i in 8 until minOf(array.length(), 20)) {
+            val item = array.opt(i)
+            if (item is String && item.length in 4..100 && !isToken(item) &&
+                !item.contains("http") && !item.startsWith("0x") &&
+                !item.contains(",")) {
+                return item
+            }
+        }
+        return ""
+    }
+    
+    private fun extractRating(array: JSONArray): Double? {
+        for (i in 0 until array.length()) {
+            val item = array.opt(i)
+            if (item is JSONArray) {
+                for (j in 0 until item.length()) {
+                    val sub = item.opt(j)
+                    if (sub is Double && sub >= 1.0 && sub <= 5.0) {
+                        return sub
+                    }
+                }
+            }
+        }
+        return null
+    }
+    
+    private fun extractReviewCount(array: JSONArray): Int? {
+        for (i in 0 until array.length()) {
+            val item = array.opt(i)
+            if (item is JSONArray) {
+                for (j in 0 until item.length()) {
+                    val sub = item.opt(j)
+                    if (sub is Int && sub > 10 && sub < 10000000) {
+                        if (sub !in setOf(1024, 768, 512, 256, 120, 180)) {
+                            return sub
+                        }
+                    }
+                }
+            }
+        }
+        return null
+    }
+    
+    private fun extractWebsite(array: JSONArray): String? {
+        for (i in 0 until array.length()) {
+            val item = array.opt(i)
+            if (item is JSONArray) {
+                for (j in 0 until item.length()) {
+                    val sub = item.opt(j)
+                    if (sub is String && (sub.startsWith("http://") || sub.startsWith("https://")) &&
+                        !sub.contains("google.com") && !sub.contains("googleusercontent") &&
+                        !sub.contains("gstatic.com")) {
+                        return sub
+                    }
+                }
+            }
+        }
+        return null
+    }
+    
+    // Tipi: array di 1-5 stringhe corte, SENZA virgole, SENZA numeri (non indirizzi!)
+    private fun extractTypes(array: JSONArray): List<String> {
+        for (i in 0 until array.length()) {
+            val item = array.opt(i)
+            if (item is JSONArray && item.length() in 1..5) {
+                val candidates = mutableListOf<String>()
+                var allValid = true
+                
+                for (j in 0 until item.length()) {
+                    val sub = item.opt(j)
+                    if (sub is String && sub.length in 3..40 && 
+                        !sub.contains("http") && !isToken(sub) &&
+                        !sub.contains(",") && 
+                        !sub.contains(Regex("\\d{4,}")) &&
+                        sub.count { it == ' ' } <= 3) {
+                        candidates.add(sub)
+                    } else {
+                        allValid = false
+                        break
+                    }
+                }
+                
+                if (allValid && candidates.isNotEmpty()) {
+                    return candidates
+                }
+            }
+        }
+        return emptyList()
+    }
+    
+    private fun findDescriptionDeep(root: JSONArray): String? {
+        fun walk(node: Any?, depth: Int): String? {
+            if (node == null || depth > 12) return null
+            
+            if (node is String && node.length in 100..2000 &&
+                !node.contains("http") && !node.contains("0x") &&
+                !node.contains("\\u") && !node.contains("google") &&
+                !isToken(node)) {
+                val readable = node.count { it.isLetter() || it.isWhitespace() || it == '.' || it == ',' }
+                if (readable > node.length * 0.6) {
+                    return node
+                }
+            }
+            
+            if (node is JSONArray) {
+                for (i in 0 until node.length()) {
+                    val result = walk(node.opt(i), depth + 1)
+                    if (result != null) return result
+                }
+            }
             return null
         }
+        return walk(root, 0)
     }
-
-    /**
-     * Scansiona tutto il JSON cercando un Double (1.0-5.0) vicino a un Int > 0.
-     * Questo pattern è la firma inconfondibile di [Rating, Recensioni] su Google Maps.
-     */
-    private fun findRatingAndReviews(root: JSONArray): Pair<Double?, Int?> {
-        var rating: Double? = null
-        var reviews: Int? = null
-
-        fun scan(arr: JSONArray) {
-            if (rating != null) return // Appena trova il primo blocco valido, si ferma
-            for (i in 0 until arr.length()) {
-                val item = arr.opt(i)
-                if (item is JSONArray) {
-                    scan(item)
-                } else if (item is Double && item >= 1.0 && item <= 5.0) {
-                    // Cerca il numero di recensioni nelle vicinanze (prima o dopo)
-                    for (offset in 1..4) {
-                        val neighbor = arr.opt(i + offset)
-                        if (neighbor is Int && neighbor > 0 && neighbor < 1000000) {
-                            rating = item
-                            reviews = neighbor
-                            return
-                        }
-                    }
-                    for (offset in 1..4) {
-                        val neighbor = arr.opt(i - offset)
-                        if (neighbor is Int && neighbor > 0 && neighbor < 1000000) {
-                            rating = item
-                            reviews = neighbor
-                            return
-                        }
-                    }
+    
+    private fun findRatingDeep(root: JSONArray): Double? {
+        fun walk(node: Any?, depth: Int): Double? {
+            if (node == null || depth > 12) return null
+            if (node is Double && node >= 1.0 && node <= 5.0) return node
+            if (node is JSONArray) {
+                for (i in 0 until node.length()) {
+                    val r = walk(node.opt(i), depth + 1)
+                    if (r != null) return r
                 }
             }
+            return null
         }
-        scan(root)
-        return Pair(rating, reviews)
+        return walk(root, 0)
     }
-
-    /**
-     * Cerca URL nel JSON escludendo i domini di Google.
-     */
-    private fun extractWebsite(json: String): String? {
-        val regex = Regex("https?://[^\"]*")
-        val matches = regex.findAll(json)
-        val blacklist = listOf(
-            "google.com", "gstatic.com", "ggpht.com", "googleapis.com", 
-            "googleusercontent.com", "maps.app.goo.gl", "schema.org", 
-            "example.com", "w3.org", "google.it"
-        )
-        for (match in matches) {
-            val url = match.value
-            if (blacklist.none { url.contains(it, ignoreCase = true) }) {
-                return url
-            }
-        }
-        return null
+    
+    private fun isToken(str: String): Boolean {
+        return str.startsWith("0ahUKE") || 
+               str.startsWith("CIH") || 
+               str.startsWith("CAI") ||
+               (str.length > 20 && str.matches(Regex("^[A-Za-z0-9_-]+$")))
     }
-
-    /**
-     * Cerca stringhe brevi che corrispondono a tipici "Tipi" di luoghi.
-     */
-    private fun extractTypes(root: JSONArray): List<String> {
-        val types = mutableListOf<String>()
-        val seen = mutableSetOf<String>()
-        
-        val typeKeywords = listOf(
-            "turistica", "storico", "ristorante", "hotel", "castello", "parco", 
-            "museo", "chiesa", "cattedrale", "abbazia", "pub", "bar", "cafe", 
-            "spiaggia", "scogliera", "punto panoramico", "attrazione", "monumento"
-        )
-
-        fun scan(arr: JSONArray) {
-            for (i in 0 until arr.length()) {
-                val item = arr.opt(i)
-                if (item is JSONArray) {
-                    scan(item)
-                } else if (item is String && item.length in 3..50 && !seen.contains(item)) {
-                    if (!item.startsWith("ChIJ") && !item.startsWith("CIHM") && !item.contains("http") && !item.matches(Regex("\\d+"))) {
-                        if (typeKeywords.any { item.contains(it, ignoreCase = true) } || item.split(" ").size <= 4) {
-                            seen.add(item)
-                            types.add(item)
-                        }
-                    }
-                }
-            }
-        }
-        scan(root)
-        return types.take(5)
-    }
-
-    private fun extractDescription(json: String): String? {
-        val regex = Regex("\"([^\"]{80,1000})\"")
-        val matches = regex.findAll(json)
-        for (match in matches) {
-            val text = match.groupValues[1]
-            if (!text.contains("http") && !text.contains("null") && !text.contains("{") && 
-                !text.contains("ChIJ") && !text.contains("CIHM") && !text.contains("CIABI") &&
-                !text.matches(Regex(".*\\d{5,}.*")) && 
-                text.split(" ").size > 10 &&
-                !text.contains("Solitamente") && !text.contains("photos:")) {
-                return text
-            }
-        }
-        return null
-    }
-
+    
     private fun extractPhotos(root: JSONArray): List<PhotoDto> {
         val photos = mutableListOf<PhotoDto>()
-        val seenKeys = mutableSetOf<String>()
+        val seen = mutableSetOf<String>()
         
-        fun scanArray(arr: JSONArray) {
-            for (i in 0 until arr.length()) {
-                when (val item = arr.opt(i)) {
-                    is JSONArray -> scanArray(item)
-                    is String -> {
-                        if ((item.startsWith("CIHM") || item.startsWith("CIABI") || item.startsWith("CgkI") || item.startsWith("CAIS")) && item.length > 20 && !seenKeys.contains(item)) {
-                            val w = arr.optInt(i + 2, 0)
-                            val h = arr.optInt(i + 3, 0)
-                            if (w > 100 && h > 100) {
-                                seenKeys.add(item)
-                                photos.add(PhotoDto(item, "https://lh3.googleusercontent.com/p/$item=w1024-h768-n", w, h))
-                            }
-                        }
+        fun walk(node: Any?) {
+            if (node == null || photos.size >= 20) return
+            
+            if (node is String && node.contains("lh3.googleusercontent.com")) {
+                var url = node
+                
+                val escapeIdx = url.indexOf("\\u003d")
+                if (escapeIdx != -1) {
+                    url = url.substring(0, escapeIdx)
+                } else {
+                    val eqIdx = url.indexOf('=')
+                    if (eqIdx != -1 && eqIdx > 30) {
+                        url = url.substring(0, eqIdx)
                     }
                 }
-            }
-        }
-        scanArray(root)
-        return photos.take(20)
-    }
-
-    private fun extractReviews(root: JSONArray): List<ReviewDto> {
-        val reviews = mutableListOf<ReviewDto>()
-        fun scanArray(arr: JSONArray) {
-            for (i in 0 until arr.length()) {
-                val item = arr.optJSONArray(i) ?: continue
-                if (item.length() > 15) {
-                    val author = item.optString(3)
-                    val rating = item.optInt(6, 0) 
-                    val text = item.optString(10) 
-                    
-                    if (author.isNotBlank() && author.length < 100 && rating in 1..5 && text.length > 10) {
-                        reviews.add(ReviewDto(author, null, rating, item.optString(2), text))
-                    }
+                
+                val qIdx = url.indexOf('?')
+                if (qIdx != -1) url = url.substring(0, qIdx)
+                
+                if (!seen.contains(url)) {
+                    seen.add(url)
+                    photos.add(PhotoDto(
+                        key = "p${photos.size}",
+                        url = url,
+                        width = null,
+                        height = null
+                    ))
                 }
-                scanArray(item)
+            }
+            
+            if (node is JSONArray) {
+                for (i in 0 until node.length()) walk(node.opt(i))
             }
         }
-        scanArray(root)
-        return reviews.take(10)
+        
+        walk(root)
+        return photos
     }
 }
