@@ -159,52 +159,42 @@ class MainActivity : ComponentActivity() {
         setContentView(composeView)
     }
 
+    private fun showMapsGuideToast() {
+        Toast.makeText(this, "clicca in basso su Luoghi per condividerli", Toast.LENGTH_LONG).show()
+    }
+
     private fun openGoogleMapsLists() {
         val mapsPackage = "com.google.android.apps.maps"
 
-        // 1) URI scheme nativi di Google Maps (tentativi di deep link diretto)
-        val nativeUris = listOf(
-            "googlemaps://?q=saved",
-            "googlemaps://maps/saved",
-            "comgooglemaps://?q=saved",
-            "comgooglemaps://maps/saved",
-            "google.navigation:q=saved"
-        )
-        for (uri in nativeUris) {
-            try {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
-                intent.setPackage(mapsPackage)
-                startActivity(intent)
-                return
-            } catch (_: Exception) { }
-        }
-
-        // 2) URL web forzati nel package Maps (deep link HTTP dentro l'app)
+        // 1) URL web della pagina Salvati forzato dentro l'app Maps.
+        //    Su alcune versioni di Maps apre direttamente la schermata Salvati;
+        //    se l'app non gestisce l'URL, viene lanciata un'eccezione e si passa oltre.
         val webUris = listOf(
-            "https://www.google.com/maps/saved/",
-            "https://www.google.com/maps/u/0/saved/",
-            "https://maps.google.com/maps/saved/",
-            "https://www.google.com/maps/saved"
+            "https://www.google.com/maps/saved",
+            "https://maps.google.com/maps/saved",
+            "https://www.google.com/maps/u/0/saved"
         )
         for (uri in webUris) {
             try {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).setPackage(mapsPackage))
+                showMapsGuideToast()
                 return
             } catch (_: Exception) { }
         }
 
-        // 3) Fallback: apri l'app Maps sulla schermata principale con messaggio guida
+        // 2) Fallback: apri l'app Maps sulla schermata principale con messaggio guida.
         try {
             packageManager.getLaunchIntentForPackage(mapsPackage)?.let {
                 startActivity(it)
-                Toast.makeText(this, "Tocca 'Salvati' in basso per vedere i tuoi elenchi", Toast.LENGTH_LONG).show()
+                showMapsGuideToast()
                 return
             }
         } catch (_: Exception) { }
 
-        // 4) Fallback finale: browser
+        // 3) Fallback finale: browser
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps")))
+            showMapsGuideToast()
         } catch (_: Exception) {
             Toast.makeText(this, "Impossibile aprire Google Maps.", Toast.LENGTH_SHORT).show()
         }
