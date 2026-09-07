@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -167,20 +168,49 @@ fun TravelPinsHomeShell(
                 HomeTab.PROFILO -> ProfiloTabContent(onShowDebugLog)
             }
         }
-        BottomNav(currentTab) { currentTab = it }
+        BottomNav(currentTab, onImport) { currentTab = it }
     }
 }
 
 @Composable
-private fun BottomNav(current: HomeTab, onSelect: (HomeTab) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().background(Color(0xFF1A1A24)).height(64.dp),
-        verticalAlignment = Alignment.CenterVertically
+private fun BottomNav(current: HomeTab, onImport: () -> Unit, onSelect: (HomeTab) -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(80.dp) // Altezza maggiore per ospitare il FAB sporgente
     ) {
-        NavItem(Icons.Filled.Home, "Home", HomeTab.HOME, current, onSelect, Modifier.weight(1f))
-        NavItem(Icons.Filled.List, "Elenchi", HomeTab.ELENCHI, current, onSelect, Modifier.weight(1f))
-        NavItem(Icons.Filled.Map, "Mappa", HomeTab.MAPPA, current, onSelect, Modifier.weight(1f))
-        NavItem(Icons.Filled.Person, "Profilo", HomeTab.PROFILO, current, onSelect, Modifier.weight(1f))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .background(Color(0xFF1A1A24))
+                .align(Alignment.BottomCenter),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            NavItem(Icons.Filled.Home, "Home", HomeTab.HOME, current, onSelect, Modifier.weight(1f))
+            NavItem(Icons.Filled.List, "Elenchi", HomeTab.ELENCHI, current, onSelect, Modifier.weight(1f))
+            NavItem(Icons.Filled.Map, "Mappa", HomeTab.MAPPA, current, onSelect, Modifier.weight(1f))
+            NavItem(Icons.Filled.Person, "Profilo", HomeTab.PROFILO, current, onSelect, Modifier.weight(1f))
+        }
+
+        // FAB "+" verde sempre visibile al centro, sporgente sopra la barra
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .align(Alignment.TopCenter)
+                .clip(CircleShape)
+                .background(TPColors.Accent)
+                .shadow(elevation = 8.dp, shape = CircleShape)
+                .clickable { onImport() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "＋",
+                color = Color.White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
