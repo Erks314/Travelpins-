@@ -731,7 +731,7 @@ class MainActivity : ComponentActivity() {
                 colorViews.add(color to colorView)
                 row.addView(colorView, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = 12; bottomMargin = 12 })
             }
-            colorGrid.addRowView(row)
+            colorGrid.addView(row)
         }
         layout.addView(colorGrid); scroll.addView(layout)
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
