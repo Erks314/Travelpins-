@@ -160,8 +160,36 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openGoogleMapsLists() {
-        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/saved"))) }
-        catch (e: Exception) { Toast.makeText(this, "Impossibile aprire Google Maps.", Toast.LENGTH_SHORT).show() }
+        val mapsPackage = "com.google.android.apps.maps"
+
+        // 1) Deep link FORZATO dentro l'app Maps: apre la pagina Salvati/Elenchi
+        for (uri in listOf(
+            "https://www.google.com/maps/saved",
+            "https://maps.google.com/maps/saved",
+            "https://www.google.com/maps/u/0/saved"
+        )) {
+            try {
+                startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(uri)).setPackage(mapsPackage)
+                )
+                return
+            } catch (_: Exception) { }
+        }
+
+        // 2) Fallback: apri l'app Maps sulla schermata principale
+        try {
+            packageManager.getLaunchIntentForPackage(mapsPackage)?.let {
+                startActivity(it)
+                return
+            }
+        } catch (_: Exception) { }
+
+        // 3) Fallback finale: browser
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps")))
+        } catch (_: Exception) {
+            Toast.makeText(this, "Impossibile aprire Google Maps.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun showListDetail(listId: String?, listName: String?) {
@@ -617,7 +645,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-        private fun showCategoryPicker(place: Place) {
+    private fun showCategoryPicker(place: Place) {
         if (currentCategories.isEmpty()) { Toast.makeText(this, "Prima crea almeno una categoria.", Toast.LENGTH_LONG).show(); showCreateCategoryDialog(); return }
         val items = mutableListOf<String>(); items.add("⚪  Senza categoria")
         currentCategories.forEach { category -> items.add("${category.iconKey}  ${category.name}") }
@@ -665,7 +693,7 @@ class MainActivity : ComponentActivity() {
         Color.parseColor("#6B7280"), Color.parseColor("#78716C")
     )
 
-    private val categoryIconPalette = listOf("📍", "", "🏨", "🏖️", "🏛️", "🌄", "🎯", "️", "", "🍺", "🎭", "")
+    private val categoryIconPalette = listOf("📍", "", "🏨", "🏖️", "🏛️", "🌄", "", "️", "", "🍺", "", "")
 
     private fun showCreateCategoryDialog() {
         var selectedIcon = categoryIconPalette.first()
@@ -703,7 +731,7 @@ class MainActivity : ComponentActivity() {
                 colorViews.add(color to colorView)
                 row.addView(colorView, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = 12; bottomMargin = 12 })
             }
-            colorGrid.addView(row)
+            colorGrid.addRowView(row)
         }
         layout.addView(colorGrid); scroll.addView(layout)
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
