@@ -1,6 +1,7 @@
 package com.travelpins.test.data
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
@@ -55,6 +56,15 @@ class TravelPinsRepository(context: Context) {
         incoming: List<Place>
     ): SyncResult {
         val existing = placeDao.getPlacesByListId(listId)
+        
+        // 🛡️ PROTEZIONE: Non cancellare tutto se incoming è vuoto ma existing ha luoghi.
+        // Questo previene la cancellazione accidentale dell'elenco quando il parser JS fallisce
+        // o la pagina non si carica correttamente (restituendo una lista vuota).
+        if (incoming.isEmpty() && existing.isNotEmpty()) {
+            Log.w("TravelPins", "⚠️ syncListPlaces: incoming è vuoto ma existing ha ${existing.size} luoghi. Sync annullato per sicurezza.")
+            return SyncResult(added = 0, removed = 0, updated = 0)
+        }
+        
         fun key(p: Place) = Triple(p.name, p.latitude, p.longitude)
 
         val existingByKey = existing.associateBy(::key)
