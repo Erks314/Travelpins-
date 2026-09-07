@@ -162,29 +162,47 @@ class MainActivity : ComponentActivity() {
     private fun openGoogleMapsLists() {
         val mapsPackage = "com.google.android.apps.maps"
 
-        // 1) Deep link FORZATO dentro l'app Maps: apre la pagina Salvati/Elenchi
-        for (uri in listOf(
-            "https://www.google.com/maps/saved",
-            "https://maps.google.com/maps/saved",
-            "https://www.google.com/maps/u/0/saved"
-        )) {
+        // 1) URI scheme nativi di Google Maps (tentativi di deep link diretto)
+        val nativeUris = listOf(
+            "googlemaps://?q=saved",
+            "googlemaps://maps/saved",
+            "comgooglemaps://?q=saved",
+            "comgooglemaps://maps/saved",
+            "google.navigation:q=saved"
+        )
+        for (uri in nativeUris) {
             try {
-                startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse(uri)).setPackage(mapsPackage)
-                )
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                intent.setPackage(mapsPackage)
+                startActivity(intent)
                 return
             } catch (_: Exception) { }
         }
 
-        // 2) Fallback: apri l'app Maps sulla schermata principale
+        // 2) URL web forzati nel package Maps (deep link HTTP dentro l'app)
+        val webUris = listOf(
+            "https://www.google.com/maps/saved/",
+            "https://www.google.com/maps/u/0/saved/",
+            "https://maps.google.com/maps/saved/",
+            "https://www.google.com/maps/saved"
+        )
+        for (uri in webUris) {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).setPackage(mapsPackage))
+                return
+            } catch (_: Exception) { }
+        }
+
+        // 3) Fallback: apri l'app Maps sulla schermata principale con messaggio guida
         try {
             packageManager.getLaunchIntentForPackage(mapsPackage)?.let {
                 startActivity(it)
+                Toast.makeText(this, "Tocca 'Salvati' in basso per vedere i tuoi elenchi", Toast.LENGTH_LONG).show()
                 return
             }
         } catch (_: Exception) { }
 
-        // 3) Fallback finale: browser
+        // 4) Fallback finale: browser
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps")))
         } catch (_: Exception) {
