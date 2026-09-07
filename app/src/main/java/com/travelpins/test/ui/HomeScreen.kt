@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.List
@@ -174,15 +175,9 @@ fun TravelPinsHomeShell(
 
 @Composable
 private fun BottomNav(current: HomeTab, onImport: () -> Unit, onSelect: (HomeTab) -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(80.dp) // Altezza maggiore per ospitare il FAB sporgente
-    ) {
+    Box(Modifier.fillMaxWidth().height(80.dp)) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
+            Modifier.fillMaxWidth().height(64.dp)
                 .background(Color(0xFF1A1A24))
                 .align(Alignment.BottomCenter),
             verticalAlignment = Alignment.CenterVertically
@@ -195,20 +190,20 @@ private fun BottomNav(current: HomeTab, onImport: () -> Unit, onSelect: (HomeTab
 
         // FAB "+" verde sempre visibile al centro, sporgente sopra la barra
         Box(
-            modifier = Modifier
-                .size(64.dp)
+            Modifier
+                .size(56.dp)
                 .align(Alignment.TopCenter)
+                .shadow(elevation = 6.dp, shape = CircleShape)
                 .clip(CircleShape)
                 .background(TPColors.Accent)
-                .shadow(elevation = 8.dp, shape = CircleShape)
                 .clickable { onImport() },
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "＋",
-                color = Color.White,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = "Importa da Google Maps",
+                tint = Color.White,
+                modifier = Modifier.size(26.dp)
             )
         }
     }
