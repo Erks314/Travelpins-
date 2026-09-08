@@ -188,7 +188,7 @@ fun ZoomableImage(
             .onSizeChanged { boxSize = it }
             // Gesture custom: pinch + pan condizionale (lascia passare lo swipe al pager)
             .pointerInput(photo.photoKey) {
-                forEachGesture {
+                while (true) {
                     awaitPointerEventScope {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val pointers = mutableMapOf<PointerId, Offset>(down.id to down.position)
