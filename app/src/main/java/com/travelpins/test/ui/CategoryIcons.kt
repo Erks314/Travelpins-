@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -92,7 +93,7 @@ import com.travelpins.test.R
 // ---------------------------------------------------------------------
 // Il database salva Category.iconKey come STRINGA.
 // - Categorie VECCHIE: iconKey è un'emoji -> renderizzata come testo (compatibilità totale).
-// - Categorie NUOVE: iconKey è una chiave semantica ("cat_musei", ...) -> icona vettoriale Material.
+// - Categorie NUOVE: iconKey è una chiave semantica ("cat_monumenti", ...) -> icona vettoriale Material.
 // Nessun migrate sul database, nessuna rottura delle categorie esistenti.
 // =====================================================================
 
@@ -204,18 +205,28 @@ fun CreateCategoryContent(
             .navigationBarsPadding()
     ) {
         // ---------------- HERO FOTOGRAFICO ----------------
+        // FIX: home_hero contiene il branding TravelPins stampato nell'immagine.
+        // Zoomiamo 2x ancorati in basso (TransformOrigin 0.5/0.95) per mostrare SOLO la
+        // fascia pulita (acqua/bosco) ed escludere logo, wordmark e tagline.
+        // Se vuoi ritoccare il ritaglio: modifica scaleX/scaleY e TransformOrigin.
         Box(Modifier.fillMaxWidth().height(300.dp)) {
             Box(Modifier.fillMaxSize().clip(CategoryHeroCurve())) {
                 AsyncImage(
                     model = R.drawable.home_hero,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = 2f
+                            scaleY = 2f
+                            transformOrigin = TransformOrigin(0.5f, 0.95f)
+                        }
                 )
                 Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = 0.30f),
+                            0f to Color.Black.copy(alpha = 0.35f),
                             0.55f to Color.Transparent,
                             1f to TPColors.Bg
                         )
