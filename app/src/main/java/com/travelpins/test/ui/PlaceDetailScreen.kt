@@ -9,6 +9,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
@@ -57,6 +62,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,8 +71,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +93,8 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 object TPColors {
     val Bg = Color(0xFF12121A)
@@ -608,6 +619,181 @@ fun PhotoGridScreen(
                 }
             }
         }
+    }
+}
+
+// NUOVA GalleryScreen con zoom e swipe
+@Composable
+fun GalleryScreen(
+    photos: List<PlacePhoto>,
+    startIndex: Int,
+    title: String,
+    onBack: () -> Unit
+) {
+    var currentPage by remember { mutableIntStateOf(startIndex) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        // Swipe orizzontale per navigare tra le foto
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            // Doppio tap: gestito nel ZoomableImage
+                        }
+                    )
+                }
+        ) {
+            // Foto corrente con zoom
+            ZoomableImage(
+                photo = photos[currentPage],
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // Indicatore di pagina (es. "3/20")
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 80.dp)
+                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = "${currentPage + 1} / ${photos.size}",
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        // Pulsante chiudi
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp)
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.6f))
+                .clickable { onBack() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Chiudi",
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        // Frecce di navigazione sinistra/destra
+        if (currentPage > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(16.dp)
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable { currentPage-- },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("‹", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        if (currentPage < photos.size - 1) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(16.dp)
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable { currentPage++ },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("›", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // Titolo in alto
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp, 16.dp, 16.dp, 80.dp)
+                .fillMaxWidth()
+        ) {
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(end = 60.dp)
+            )
+        }
+    }
+}
+
+// Componente per immagine con zoom e pan
+@Composable
+fun ZoomableImage(
+    photo: PlacePhoto,
+    modifier: Modifier = Modifier
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var isZoomed by remember { mutableStateOf(false) }
+
+    val state = rememberTransformableState { zoomChange, offsetChange, _ ->
+        scale = (scale * zoomChange).coerceIn(1f, 5f)
+        if (scale == 1f) {
+            offset = Offset.Zero
+            isZoomed = false
+        } else {
+            offset += offsetChange
+            isZoomed = true
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        // Doppio tap: toggle zoom 2x / 1x
+                        if (scale > 1f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                            isZoomed = false
+                        } else {
+                            scale = 2f
+                            isZoomed = true
+                        }
+                    }
+                )
+            }
+            .transformable(state),
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = photo.sizedUrl(1200),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                }
+        )
     }
 }
 
