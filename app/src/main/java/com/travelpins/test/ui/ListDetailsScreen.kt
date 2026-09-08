@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -167,13 +168,14 @@ fun TravelPinsListDetailScreen(
             Spacer(Modifier.height(90.dp))
         }
 
+        // FAB "+" per creare categoria
         Box(
             Modifier.align(Alignment.BottomEnd).padding(20.dp).size(56.dp)
                 .clip(CircleShape).background(TPColors.Accent)
                 .combinedClickable(onClick = onCreateCategory, onLongClick = onManageCategories),
             contentAlignment = Alignment.Center
         ) {
-            Text("＋", color = Color.White, fontSize = 24.sp)
+            Icon(Icons.Filled.Add, contentDescription = "Crea categoria", tint = Color.White, modifier = Modifier.size(28.dp))
         }
     }
 
@@ -233,7 +235,6 @@ private fun ListHeader(
     onBack: () -> Unit,
     onManageCategories: () -> Unit
 ) {
-    // FIX: stessi candidati della Home = i primi importati = i primi arricchiti.
     val candidates = remember(listPlaces) { listPlaces.sortedBy { it.importedAt }.take(10).map { it.id } }
     val fallbackUrl = rememberListCover(repository, candidates, 1200)
     val manualCover = remember(listId) { repository.getListCover(listId) }
@@ -336,7 +337,22 @@ private fun ControlsRow(
                     DropdownMenuItem(text = { Text("Tutti") }, onClick = { onFilter(null); filterOpen = false })
                     DropdownMenuItem(text = { Text("Senza categoria") }, onClick = { onFilter(-1L); filterOpen = false })
                     categories.forEach { category ->
-                        DropdownMenuItem(text = { Text("${category.iconKey}  ${category.name}") }, onClick = { onFilter(category.id); filterOpen = false })
+                        // FIX: uso CategoryIcons.textFor() invece di stampare iconKey grezzo
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CategoryIcon(
+                                        iconKey = category.iconKey,
+                                        tint = Color(category.colorArgb),
+                                        modifier = Modifier.size(16.dp),
+                                        emojiFontSize = 13.sp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(category.name)
+                                }
+                            },
+                            onClick = { onFilter(category.id); filterOpen = false }
+                        )
                     }
                 }
             }
@@ -394,11 +410,19 @@ private fun PlaceCard(
             }
             Spacer(Modifier.height(7.dp))
             if (category != null) {
+                // FIX: uso CategoryIcon invece di stampare iconKey grezzo
                 Row(
                     Modifier.clip(RoundedCornerShape(8.dp)).background(Color(category.colorArgb)).padding(horizontal = 10.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("${category.iconKey}  ${category.name}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    CategoryIcon(
+                        iconKey = category.iconKey,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp),
+                        emojiFontSize = 11.sp
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(category.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             } else {
                 Text("Senza categoria", color = TPColors.TextMuted, fontSize = 11.sp)
