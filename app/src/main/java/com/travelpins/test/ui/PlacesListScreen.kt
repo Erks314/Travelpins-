@@ -1,16 +1,37 @@
 package com.travelpins.test.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Card
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,8 +96,9 @@ fun PlacesListScreen(
         )
     }
 
+    // NUOVO: dialog full-screen condiviso (stessa UI delle altre entry point)
     if (showCreateCategoryDialog) {
-        CreateCategoryDialog(
+        CreateCategoryFullscreenDialog(
             onCreate = { name, color, icon ->
                 onCreateCategory(name, color, icon)
                 showCreateCategoryDialog = false
@@ -125,12 +147,21 @@ fun CategoryChip(category: Category?, onClick: () -> Unit) {
         onClick = onClick,
         label = { Text(label) },
         leadingIcon = {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(color)
-            )
+            if (category != null) {
+                CategoryIcon(
+                    iconKey = category.iconKey,
+                    tint = color,
+                    modifier = Modifier.size(14.dp),
+                    emojiFontSize = 11.sp
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(color)
+                )
+            }
         }
     )
 }
@@ -149,57 +180,22 @@ private fun CategoryPickerDialog(
                 TextButton(onClick = { onPick(null) }) { Text("Nessuna categoria") }
                 categories.forEach { category ->
                     TextButton(onClick = { onPick(category.id) }) {
-                        Text(category.name)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CategoryIcon(
+                                iconKey = category.iconKey,
+                                tint = Color(category.colorArgb),
+                                modifier = Modifier.size(16.dp),
+                                emojiFontSize = 13.sp
+                            )
+                            androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+                            Text(category.name)
+                        }
                     }
                 }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
-    )
-}
-
-@Composable
-private fun CreateCategoryDialog(
-    onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    val palette = listOf(0xFFE57373, 0xFF64B5F6, 0xFF81C784, 0xFFFFD54F, 0xFFBA68C8).map { it.toInt() }
-    var selectedColor by remember { mutableStateOf(palette.first()) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Nuova categoria") },
-        text = {
-            Column {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nome") })
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    palette.forEach { c ->
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(Color(c))
-                                .then(
-                                    if (c == selectedColor)
-                                        Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
-                                    else Modifier
-                                )
-                                .clickable { selectedColor = c }
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { if (name.isNotBlank()) onCreate(name, selectedColor, "place") },
-                enabled = name.isNotBlank()
-            ) { Text("Crea") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
+        dismissButton = { TextButton(onDismiss = onDismiss, onClick = onDismiss) { Text("Annulla") } }
     )
 }
 
