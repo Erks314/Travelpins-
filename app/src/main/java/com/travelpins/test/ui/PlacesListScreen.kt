@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
 
@@ -96,7 +98,7 @@ fun PlacesListScreen(
         )
     }
 
-    // NUOVO: dialog full-screen condiviso (stessa UI delle altre entry point)
+    // Dialog full-screen condiviso (stessa UI delle altre entry point)
     if (showCreateCategoryDialog) {
         CreateCategoryFullscreenDialog(
             onCreate = { name, color, icon ->
@@ -187,7 +189,7 @@ private fun CategoryPickerDialog(
                                 modifier = Modifier.size(16.dp),
                                 emojiFontSize = 13.sp
                             )
-                            androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(8.dp))
                             Text(category.name)
                         }
                     }
@@ -195,7 +197,7 @@ private fun CategoryPickerDialog(
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onDismiss = onDismiss, onClick = onDismiss) { Text("Annulla") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
     )
 }
 
