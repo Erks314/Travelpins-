@@ -7,7 +7,6 @@ import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -361,7 +360,14 @@ fun PlaceDetailScreen(
 
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (category != null) {
-                    Text("${category.iconKey}  ${category.name}", color = Color(category.colorArgb), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    CategoryIcon(
+                        iconKey = category.iconKey,
+                        tint = Color(category.colorArgb),
+                        modifier = Modifier.size(16.dp),
+                        emojiFontSize = 14.sp
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(category.name, color = Color(category.colorArgb), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 } else {
                     Text("📍  Senza categoria", color = TPColors.TextMuted, fontSize = 14.sp)
                 }
@@ -548,9 +554,13 @@ fun PlaceDetailScreen(
         )
     }
 
+    // NUOVO: dialog full-screen condiviso (stessa UI di MainActivity)
     if (showCreateCategory) {
-        PlaceDetailCreateCategoryDialog(
-            onCreate = { name, color, icon -> onCreateCategory(name, color, icon); showCreateCategory = false },
+        CreateCategoryFullscreenDialog(
+            onCreate = { name, color, icon ->
+                onCreateCategory(name, color, icon)
+                showCreateCategory = false
+            },
             onDismiss = { showCreateCategory = false }
         )
     }
@@ -687,64 +697,25 @@ fun PlaceDetailCategoryPickerDialog(categories: List<Category>, onPick: (Long?) 
         text = {
             Column {
                 TextButton(onClick = { onPick(null) }) { Text("⚪  Senza categoria") }
-                categories.forEach { category -> TextButton(onClick = { onPick(category.id) }) { Text("${category.iconKey}  ${category.name}") } }
+                categories.forEach { category ->
+                    TextButton(onClick = { onPick(category.id) }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CategoryIcon(
+                                iconKey = category.iconKey,
+                                tint = Color(category.colorArgb),
+                                modifier = Modifier.size(16.dp),
+                                emojiFontSize = 14.sp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(category.name)
+                        }
+                    }
+                }
                 TextButton(onClick = onCreateNew) { Text("＋  Nuova categoria") }
             }
         },
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
-    )
-}
-
-private val categoryColorPalette = listOf(
-    0xFFEF4444, 0xFFF97316, 0xFFF59E0B, 0xFFEAB308, 0xFF84CC16,
-    0xFF22C55E, 0xFF10B981, 0xFF14B8A6, 0xFF06B6D4, 0xFF0EA5E9,
-    0xFF3B82F6, 0xFF6366F1, 0xFF8B5CF6, 0xFFA855F7, 0xFFD946EF,
-    0xFFEC4899, 0xFFF43F5E, 0xFF64748B, 0xFF6B7280, 0xFF78716C
-).map { it.toInt() }
-
-private val categoryIconPalette = listOf("📍", "🍴", "🏨", "🏖️", "🏛️", "🌄", "", "🛍️", "☕", "🍺", "", "")
-
-@Composable
-fun PlaceDetailCreateCategoryDialog(onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var selectedIcon by remember { mutableStateOf(categoryIconPalette.first()) }
-    var selectedColor by remember { mutableStateOf(categoryColorPalette.first()) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Nuova categoria") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nome") }, singleLine = true)
-                Spacer(Modifier.height(14.dp))
-                Text("ICONA", fontSize = 11.sp, color = TPColors.TextMuted)
-                Spacer(Modifier.height(6.dp))
-                categoryIconPalette.chunked(6).forEach { rowIcons ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                        rowIcons.forEach { icon ->
-                            Box(
-                                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(if (icon == selectedIcon) TPColors.Accent else TPColors.SurfaceAlt).clickable { selectedIcon = icon },
-                                contentAlignment = Alignment.Center
-                            ) { Text(icon, fontSize = 20.sp) }
-                        }
-                    }
-                }
-                Text("COLORE", fontSize = 11.sp, color = TPColors.TextMuted)
-                Spacer(Modifier.height(6.dp))
-                categoryColorPalette.chunked(7).forEach { rowColors ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                        rowColors.forEach { color ->
-                            Box(
-                                Modifier.size(32.dp).clip(CircleShape).background(Color(color)).then(if (color == selectedColor) Modifier.border(2.dp, Color.White, CircleShape) else Modifier).clickable { selectedColor = color }
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onCreate(name.trim(), selectedColor, selectedIcon) }) { Text("CREA") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("ANNULLA") } }
     )
 }
 
