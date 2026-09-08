@@ -68,6 +68,9 @@ fun GalleryScreen(
     val placeId = photos.firstOrNull()?.placeId
     var place by remember { mutableStateOf<Place?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    
+    // Stato per tracciare se l'immagine corrente è zoomata
+    var isZoomed by remember { mutableStateOf(false) }
 
     LaunchedEffect(placeId) {
         if (placeId != null) place = repository.getPlaceById(placeId)
@@ -76,9 +79,17 @@ fun GalleryScreen(
     val currentPhoto = photos.getOrNull(pagerState.currentPage)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = !isZoomed  // Disabilita swipe quando zoomato
+        ) { page ->
             val photo = photos[page]
-            ZoomableImage(photo = photo, modifier = Modifier.fillMaxSize())
+            ZoomableImage(
+                photo = photo,
+                modifier = Modifier.fillMaxSize(),
+                onZoomChanged = { zoomed -> isZoomed = zoomed }
+            )
         }
 
         Row(
@@ -141,10 +152,16 @@ fun GalleryScreen(
 @Composable
 fun ZoomableImage(
     photo: PlacePhoto,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onZoomChanged: (Boolean) -> Unit = {}
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+
+    // Notifica il parent quando lo zoom cambia
+    LaunchedEffect(scale) {
+        onZoomChanged(scale > 1f)
+    }
 
     val state = rememberTransformableState { zoomChange, offsetChange, _ ->
         scale = (scale * zoomChange).coerceIn(1f, 5f)
@@ -181,8 +198,8 @@ fun ZoomableImage(
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
-                    translationX = offset.x
-                    translationY = offset.y
+                    translationX = offset.x * scale
+                    translationY = offset.y * scale
                 }
         )
     }
