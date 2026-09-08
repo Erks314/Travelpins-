@@ -1,6 +1,7 @@
 package com.travelpins.test
 
 import android.annotation.SuppressLint
+import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -45,6 +46,8 @@ import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.importer.EnrichmentManager
 import com.travelpins.test.importer.TravelPinsJsBridge
 import com.travelpins.test.scraper.GoogleMapsScraperScript
+import com.travelpins.test.ui.CategoryIcons
+import com.travelpins.test.ui.CreateCategoryFullscreenDialog
 import com.travelpins.test.ui.ImportUiState
 import com.travelpins.test.ui.TravelPinsDarkTheme
 import com.travelpins.test.ui.TravelPinsHomeShell
@@ -166,9 +169,6 @@ class MainActivity : ComponentActivity() {
     private fun openGoogleMapsLists() {
         val mapsPackage = "com.google.android.apps.maps"
 
-        // 1) URL web della pagina Salvati forzato dentro l'app Maps.
-        //    Su alcune versioni di Maps apre direttamente la schermata Salvati;
-        //    se l'app non gestisce l'URL, viene lanciata un'eccezione e si passa oltre.
         val webUris = listOf(
             "https://www.google.com/maps/saved",
             "https://maps.google.com/maps/saved",
@@ -182,7 +182,6 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) { }
         }
 
-        // 2) Fallback: apri l'app Maps sulla schermata principale con messaggio guida.
         try {
             packageManager.getLaunchIntentForPackage(mapsPackage)?.let {
                 startActivity(it)
@@ -191,7 +190,6 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) { }
 
-        // 3) Fallback finale: browser
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps")))
             showMapsGuideToast()
@@ -290,12 +288,12 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun ensureImportWebView() {
         if (webView != null) return
-        val wv = WebView(this).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.userAgentString = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
-            alpha = 0f
-        }
+        val wv = WebView(this)
+        wv.settings.javaScriptEnabled = true
+        wv.settings.domStorageEnabled = true
+        wv.settings.userAgentString = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+        wv.alpha = 0f
+
         val bridge = TravelPinsJsBridge(
             repository = repository, scope = lifecycleScope,
             getCurrentSourceListId = { currentListId },
@@ -564,7 +562,7 @@ class MainActivity : ComponentActivity() {
         val categoryBoxes = currentCategories.map { category ->
             val count = currentPlaces.count { it.categoryId == category.id }
             CheckBox(this).apply {
-                text = "${category.iconKey}  ${category.name}  ($count)"
+                text = "${CategoryIcons.textFor(category.iconKey)}  ${category.name}  ($count)"
                 setTextColor(COLOR_TEXT_PRIMARY)
                 isChecked = category.id in mapSelectedCategories
                 tag = category.id
@@ -630,8 +628,12 @@ class MainActivity : ComponentActivity() {
 
     private fun buildMarkerSnippet(place: Place): String {
         val category = currentCategories.firstOrNull { it.id == place.categoryId }
-        return if (category != null) if (!place.address.isNullOrBlank()) "${category.iconKey} ${category.name}\n${place.address}" else "${category.iconKey} ${category.name}"
-        else place.address ?: "Senza indirizzo"
+        return if (category != null) {
+            val iconText = CategoryIcons.textFor(category.iconKey)
+            if (!place.address.isNullOrBlank()) "$iconText ${category.name}\n${place.address}" else "$iconText ${category.name}"
+        } else {
+            place.address ?: "Senza indirizzo"
+        }
     }
 
     private fun findPlaceForMarker(marker: Marker): Place? = currentPlaces.firstOrNull { kotlin.math.abs(it.latitude - marker.position.latitude) < 0.000001 && kotlin.math.abs(it.longitude - marker.position.longitude) < 0.000001 && it.name == marker.title }
@@ -656,7 +658,7 @@ class MainActivity : ComponentActivity() {
     private fun showCategoryPicker(place: Place) {
         if (currentCategories.isEmpty()) { Toast.makeText(this, "Prima crea almeno una categoria.", Toast.LENGTH_LONG).show(); showCreateCategoryDialog(); return }
         val items = mutableListOf<String>(); items.add("⚪  Senza categoria")
-        currentCategories.forEach { category -> items.add("${category.iconKey}  ${category.name}") }
+        currentCategories.forEach { category -> items.add("${CategoryIcons.textFor(category.iconKey)}  ${category.name}") }
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("Categoria di\n${place.name}")
             .setItems(items.toTypedArray()) { _, which ->
@@ -670,7 +672,7 @@ class MainActivity : ComponentActivity() {
 
     private fun showCategoriesDialog() {
         val items = mutableListOf<String>()
-        currentCategories.forEach { category -> val count = currentPlaces.count { it.categoryId == category.id }; items.add("${category.iconKey}  ${category.name}  ($count)") }
+        currentCategories.forEach { category -> val count = currentPlaces.count { it.categoryId == category.id }; items.add("${CategoryIcons.textFor(category.iconKey)}  ${category.name}  ($count)") }
         items.add("＋  Crea nuova categoria")
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("Le mie categorie")
@@ -683,7 +685,7 @@ class MainActivity : ComponentActivity() {
 
     private fun showCategoryOptions(category: Category) {
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
-            .setTitle("${category.iconKey}  ${category.name}")
+            .setTitle("${CategoryIcons.textFor(category.iconKey)}  ${category.name}")
             .setItems(arrayOf("Elimina categoria")) { _, which ->
                 when (which) { 0 -> confirmDeleteCategory(category) }
             }
@@ -691,66 +693,26 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    private val categoryColorPalette = listOf(
-        Color.parseColor("#EF4444"), Color.parseColor("#F97316"), Color.parseColor("#F59E0B"),
-        Color.parseColor("#EAB308"), Color.parseColor("#84CC16"), Color.parseColor("#22C55E"),
-        Color.parseColor("#10B981"), Color.parseColor("#14B8A6"), Color.parseColor("#06B6D4"),
-        Color.parseColor("#0EA5E9"), Color.parseColor("#3B82F6"), Color.parseColor("#6366F1"),
-        Color.parseColor("#8B5CF6"), Color.parseColor("#A855F7"), Color.parseColor("#D946EF"),
-        Color.parseColor("#EC4899"), Color.parseColor("#F43F5E"), Color.parseColor("#64748B"),
-        Color.parseColor("#6B7280"), Color.parseColor("#78716C")
-    )
-
-    private val categoryIconPalette = listOf("📍", "", "🏨", "🏖️", "🏛️", "🌄", "", "️", "", "🍺", "", "")
-
+    // NUOVO: dialog full-screen Compose (Opzione A). La logica di salvataggio resta identica.
     private fun showCreateCategoryDialog() {
-        var selectedIcon = categoryIconPalette.first()
-        var selectedColor = categoryColorPalette.first()
-        val scroll = ScrollView(this)
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(30, 10, 30, 0) }
-        val previewBadge = TextView(this).apply { text = selectedIcon; textSize = 30f; gravity = Gravity.CENTER; background = roundedBackground(selectedColor, 40f) }
-        val previewRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, 4, 0, 22) }
-        previewRow.addView(previewBadge, LinearLayout.LayoutParams(dp(72), dp(72))); layout.addView(previewRow)
-        fun refreshPreview() { previewBadge.text = selectedIcon; previewBadge.background = roundedBackground(selectedColor, 40f) }
-        val nameInput = EditText(this).apply { hint = "Nome categoria"; setHintTextColor(COLOR_TEXT_MUTED); setTextColor(COLOR_TEXT_PRIMARY); setSingleLine(true); background = roundedBackground(COLOR_SURFACE_ALT, 12f); setPadding(24, 20, 24, 20) }
-        layout.addView(nameInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 24 })
-        val iconTitle = TextView(this).apply { text = "ICONA"; textSize = 12f; setTextColor(COLOR_TEXT_MUTED); setPadding(2, 0, 0, 10) }; layout.addView(iconTitle)
-        val iconViews = mutableListOf<Pair<String, TextView>>()
-        fun iconBackground(icon: String) = roundedBackground(if (icon == selectedIcon) COLOR_ACCENT else COLOR_SURFACE_ALT, 16f)
-        val iconGrid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        categoryIconPalette.chunked(4).forEach { rowIcons ->
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            rowIcons.forEach { icon ->
-                val iconView = TextView(this).apply { text = icon; textSize = 26f; gravity = Gravity.CENTER; background = iconBackground(icon); setOnClickListener { selectedIcon = icon; iconViews.forEach { (i, v) -> v.background = iconBackground(i) }; refreshPreview() } }
-                iconViews.add(icon to iconView)
-                row.addView(iconView, LinearLayout.LayoutParams(dp(60), dp(60)).apply { rightMargin = 10; bottomMargin = 10 })
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                TravelPinsDarkTheme {
+                    CreateCategoryFullscreenDialog(
+                        onCreate = { name, color, icon ->
+                            lifecycleScope.launch {
+                                repository.createCategory(name = name, colorArgb = color, iconKey = icon)
+                            }
+                        },
+                        onDismiss = { dialog.dismiss() }
+                    )
+                }
             }
-            iconGrid.addView(row)
         }
-        layout.addView(iconGrid)
-        val colorTitle = TextView(this).apply { text = "COLORE"; textSize = 12f; setTextColor(COLOR_TEXT_MUTED); setPadding(2, 20, 0, 10) }; layout.addView(colorTitle)
-        val colorViews = mutableListOf<Pair<Int, View>>()
-        fun colorBackground(color: Int) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color); if (color == selectedColor) setStroke(dp(3), Color.WHITE) }
-        val colorGrid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        categoryColorPalette.chunked(5).forEach { rowColors ->
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            rowColors.forEach { color ->
-                val colorView = View(this).apply { background = colorBackground(color); setOnClickListener { selectedColor = color; colorViews.forEach { (c, v) -> v.background = colorBackground(c) }; refreshPreview() } }
-                colorViews.add(color to colorView)
-                row.addView(colorView, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = 12; bottomMargin = 12 })
-            }
-            colorGrid.addView(row)
-        }
-        layout.addView(colorGrid); scroll.addView(layout)
-        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
-            .setTitle("Nuova categoria").setView(scroll)
-            .setPositiveButton("CREA") { _, _ ->
-                val name = nameInput.text.toString().trim()
-                if (name.isBlank()) { Toast.makeText(this, "Inserisci un nome.", Toast.LENGTH_SHORT).show(); return@setPositiveButton }
-                lifecycleScope.launch { repository.createCategory(name = name, colorArgb = selectedColor, iconKey = selectedIcon); runOnUiThread { Toast.makeText(this@MainActivity, "Categoria creata", Toast.LENGTH_SHORT).show() } }
-            }
-            .setNegativeButton("ANNULLA", null)
-            .show()
+        dialog.setContentView(composeView)
+        dialog.show()
     }
 
     private fun confirmDeleteCategory(category: Category) {
