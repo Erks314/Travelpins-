@@ -2,7 +2,6 @@ package com.travelpins.test.ui
 
 import android.view.Window
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,7 +60,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -73,15 +71,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -164,9 +159,7 @@ private class CategoryHeroCurve : Shape {
 
 /**
  * Sfondo hero IDENTICO a quello della home (stesso gradiente), ma SENZA il logo TravelPins.
- * Se esiste un drawable "category_hero" (foto di paesaggio senza scritte) lo usa ritagliando
- * una fascia priva di testo; altrimenti resta il gradiente puro, perfettamente coerente con la home.
- * Per avere la foto: aggiungi res/drawable/category_hero.jpg (o .png/.webp) -> appare automaticamente.
+ * Mostra solo il gradiente puro + scrim per leggibilità, perfettamente coerente con la home.
  */
 @Composable
 private fun CategoryHeroBackground(modifier: Modifier = Modifier) {
@@ -182,29 +175,6 @@ private fun CategoryHeroBackground(modifier: Modifier = Modifier) {
             )
         )
         
-        // Prova a caricare la foto opzionale, se esiste
-        val bmp = try {
-            androidx.compose.ui.graphics.ImageBitmap.imageResource(R.drawable.category_hero)
-        } catch (_: Exception) {
-            null
-        }
-        
-        if (bmp != null) {
-            Canvas(Modifier.fillMaxSize()) {
-                // Prende la fascia centrale-inferiore dell'immagine (paesaggio), evitando bordi con testo
-                val srcW = bmp.width
-                val srcH = bmp.height
-                val cropTop = (srcH * 0.30f).toInt()
-                val cropH = (srcH * 0.55f).toInt().coerceAtLeast(1)
-                drawImage(
-                    image = bmp,
-                    srcOffset = IntOffset(0, cropTop),
-                    srcSize = IntSize(srcW, cropH),
-                    dstSize = IntSize(size.width.toInt(), size.height.toInt()),
-                    alpha = 0.55f
-                )
-            }
-        }
         // Scrim per leggibilità + transizione morbida verso lo sfondo scuro
         Box(
             Modifier.fillMaxSize().background(
