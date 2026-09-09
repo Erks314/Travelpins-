@@ -1,5 +1,9 @@
 package com.travelpins.test.ui
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Rect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.BitmapDescriptor
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
@@ -52,13 +58,50 @@ import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.itinerary.ItineraryPlace
 import com.travelpins.test.itinerary.ItineraryState
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlin.math.max
 
-private fun circledNumber(n: Int): String {
-    val chars = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
-    return if (n in 1..20) chars[n - 1].toString() else "$n"
+private val numberedIconCache = mutableMapOf<Int, BitmapDescriptor>()
+
+private fun numberedGreenIcon(number: Int): BitmapDescriptor {
+    numberedIconCache[number]?.let { return it }
+
+    val size = 110
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    val fillPaint = Paint().apply {
+        isAntiAlias = true
+        color = android.graphics.Color.parseColor("#2EBD95")
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(size / 2f, size / 2f, size / 2f - 6f, fillPaint)
+
+    val borderPaint = Paint().apply {
+        isAntiAlias = true
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 6f
+    }
+    canvas.drawCircle(size / 2f, size / 2f, size / 2f - 8f, borderPaint)
+
+    val textPaint = Paint().apply {
+        isAntiAlias = true
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+        textSize = 48f
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+    val text = number.toString()
+    val bounds = Rect()
+    textPaint.getTextBounds(text, 0, text.length, bounds)
+    canvas.drawText(text, size / 2f, size / 2f + bounds.height() / 2f, textPaint)
+
+    val descriptor = BitmapDescriptorFactory.fromBitmap(bitmap)
+    numberedIconCache[number] = descriptor
+    return descriptor
 }
 
 @Composable
@@ -93,13 +136,10 @@ fun ItineraryBuilderScreen(
         position = CameraPosition.fromLatLngZoom(LatLng(41.9, 12.5), 5f)
     }
 
-    // FIX CRASH: aspettiamo che la mappa abbia una proiezione prima di muovere la camera.
-    // Inoltre gestiamo separatamente il caso "1 solo luogo" (bounds degenere).
     LaunchedEffect(listPlaces.size) {
         if (listPlaces.isEmpty()) return@LaunchedEffect
 
         try {
-            // Aspetta che Google Maps sia pronto (proiezione != null)
             snapshotFlow { cameraPositionState.projection }
                 .filter { it != null }
                 .first()
@@ -107,41 +147,30 @@ fun ItineraryBuilderScreen(
             if (listPlaces.size == 1) {
                 val p = listPlaces.first()
                 cameraPositionState.animate(
-                    CameraUpdateFactory.newLatLngZoom(LatLng(p.latitude, p.longitude), 14f),
+                    CameraUpdateFactory.newLatLngZoom(LatLng(p.latitude, p.longitude), 12f),
                     durationMs = 600
                 )
             } else {
                 val bounds = LatLngBounds.Builder()
                 listPlaces.forEach { bounds.include(LatLng(it.latitude, it.longitude)) }
                 val b = bounds.build()
-
-                val center = LatLng(
-                    (b.southwest.latitude + b.northeast.latitude) / 2,
-                    (b.southwest.longitude + b.northeast.longitude) / 2
-                )
-
-                val latDelta = b.northeast.latitude - b.southwest.latitude
-                val lngDelta = b.northeast.longitude - b.southwest.longitude
-                val maxDelta = max(latDelta, lngDelta)
-
-                val zoom = when {
-                    maxDelta > 5.0 -> 5f
-                    maxDelta > 2.0 -> 7f
-                    maxDelta > 1.0 -> 9f
-                    maxDelta > 0.5 -> 10f
-                    maxDelta > 0.1 -> 12f
-                    maxDelta > 0.05 -> 13f
-                    maxDelta > 0.01 -> 14f
-                    else -> 15f
+                try {
+                    cameraPositionState.animate(
+                        CameraUpdateFactory.newLatLngBounds(b, 140),
+                        durationMs = 800
+                    )
+                } catch (_: Exception) {
+                    val center = LatLng(
+                        (b.southwest.latitude + b.northeast.latitude) / 2,
+                        (b.southwest.longitude + b.northeast.longitude) / 2
+                    )
+                    cameraPositionState.animate(
+                        CameraUpdateFactory.newLatLngZoom(center, 10f),
+                        durationMs = 800
+                    )
                 }
-
-                cameraPositionState.animate(
-                    CameraUpdateFactory.newLatLngZoom(center, zoom),
-                    durationMs = 800
-                )
             }
         } catch (_: Exception) {
-            // Ignora errori di timing / race condition
         }
     }
 
@@ -157,11 +186,15 @@ fun ItineraryBuilderScreen(
                 val markerState = rememberMarkerState(position = LatLng(place.latitude, place.longitude))
                 val positionInItinerary = itineraryPlaces.indexOfFirst { it.placeId == place.id }
                 val isInItinerary = positionInItinerary >= 0
-                val title = if (isInItinerary) "${circledNumber(positionInItinerary + 1)} ${place.name}" else place.name
 
                 Marker(
                     state = markerState,
-                    title = title,
+                    title = place.name,
+                    icon = if (isInItinerary) {
+                        numberedGreenIcon(positionInItinerary + 1)
+                    } else {
+                        BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+                    },
                     onClick = {
                         selectedPlace = place
                         selectedCategory = categories.firstOrNull { it.id == place.categoryId }
@@ -182,6 +215,9 @@ fun ItineraryBuilderScreen(
         }
 
         selectedPlace?.let { place ->
+            // Calcolo QUI lo stato, così lo uso sia per la foto che per il pulsante
+            val isInItinerary = itineraryPlaces.any { it.placeId == place.id }
+
             Box(
                 Modifier.align(Alignment.BottomStart)
                     .fillMaxWidth()
@@ -195,7 +231,8 @@ fun ItineraryBuilderScreen(
                     .padding(16.dp)
             ) {
                 Column {
-                    if (selectedPhotoUrl != null) {
+                    // FOTO visibile SOLO se il luogo NON è ancora nell'itinerario
+                    if (!isInItinerary && selectedPhotoUrl != null) {
                         Box(
                             Modifier.fillMaxWidth().height(120.dp)
                                 .clip(RoundedCornerShape(12.dp))
@@ -232,7 +269,6 @@ fun ItineraryBuilderScreen(
 
                     Spacer(Modifier.height(12.dp))
 
-                    val isInItinerary = itineraryPlaces.any { it.placeId == place.id }
                     Box(
                         Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
