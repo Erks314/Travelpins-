@@ -38,7 +38,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
@@ -52,6 +51,7 @@ import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.itinerary.ItineraryPlace
 import com.travelpins.test.itinerary.ItineraryState
 import kotlinx.coroutines.flow.first
+import kotlin.math.max
 
 private fun circledNumber(n: Int): String {
     val chars = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
@@ -90,13 +90,37 @@ fun ItineraryBuilderScreen(
         position = CameraPosition.fromLatLngZoom(LatLng(41.9, 12.5), 5f)
     }
 
-    // FIX: zooma sull'elenco appena i luoghi sono caricati
+    // FIX: zooma sull'elenco usando animate() di maps-compose (non animateCamera)
     LaunchedEffect(listPlaces.size) {
         if (listPlaces.isNotEmpty()) {
             val bounds = LatLngBounds.Builder()
             listPlaces.forEach { bounds.include(LatLng(it.latitude, it.longitude)) }
-            cameraPositionState.animateCamera(
-                CameraUpdateFactory.newLatLngBounds(bounds.build(), 120)
+            val b = bounds.build()
+
+            val center = LatLng(
+                (b.southwest.latitude + b.northeast.latitude) / 2,
+                (b.southwest.longitude + b.northeast.longitude) / 2
+            )
+
+            // Zoom adattivo basato sull'estensione
+            val latDelta = b.northeast.latitude - b.southwest.latitude
+            val lngDelta = b.northeast.longitude - b.southwest.longitude
+            val maxDelta = max(latDelta, lngDelta)
+
+            val zoom = when {
+                maxDelta > 5.0 -> 5f
+                maxDelta > 2.0 -> 7f
+                maxDelta > 1.0 -> 9f
+                maxDelta > 0.5 -> 10f
+                maxDelta > 0.1 -> 12f
+                maxDelta > 0.05 -> 13f
+                maxDelta > 0.01 -> 14f
+                else -> 15f
+            }
+
+            cameraPositionState.animate(
+                CameraPosition.fromLatLngZoom(center, zoom),
+                durationMs = 800
             )
         }
     }
@@ -138,7 +162,7 @@ fun ItineraryBuilderScreen(
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro", tint = Color.White, modifier = Modifier.size(20.dp))
         }
 
-        // Bottom sheet dettaglio luogo (FIX: alzato sopra la barra inferiore)
+        // Bottom sheet dettaglio luogo
         selectedPlace?.let { place ->
             Box(
                 Modifier.align(Alignment.BottomStart)
