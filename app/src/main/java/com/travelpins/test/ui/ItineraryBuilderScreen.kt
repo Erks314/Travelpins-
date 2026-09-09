@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,11 +38,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerInfoWindowContent
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
 import com.travelpins.test.data.Category
@@ -50,6 +52,11 @@ import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.itinerary.ItineraryPlace
 import com.travelpins.test.itinerary.ItineraryState
 import kotlinx.coroutines.flow.first
+
+private fun circledNumber(n: Int): String {
+    val chars = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+    return if (n in 1..20) chars[n - 1].toString() else "$n"
+}
 
 @Composable
 fun ItineraryBuilderScreen(
@@ -69,7 +76,6 @@ fun ItineraryBuilderScreen(
     var selectedCategory by remember { mutableStateOf<Category?>(null) }
     var selectedPhotoUrl by remember { mutableStateOf<String?>(null) }
 
-    // Carica foto per il luogo selezionato
     LaunchedEffect(selectedPlace?.id) {
         val placeId = selectedPlace?.id
         if (placeId != null) {
@@ -80,17 +86,22 @@ fun ItineraryBuilderScreen(
         }
     }
 
-    // Centra la mappa sui luoghi della lista
     val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(LatLng(41.9, 12.5), 5f)
+    }
+
+    // FIX: zooma sull'elenco appena i luoghi sono caricati
+    LaunchedEffect(listPlaces.size) {
         if (listPlaces.isNotEmpty()) {
-            val bounds = listPlaces.map { LatLng(it.latitude, it.longitude) }
-            val center = LatLng(
-                bounds.sumOf { it.latitude } / bounds.size,
-                bounds.sumOf { it.longitude } / bounds.size
+            val bounds = LatLngBounds.Builder()
+            listPlaces.forEach { bounds.include(LatLng(it.latitude, it.longitude)) }
+            cameraPositionState.animateCamera(
+                CameraUpdateFactory.newLatLngBounds(bounds.build(), 120)
             )
-            position = CameraPosition.fromLatLngZoom(center, 12f)
         }
     }
+
+    val bottomBarVisible = itineraryPlaces.isNotEmpty()
 
     Box(Modifier.fillMaxSize().background(TPColors.Bg)) {
         GoogleMap(
@@ -98,14 +109,15 @@ fun ItineraryBuilderScreen(
             cameraPositionState = cameraPositionState,
             onMapClick = { selectedPlace = null }
         ) {
-            listPlaces.forEachIndexed { index, place ->
+            listPlaces.forEach { place ->
                 val markerState = rememberMarkerState(position = LatLng(place.latitude, place.longitude))
-                val isInItinerary = itineraryPlaces.any { it.placeId == place.id }
-                val positionInItinerary = if (isInItinerary) itineraryPlaces.indexOfFirst { it.placeId == place.id } + 1 else 0
+                val positionInItinerary = itineraryPlaces.indexOfFirst { it.placeId == place.id }
+                val isInItinerary = positionInItinerary >= 0
+                val title = if (isInItinerary) "${circledNumber(positionInItinerary + 1)} ${place.name}" else place.name
 
                 Marker(
                     state = markerState,
-                    title = place.name,
+                    title = title,
                     onClick = {
                         selectedPlace = place
                         selectedCategory = categories.firstOrNull { it.id == place.categoryId }
@@ -126,12 +138,16 @@ fun ItineraryBuilderScreen(
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro", tint = Color.White, modifier = Modifier.size(20.dp))
         }
 
-        // Bottom sheet dettaglio luogo selezionato
+        // Bottom sheet dettaglio luogo (FIX: alzato sopra la barra inferiore)
         selectedPlace?.let { place ->
             Box(
                 Modifier.align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = if (bottomBarVisible) 92.dp else 16.dp
+                    )
                     .clip(RoundedCornerShape(20.dp))
                     .background(TPColors.Surface)
                     .padding(16.dp)
@@ -154,7 +170,7 @@ fun ItineraryBuilderScreen(
                     }
 
                     Text(place.name, color = TPColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    
+
                     if (selectedCategory != null) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                             CategoryIcon(
@@ -192,7 +208,7 @@ fun ItineraryBuilderScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                if (isInItinerary) Icons.Filled.Add else Icons.Filled.Add,
+                                if (isInItinerary) Icons.Filled.Check else Icons.Filled.Add,
                                 contentDescription = null,
                                 tint = if (isInItinerary) TPColors.TextMuted else Color.White,
                                 modifier = Modifier.size(18.dp)
@@ -210,8 +226,8 @@ fun ItineraryBuilderScreen(
             }
         }
 
-        // Barra inferiore con conteggio e pulsante VEDI ITINERARIO
-        if (itineraryPlaces.isNotEmpty()) {
+        // Barra inferiore
+        if (bottomBarVisible) {
             Box(
                 Modifier.align(Alignment.BottomCenter)
                     .fillMaxWidth()
