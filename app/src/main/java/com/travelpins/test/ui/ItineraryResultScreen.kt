@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -149,7 +150,8 @@ fun ItineraryResultScreen(
                         modifier = Modifier.fillMaxSize(),
                         cameraPositionState = cameraPositionState
                     ) {
-                        itineraryPlaces.forEachIndexed { index, place ->
+                        for (index in itineraryPlaces.indices) {
+                            val place = itineraryPlaces[index]
                             val markerState = rememberMarkerState(position = LatLng(place.latitude, place.longitude))
                             Marker(state = markerState, title = "${index + 1}. ${place.name}")
                         }
@@ -203,7 +205,9 @@ fun ItineraryResultScreen(
 
                 // Lista tappe con distanze
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    itineraryPlaces.forEachIndexed { index, place ->
+                    for (index in itineraryPlaces.indices) {
+                        val place = itineraryPlaces[index]
+                        
                         Row(
                             Modifier.fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
