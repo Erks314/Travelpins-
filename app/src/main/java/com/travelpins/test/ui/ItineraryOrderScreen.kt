@@ -134,12 +134,12 @@ fun ItineraryOrderScreen(
                         dragOffset = 0f
                     },
                     onDragMove = { delta -> dragOffset += delta },
-                    onDragEnd = { currentDragId, currentOffset ->
-                        // Ricalcola from e target AL MOMENTO del rilascio
+                    onDragEnd = { finalOffset ->
+                        // Ricalcola from e target AL MOMENTO del rilascio usando l'offset finale
                         val currentSize = order.size
-                        val currentFrom = currentDragId?.let { id -> order.indexOfFirst { it.placeId == id } } ?: -1
+                        val currentFrom = dragId?.let { id -> order.indexOfFirst { it.placeId == id } } ?: -1
                         val currentTarget = if (currentFrom >= 0 && currentSize > 0) {
-                            (currentFrom + round(currentOffset / stepPx).toInt()).coerceIn(0, currentSize - 1)
+                            (currentFrom + round(finalOffset / stepPx).toInt()).coerceIn(0, currentSize - 1)
                         } else {
                             -1
                         }
@@ -199,13 +199,16 @@ private fun ItineraryPlaceCard(
     staticOffset: Float,
     onDragStart: () -> Unit,
     onDragMove: (Float) -> Unit,
-    onDragEnd: (dragId: Long?, offset: Float) -> Unit,
+    onDragEnd: (finalOffset: Float) -> Unit,
     onRemove: () -> Unit
 ) {
     val animatedStatic by animateFloatAsState(staticOffset)
     val translationY = if (isDragging) dragOffset else animatedStatic
 
     val scale by animateFloatAsState(if (isDragging) 1.03f else 1f)
+
+    // Variabile locale che tiene traccia dell'offset durante il drag
+    var localDragOffset by remember { mutableFloatStateOf(0f) }
 
     Row(
         Modifier.fillMaxWidth()
@@ -237,11 +240,20 @@ private fun ItineraryPlaceCard(
                     .size(28.dp)
                     .pointerInput(place.placeId) {
                         detectDragGestures(
-                            onDragStart = { onDragStart() },
-                            onDragEnd = { onDragEnd(place.placeId, dragOffset) },
-                            onDragCancel = { onDragEnd(place.placeId, dragOffset) }
+                            onDragStart = {
+                                localDragOffset = 0f
+                                onDragStart()
+                            },
+                            onDragEnd = {
+                                // Usa l'offset locale al momento del rilascio
+                                onDragEnd(localDragOffset)
+                            },
+                            onDragCancel = {
+                                onDragEnd(localDragOffset)
+                            }
                         ) { change, dragAmount ->
                             change.consume()
+                            localDragOffset += dragAmount.y
                             onDragMove(dragAmount.y)
                         }
                     }
