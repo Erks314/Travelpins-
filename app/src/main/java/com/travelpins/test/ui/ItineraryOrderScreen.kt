@@ -134,9 +134,18 @@ fun ItineraryOrderScreen(
                         dragOffset = 0f
                     },
                     onDragMove = { delta -> dragOffset += delta },
-                    onDragEnd = {
-                        if (from in 0 until size && target in 0 until size && target != from) {
-                            ItineraryState.reorder(from, target)
+                    onDragEnd = { currentDragId, currentOffset ->
+                        // Ricalcola from e target AL MOMENTO del rilascio
+                        val currentSize = order.size
+                        val currentFrom = currentDragId?.let { id -> order.indexOfFirst { it.placeId == id } } ?: -1
+                        val currentTarget = if (currentFrom >= 0 && currentSize > 0) {
+                            (currentFrom + round(currentOffset / stepPx).toInt()).coerceIn(0, currentSize - 1)
+                        } else {
+                            -1
+                        }
+                        
+                        if (currentFrom in 0 until currentSize && currentTarget in 0 until currentSize && currentTarget != currentFrom) {
+                            ItineraryState.reorder(currentFrom, currentTarget)
                         }
                         dragId = null
                         dragOffset = 0f
@@ -190,7 +199,7 @@ private fun ItineraryPlaceCard(
     staticOffset: Float,
     onDragStart: () -> Unit,
     onDragMove: (Float) -> Unit,
-    onDragEnd: () -> Unit,
+    onDragEnd: (dragId: Long?, offset: Float) -> Unit,
     onRemove: () -> Unit
 ) {
     val animatedStatic by animateFloatAsState(staticOffset)
@@ -207,7 +216,6 @@ private fun ItineraryPlaceCard(
                 this.scaleX = scale
                 this.scaleY = scale
             }
-            // Ombra quando trascinato (sostituisce l'overlay che causava l'errore)
             .then(
                 if (isDragging) Modifier.shadow(elevation = 8.dp, shape = RoundedCornerShape(16.dp))
                 else Modifier
@@ -230,8 +238,8 @@ private fun ItineraryPlaceCard(
                     .pointerInput(place.placeId) {
                         detectDragGestures(
                             onDragStart = { onDragStart() },
-                            onDragEnd = { onDragEnd() },
-                            onDragCancel = { onDragEnd() }
+                            onDragEnd = { onDragEnd(place.placeId, dragOffset) },
+                            onDragCancel = { onDragEnd(place.placeId, dragOffset) }
                         ) { change, dragAmount ->
                             change.consume()
                             onDragMove(dragAmount.y)
