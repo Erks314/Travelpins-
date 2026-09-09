@@ -1,7 +1,6 @@
 package com.travelpins.test
 
 import android.annotation.SuppressLint
-import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -26,6 +25,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -95,6 +95,10 @@ class MainActivity : ComponentActivity() {
     private var getlistAttempts = 0
     private var importTimeoutJob: Job? = null
 
+    // FIX CRASH: il dialog di creazione categoria vive DENTRO la composizione Compose
+    // esistente (non più in una finestra Dialog separata con ComposeView orfano).
+    private val showCreateCategoryUi = mutableStateOf(false)
+
     private var mapSelectedCategories: MutableSet<Long> = mutableSetOf()
     private var mapIncludeUncategorized: Boolean = true
 
@@ -140,6 +144,23 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    // Overlay Compose condiviso: mostra il dialog di creazione categoria
+    // sopra qualunque schermata Compose sia attiva (Home o Dettaglio elenco).
+    @Composable
+    private fun CreateCategoryOverlay() {
+        if (showCreateCategoryUi.value) {
+            CreateCategoryFullscreenDialog(
+                onCreate = { name, color, icon ->
+                    lifecycleScope.launch {
+                        repository.createCategory(name = name, colorArgb = color, iconKey = icon)
+                    }
+                    showCreateCategoryUi.value = false
+                },
+                onDismiss = { showCreateCategoryUi.value = false }
+            )
+        }
+    }
+
     private fun showAppShell(tab: NavTab) {
         currentScreen = Screen.HOME; currentNavTab = tab
         viewingListId = null; viewingListName = null
@@ -156,6 +177,7 @@ class MainActivity : ComponentActivity() {
                         onShowDebugLog = { showDebugLogDialog() },
                         onRefreshList = { listId -> startRefresh(listId) }
                     )
+                    CreateCategoryOverlay()
                 }
             }
         }
@@ -214,6 +236,7 @@ class MainActivity : ComponentActivity() {
                         onCreateCategory = { showCreateCategoryDialog() },
                         onManageCategories = { showCategoriesDialog() }
                     )
+                    CreateCategoryOverlay()
                 }
             }
         }
@@ -693,26 +716,10 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    // NUOVO: dialog full-screen Compose (Opzione A). La logica di salvataggio resta identica.
+    // FIX CRASH: niente più Dialog+ComposeView orfano. Attiviamo l'overlay Compose
+    // già ospitato dalla schermata corrente (Home o Dettaglio elenco).
     private fun showCreateCategoryDialog() {
-        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        val composeView = ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            setContent {
-                TravelPinsDarkTheme {
-                    CreateCategoryFullscreenDialog(
-                        onCreate = { name, color, icon ->
-                            lifecycleScope.launch {
-                                repository.createCategory(name = name, colorArgb = color, iconKey = icon)
-                            }
-                        },
-                        onDismiss = { dialog.dismiss() }
-                    )
-                }
-            }
-        }
-        dialog.setContentView(composeView)
-        dialog.show()
+        runOnUiThread { showCreateCategoryUi.value = true }
     }
 
     private fun confirmDeleteCategory(category: Category) {
