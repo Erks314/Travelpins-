@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -52,7 +53,6 @@ import com.travelpins.test.itinerary.ItineraryPlace
 import com.travelpins.test.itinerary.ItineraryState
 import kotlin.math.round
 
-// Altezza fissa di una card + spazio tra le card (serve per calcolare gli spostamenti)
 private val CARD_HEIGHT_DP = 88
 private val CARD_SPACING_DP = 10
 
@@ -116,7 +116,6 @@ fun ItineraryOrderScreen(
             order.forEachIndexed { i, place ->
                 val isDragging = place.placeId == dragId
 
-                // Di quanto deve spostarsi questa riga per fare spazio a quella trascinata
                 val staticOffset = when {
                     from < 0 || i == from -> 0f
                     from < target && i > from && i <= target -> -stepPx
@@ -194,12 +193,10 @@ private fun ItineraryPlaceCard(
     onDragEnd: () -> Unit,
     onRemove: () -> Unit
 ) {
-    // Le righe NON trascinate si spostano con animazione fluida
     val animatedStatic by animateFloatAsState(staticOffset)
     val translationY = if (isDragging) dragOffset else animatedStatic
 
     val scale by animateFloatAsState(if (isDragging) 1.03f else 1f)
-    val elevationAlpha by animateFloatAsState(if (isDragging) 1f else 0f)
 
     Row(
         Modifier.fillMaxWidth()
@@ -210,12 +207,16 @@ private fun ItineraryPlaceCard(
                 this.scaleX = scale
                 this.scaleY = scale
             }
+            // Ombra quando trascinato (sostituisce l'overlay che causava l'errore)
+            .then(
+                if (isDragging) Modifier.shadow(elevation = 8.dp, shape = RoundedCornerShape(16.dp))
+                else Modifier
+            )
             .clip(RoundedCornerShape(16.dp))
             .background(if (isDragging) TPColors.SurfaceAlt else TPColors.Surface)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Maniglia: avvia il drag
         Box(
             Modifier.size(40.dp, 70.dp),
             contentAlignment = Alignment.Center
@@ -282,12 +283,5 @@ private fun ItineraryPlaceCard(
         ) {
             Icon(Icons.Filled.Close, contentDescription = "Rimuovi", tint = TPColors.TextMuted, modifier = Modifier.size(16.dp))
         }
-
-        // Ombra/evidenziazione quando trascinato
-        Box(
-            Modifier.matchParentSize()
-                .alpha(elevationAlpha * 0.15f)
-                .background(TPColors.Accent)
-        )
     }
 }
