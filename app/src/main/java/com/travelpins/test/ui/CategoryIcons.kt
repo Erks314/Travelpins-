@@ -69,7 +69,8 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.imageResource
@@ -180,10 +181,14 @@ private fun CategoryHeroBackground(modifier: Modifier = Modifier) {
                 )
             )
         )
-        // Foto di paesaggio senza branding (opzionale), ritagliata per escludere eventuali testi
-        val bmp = remember {
-            runCatching { androidx.compose.ui.graphics.ImageBitmap.imageResource(R.drawable.category_hero) }.getOrNull()
+        
+        // Prova a caricare la foto opzionale, se esiste
+        val bmp = try {
+            androidx.compose.ui.graphics.ImageBitmap.imageResource(R.drawable.category_hero)
+        } catch (_: Exception) {
+            null
         }
+        
         if (bmp != null) {
             Canvas(Modifier.fillMaxSize()) {
                 // Prende la fascia centrale-inferiore dell'immagine (paesaggio), evitando bordi con testo
