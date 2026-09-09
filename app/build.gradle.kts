@@ -18,10 +18,15 @@ android {
 
         manifestPlaceholders["MAPS_API_KEY"] =
             project.findProperty("MAPS_API_KEY")?.toString() ?: ""
+        
+        // Abilita BuildConfig per leggere MAPS_API_KEY nel codice
+        buildConfigField("String", "MAPS_API_KEY", 
+            "\"${project.findProperty("MAPS_API_KEY")?.toString() ?: ""}\"")
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
