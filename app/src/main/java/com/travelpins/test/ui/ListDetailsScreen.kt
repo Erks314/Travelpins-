@@ -168,7 +168,6 @@ fun TravelPinsListDetailScreen(
             Spacer(Modifier.height(90.dp))
         }
 
-        // FAB "+" per creare categoria
         Box(
             Modifier.align(Alignment.BottomEnd).padding(20.dp).size(56.dp)
                 .clip(CircleShape).background(TPColors.Accent)
@@ -337,18 +336,21 @@ private fun ControlsRow(
                     DropdownMenuItem(text = { Text("Tutti") }, onClick = { onFilter(null); filterOpen = false })
                     DropdownMenuItem(text = { Text("Senza categoria") }, onClick = { onFilter(-1L); filterOpen = false })
                     categories.forEach { category ->
-                        // FIX: uso CategoryIcons.textFor() invece di stampare iconKey grezzo
+                        // DIFENSIVO: nome vuoto -> etichetta leggibile; iconKey vuoto -> niente icona
+                        val catName = category.name.takeIf { it.isNotBlank() } ?: "Categoria senza nome"
                         DropdownMenuItem(
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CategoryIcon(
-                                        iconKey = category.iconKey,
-                                        tint = Color(category.colorArgb),
-                                        modifier = Modifier.size(16.dp),
-                                        emojiFontSize = 13.sp
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(category.name)
+                                    if (category.iconKey.isNotBlank()) {
+                                        CategoryIcon(
+                                            iconKey = category.iconKey,
+                                            tint = Color(category.colorArgb),
+                                            modifier = Modifier.size(16.dp),
+                                            emojiFontSize = 13.sp
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                    }
+                                    Text(catName)
                                 }
                             },
                             onClick = { onFilter(category.id); filterOpen = false }
@@ -410,19 +412,23 @@ private fun PlaceCard(
             }
             Spacer(Modifier.height(7.dp))
             if (category != null) {
-                // FIX: uso CategoryIcon invece di stampare iconKey grezzo
+                // DIFENSIVO: mai più pill vuote. Nome vuoto -> "Categoria senza nome",
+                // iconKey vuoto -> nessuna icona ma testo sempre visibile.
+                val catName = category.name.takeIf { it.isNotBlank() } ?: "Categoria senza nome"
                 Row(
                     Modifier.clip(RoundedCornerShape(8.dp)).background(Color(category.colorArgb)).padding(horizontal = 10.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CategoryIcon(
-                        iconKey = category.iconKey,
-                        tint = Color.White,
-                        modifier = Modifier.size(14.dp),
-                        emojiFontSize = 11.sp
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(category.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    if (category.iconKey.isNotBlank()) {
+                        CategoryIcon(
+                            iconKey = category.iconKey,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp),
+                            emojiFontSize = 11.sp
+                        )
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(catName, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             } else {
                 Text("Senza categoria", color = TPColors.TextMuted, fontSize = 11.sp)
