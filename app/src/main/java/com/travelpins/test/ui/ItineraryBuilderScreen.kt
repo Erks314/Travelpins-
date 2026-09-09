@@ -1,0 +1,249 @@
+package com.travelpins.test.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerInfoWindowContent
+import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberMarkerState
+import com.travelpins.test.data.Category
+import com.travelpins.test.data.Place
+import com.travelpins.test.data.TravelPinsRepository
+import com.travelpins.test.itinerary.ItineraryPlace
+import com.travelpins.test.itinerary.ItineraryState
+import kotlinx.coroutines.flow.first
+
+@Composable
+fun ItineraryBuilderScreen(
+    repository: TravelPinsRepository,
+    listId: String?,
+    listName: String?,
+    onBack: () -> Unit,
+    onViewItinerary: () -> Unit
+) {
+    val allPlaces by repository.places.collectAsState(initial = emptyList())
+    val categories by repository.categories.collectAsState(initial = emptyList())
+    val itineraryPlaces by ItineraryState.places.collectAsState()
+
+    val listPlaces = remember(allPlaces, listId) { allPlaces.filter { it.sourceListId == listId } }
+
+    var selectedPlace by remember { mutableStateOf<Place?>(null) }
+    var selectedCategory by remember { mutableStateOf<Category?>(null) }
+    var selectedPhotoUrl by remember { mutableStateOf<String?>(null) }
+
+    // Carica foto per il luogo selezionato
+    LaunchedEffect(selectedPlace?.id) {
+        val placeId = selectedPlace?.id
+        if (placeId != null) {
+            val photos = repository.observePhotosByPlace(placeId).first()
+            selectedPhotoUrl = photos.firstOrNull()?.sizedUrl(400, 400)
+        } else {
+            selectedPhotoUrl = null
+        }
+    }
+
+    // Centra la mappa sui luoghi della lista
+    val cameraPositionState = rememberCameraPositionState {
+        if (listPlaces.isNotEmpty()) {
+            val bounds = listPlaces.map { LatLng(it.latitude, it.longitude) }
+            val center = LatLng(
+                bounds.sumOf { it.latitude } / bounds.size,
+                bounds.sumOf { it.longitude } / bounds.size
+            )
+            position = CameraPosition.fromLatLngZoom(center, 12f)
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(TPColors.Bg)) {
+        GoogleMap(
+            modifier = Modifier.fillMaxSize(),
+            cameraPositionState = cameraPositionState,
+            onMapClick = { selectedPlace = null }
+        ) {
+            listPlaces.forEachIndexed { index, place ->
+                val markerState = rememberMarkerState(position = LatLng(place.latitude, place.longitude))
+                val isInItinerary = itineraryPlaces.any { it.placeId == place.id }
+                val positionInItinerary = if (isInItinerary) itineraryPlaces.indexOfFirst { it.placeId == place.id } + 1 else 0
+
+                Marker(
+                    state = markerState,
+                    title = place.name,
+                    onClick = {
+                        selectedPlace = place
+                        selectedCategory = categories.firstOrNull { it.id == place.categoryId }
+                        true
+                    }
+                )
+            }
+        }
+
+        // Pulsante BACK
+        Box(
+            Modifier.padding(16.dp).size(40.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.6f))
+                .clickable { onBack() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro", tint = Color.White, modifier = Modifier.size(20.dp))
+        }
+
+        // Bottom sheet dettaglio luogo selezionato
+        selectedPlace?.let { place ->
+            Box(
+                Modifier.align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(TPColors.Surface)
+                    .padding(16.dp)
+            ) {
+                Column {
+                    if (selectedPhotoUrl != null) {
+                        Box(
+                            Modifier.fillMaxWidth().height(120.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(TPColors.SurfaceAlt)
+                        ) {
+                            AsyncImage(
+                                model = selectedPhotoUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                    }
+
+                    Text(place.name, color = TPColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    
+                    if (selectedCategory != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                            CategoryIcon(
+                                iconKey = selectedCategory!!.iconKey,
+                                tint = Color(selectedCategory!!.colorArgb),
+                                modifier = Modifier.size(16.dp),
+                                emojiFontSize = 13.sp
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(selectedCategory!!.name, color = Color(selectedCategory!!.colorArgb), fontSize = 13.sp)
+                        }
+                    }
+
+                    if (!place.address.isNullOrBlank()) {
+                        Text(place.address!!, color = TPColors.TextSecondary, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    val isInItinerary = itineraryPlaces.any { it.placeId == place.id }
+                    Box(
+                        Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isInItinerary) TPColors.SurfaceAlt else TPColors.Accent)
+                            .clickable {
+                                if (isInItinerary) {
+                                    ItineraryState.remove(place.id)
+                                } else {
+                                    val category = categories.firstOrNull { it.id == place.categoryId }
+                                    ItineraryState.add(ItineraryPlace.fromPlace(place, category, selectedPhotoUrl))
+                                }
+                            }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (isInItinerary) Icons.Filled.Add else Icons.Filled.Add,
+                                contentDescription = null,
+                                tint = if (isInItinerary) TPColors.TextMuted else Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (isInItinerary) "RIMUOVI DALL'ITINERARIO" else "AGGIUNGI ALL'ITINERARIO",
+                                color = if (isInItinerary) TPColors.TextMuted else Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Barra inferiore con conteggio e pulsante VEDI ITINERARIO
+        if (itineraryPlaces.isNotEmpty()) {
+            Box(
+                Modifier.align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(TPColors.Surface)
+                    .padding(16.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "${itineraryPlaces.size} ${if (itineraryPlaces.size == 1) "luogo selezionato" else "luoghi selezionati"}",
+                        color = TPColors.TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Box(
+                        Modifier.clip(RoundedCornerShape(14.dp))
+                            .background(TPColors.Accent)
+                            .clickable { onViewItinerary() }
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("VEDI ITINERARIO", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(6.dp))
+                            Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
