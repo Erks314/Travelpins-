@@ -49,6 +49,9 @@ import com.travelpins.test.scraper.GoogleMapsScraperScript
 import com.travelpins.test.ui.CategoryIcons
 import com.travelpins.test.ui.CreateCategoryFullscreenDialog
 import com.travelpins.test.ui.ImportUiState
+import com.travelpins.test.ui.ItineraryBuilderScreen
+import com.travelpins.test.ui.ItineraryOrderScreen
+import com.travelpins.test.ui.ItineraryResultScreen
 import com.travelpins.test.ui.TravelPinsDarkTheme
 import com.travelpins.test.ui.TravelPinsHomeShell
 import com.travelpins.test.ui.TravelPinsListDetailScreen
@@ -70,7 +73,7 @@ class MainActivity : ComponentActivity() {
         private val COLOR_TEXT_MUTED = Color.parseColor("#6E6E85")
     }
 
-    private enum class Screen { HOME, LIST_DETAIL, LIST_MAP }
+    private enum class Screen { HOME, LIST_DETAIL, LIST_MAP, ITINERARY_BUILDER, ITINERARY_ORDER, ITINERARY_RESULT }
     private enum class NavTab { HOME, ELENCHI, MAPPA, PROFILO }
 
     private var webView: WebView? = null
@@ -95,8 +98,6 @@ class MainActivity : ComponentActivity() {
     private var getlistAttempts = 0
     private var importTimeoutJob: Job? = null
 
-    // FIX CRASH: il dialog di creazione categoria vive DENTRO la composizione Compose
-    // esistente (non più in una finestra Dialog separata con ComposeView orfano).
     private val showCreateCategoryUi = mutableStateOf(false)
 
     private var mapSelectedCategories: MutableSet<Long> = mutableSetOf()
@@ -126,6 +127,9 @@ class MainActivity : ComponentActivity() {
     @Suppress("DEPRECATION", "MissingSuperCall")
     override fun onBackPressed() {
         when (currentScreen) {
+            Screen.ITINERARY_RESULT -> showItineraryOrder()
+            Screen.ITINERARY_ORDER -> showItineraryBuilder()
+            Screen.ITINERARY_BUILDER -> showListDetail(viewingListId, viewingListName)
             Screen.LIST_MAP -> showListDetail(viewingListId, viewingListName)
             Screen.LIST_DETAIL -> showAppShell(NavTab.HOME)
             else -> super.onBackPressed()
@@ -144,8 +148,6 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    // Overlay Compose condiviso: mostra il dialog di creazione categoria
-    // sopra qualunque schermata Compose sia attiva (Home o Dettaglio elenco).
     @Composable
     private fun CreateCategoryOverlay() {
         if (showCreateCategoryUi.value) {
@@ -234,9 +236,62 @@ class MainActivity : ComponentActivity() {
                         onOpenPlace = { placeId -> startActivity(com.travelpins.test.ui.PlaceDetailActivity.newIntent(this@MainActivity, placeId)) },
                         onChangeCategory = { place -> showCategoryPicker(place) },
                         onCreateCategory = { showCreateCategoryDialog() },
-                        onManageCategories = { showCategoriesDialog() }
+                        onManageCategories = { showCategoriesDialog() },
+                        onCreateItinerary = { showItineraryBuilder() }
                     )
                     CreateCategoryOverlay()
+                }
+            }
+        }
+        setContentView(composeView)
+    }
+
+    private fun showItineraryBuilder() {
+        currentScreen = Screen.ITINERARY_BUILDER
+        val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                TravelPinsDarkTheme {
+                    ItineraryBuilderScreen(
+                        repository = repository,
+                        listId = viewingListId,
+                        listName = viewingListName,
+                        onBack = { showListDetail(viewingListId, viewingListName) },
+                        onViewItinerary = { showItineraryOrder() }
+                    )
+                }
+            }
+        }
+        setContentView(composeView)
+    }
+
+    private fun showItineraryOrder() {
+        currentScreen = Screen.ITINERARY_ORDER
+        val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                TravelPinsDarkTheme {
+                    ItineraryOrderScreen(
+                        onBack = { showItineraryBuilder() },
+                        onAddMore = { showItineraryBuilder() },
+                        onCalculate = { showItineraryResult() }
+                    )
+                }
+            }
+        }
+        setContentView(composeView)
+    }
+
+    private fun showItineraryResult() {
+        currentScreen = Screen.ITINERARY_RESULT
+        val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                TravelPinsDarkTheme {
+                    ItineraryResultScreen(
+                        onBack = { showListDetail(viewingListId, viewingListName) },
+                        onEditOrder = { showItineraryOrder() }
+                    )
                 }
             }
         }
@@ -675,6 +730,9 @@ class MainActivity : ComponentActivity() {
             Screen.HOME -> { }
             Screen.LIST_DETAIL -> { }
             Screen.LIST_MAP -> { refreshFilters(content); updateMapMarkers() }
+            Screen.ITINERARY_BUILDER -> { }
+            Screen.ITINERARY_ORDER -> { }
+            Screen.ITINERARY_RESULT -> { }
         }
     }
 
@@ -716,8 +774,6 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    // FIX CRASH: niente più Dialog+ComposeView orfano. Attiviamo l'overlay Compose
-    // già ospitato dalla schermata corrente (Home o Dettaglio elenco).
     private fun showCreateCategoryDialog() {
         runOnUiThread { showCreateCategoryUi.value = true }
     }
