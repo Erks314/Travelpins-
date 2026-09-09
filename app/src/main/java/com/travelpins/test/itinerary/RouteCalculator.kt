@@ -11,10 +11,6 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
-/**
- * Calcola il percorso usando Google Routes API.
- * Una sola richiesta per itinerario completo (origin + destination + intermediates).
- */
 object RouteCalculator {
     private const val ROUTES_API_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
     private const val CONNECT_TIMEOUT = 15_000
@@ -32,7 +28,7 @@ object RouteCalculator {
 
         val apiKey = BuildConfig.MAPS_API_KEY
         if (apiKey.isBlank()) {
-            return@withContext Result.Error("API key non configurata")
+            return@withContext Result.Error("API key non configurata. Aggiungi MAPS_API_KEY in local.properties o passa -PMAPS_API_KEY=...")
         }
 
         try {
@@ -57,13 +53,10 @@ object RouteCalculator {
 
             val responseCode = connection.responseCode
             if (responseCode != HttpURLConnection.HTTP_OK) {
-                val errorStream = connection.errorStream
-                val errorMessage = if (errorStream != null) {
-                    BufferedReader(InputStreamReader(errorStream)).readText()
-                } else {
-                    "HTTP $responseCode"
-                }
-                return@withContext Result.Error("Errore API: $errorMessage")
+                val errorBody = connection.errorStream?.let {
+                    BufferedReader(InputStreamReader(it)).readText()
+                } ?: ""
+                return@withContext Result.Error(friendlyError(responseCode, errorBody))
             }
 
             val reader = BufferedReader(InputStreamReader(connection.inputStream))
@@ -73,7 +66,30 @@ object RouteCalculator {
             val route = parseResponse(response, places)
             return@withContext Result.Success(route)
         } catch (e: Exception) {
-            Result.Error("Errore di connessione: ${e.message}")
+            Result.Error("Impossibile calcolare l'itinerario. Controlla la connessione internet.")
+        }
+    }
+
+    private fun friendlyError(code: Int, body: String): String {
+        return when {
+            code == 403 && body.contains("API_KEY_SERVICE_BLOCKED") ->
+                "Routes API non abilitata per questa API key.\n\n" +
+                "Come risolvere:\n" +
+                "1. Apri console.cloud.google.com\n" +
+                "2. Seleziona il progetto della tua API key\n" +
+                "3. Vai su API e servizi → Libreria\n" +
+                "4. Cerca \"Routes API\" e premi ABILITA\n" +
+                "5. Riprova il calcolo"
+            code == 403 && body.contains("API_KEY_INVALID") ->
+                "API key non valida. Controlla il valore di MAPS_API_KEY."
+            code == 403 ->
+                "Accesso negato (403). Verifica che la API key abbia le restrizioni corrette e che Routes API sia abilitata."
+            code == 400 ->
+                "Richiesta non valida (400). Uno o più luoghi hanno coordinate non valide."
+            code == 429 ->
+                "Troppe richieste (429). Attendi qualche minuto e riprova."
+            else ->
+                "Errore API (codice $code). Riprova più tardi."
         }
     }
 
@@ -85,7 +101,7 @@ object RouteCalculator {
         val body = JSONObject()
         body.put("origin", buildLocation(origin))
         body.put("destination", buildLocation(destination))
-        
+
         if (intermediates.isNotEmpty()) {
             val intermediatesArray = JSONArray()
             intermediates.forEach { place ->
@@ -102,12 +118,11 @@ object RouteCalculator {
     }
 
     private fun buildLocation(place: ItineraryPlace): JSONObject {
-        val location = JSONObject()
         val latLng = JSONObject()
         latLng.put("latitude", place.latitude)
         latLng.put("longitude", place.longitude)
+        val location = JSONObject()
         location.put("latLng", latLng)
-        
         val wrapper = JSONObject()
         wrapper.put("location", location)
         return wrapper
@@ -116,7 +131,7 @@ object RouteCalculator {
     private fun parseResponse(response: String, places: List<ItineraryPlace>): ItineraryRoute {
         val json = JSONObject(response)
         val routes = json.optJSONArray("routes") ?: throw Exception("Nessun percorso trovato")
-        
+
         if (routes.length() == 0) {
             throw Exception("Nessun percorso disponibile")
         }
@@ -128,16 +143,16 @@ object RouteCalculator {
 
         val legs = mutableListOf<ItineraryLeg>()
         val legsArray = route.optJSONArray("legs")
-        
+
         if (legsArray != null && legsArray.length() > 0) {
             for (i in 0 until legsArray.length()) {
                 val legJson = legsArray.getJSONObject(i)
                 val legDistance = legJson.optInt("distanceMeters", 0)
                 val legDuration = parseDuration(legJson.optString("duration", "0s"))
-                
+
                 val startPlace = if (i < places.size) places[i] else places.first()
                 val endPlace = if (i + 1 < places.size) places[i + 1] else places.last()
-                
+
                 legs.add(
                     ItineraryLeg(
                         distanceMeters = legDistance,
@@ -158,7 +173,6 @@ object RouteCalculator {
     }
 
     private fun parseDuration(duration: String): Int {
-        // Formato: "1234s" -> 1234
         return duration.replace("s", "").toIntOrNull() ?: 0
     }
 }
