@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -92,7 +93,6 @@ private fun rememberListCover(repository: TravelPinsRepository, placeIds: List<L
             url = null
             return@LaunchedEffect
         }
-
         val photoFlows = placeIds.map { id ->
             repository.observePhotosByPlace(id).mapNotNull { photos ->
                 if (photos.isNotEmpty()) photos.first().sizedUrl(width) else null
@@ -178,14 +178,50 @@ fun TravelPinsListDetailScreen(
         }
     }
 
+    // POPUP LONG-PRESS UNIFICATO: nota + assegna categoria (tutte le categorie subito visibili)
     actionsPlace?.let { place ->
         AlertDialog(
             onDismissRequest = { actionsPlace = null },
             title = { Text(place.name, fontWeight = FontWeight.SemiBold) },
             text = {
                 Column {
-                    TextButton(onClick = { notePlace = place; actionsPlace = null }) { Text("📝  Scrivi nota") }
-                    TextButton(onClick = { onChangeCategory(place); actionsPlace = null }) { Text("🏷️  Cambia categoria") }
+                    TextButton(onClick = { notePlace = place; actionsPlace = null }) { Text("📝  Aggiungi nota") }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    Text(
+                        "Assegna una categoria a questo luogo",
+                        color = TPColors.TextMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+
+                    TextButton(onClick = {
+                        scope.launch { repository.assignPlaceToCategory(place.id, null) }
+                        actionsPlace = null
+                    }) { Text("⚪  Senza categoria") }
+
+                    categories.forEach { category ->
+                        val catName = category.name.takeIf { it.isNotBlank() } ?: "Categoria senza nome"
+                        TextButton(onClick = {
+                            scope.launch { repository.assignPlaceToCategory(place.id, category.id) }
+                            actionsPlace = null
+                        }) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (category.iconKey.isNotBlank()) {
+                                    CategoryIcon(
+                                        iconKey = category.iconKey,
+                                        tint = Color(category.colorArgb),
+                                        modifier = Modifier.size(16.dp),
+                                        emojiFontSize = 13.sp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text(catName)
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {},
@@ -336,18 +372,12 @@ private fun ControlsRow(
                     DropdownMenuItem(text = { Text("Tutti") }, onClick = { onFilter(null); filterOpen = false })
                     DropdownMenuItem(text = { Text("Senza categoria") }, onClick = { onFilter(-1L); filterOpen = false })
                     categories.forEach { category ->
-                        // DIFENSIVO: nome vuoto -> etichetta leggibile; iconKey vuoto -> niente icona
                         val catName = category.name.takeIf { it.isNotBlank() } ?: "Categoria senza nome"
                         DropdownMenuItem(
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (category.iconKey.isNotBlank()) {
-                                        CategoryIcon(
-                                            iconKey = category.iconKey,
-                                            tint = Color(category.colorArgb),
-                                            modifier = Modifier.size(16.dp),
-                                            emojiFontSize = 13.sp
-                                        )
+                                        CategoryIcon(category.iconKey, tint = Color(category.colorArgb), modifier = Modifier.size(16.dp), emojiFontSize = 13.sp)
                                         Spacer(Modifier.width(8.dp))
                                     }
                                     Text(catName)
@@ -412,20 +442,13 @@ private fun PlaceCard(
             }
             Spacer(Modifier.height(7.dp))
             if (category != null) {
-                // DIFENSIVO: mai più pill vuote. Nome vuoto -> "Categoria senza nome",
-                // iconKey vuoto -> nessuna icona ma testo sempre visibile.
                 val catName = category.name.takeIf { it.isNotBlank() } ?: "Categoria senza nome"
                 Row(
                     Modifier.clip(RoundedCornerShape(8.dp)).background(Color(category.colorArgb)).padding(horizontal = 10.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (category.iconKey.isNotBlank()) {
-                        CategoryIcon(
-                            iconKey = category.iconKey,
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp),
-                            emojiFontSize = 11.sp
-                        )
+                        CategoryIcon(category.iconKey, tint = Color.White, modifier = Modifier.size(14.dp), emojiFontSize = 11.sp)
                         Spacer(Modifier.width(6.dp))
                     }
                     Text(catName, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
