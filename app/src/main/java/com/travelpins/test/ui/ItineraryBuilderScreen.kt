@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +53,7 @@ import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.itinerary.ItineraryPlace
 import com.travelpins.test.itinerary.ItineraryState
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filter
 import kotlin.math.max
 
 private fun circledNumber(n: Int): String {
@@ -91,35 +93,55 @@ fun ItineraryBuilderScreen(
         position = CameraPosition.fromLatLngZoom(LatLng(41.9, 12.5), 5f)
     }
 
+    // FIX CRASH: aspettiamo che la mappa abbia una proiezione prima di muovere la camera.
+    // Inoltre gestiamo separatamente il caso "1 solo luogo" (bounds degenere).
     LaunchedEffect(listPlaces.size) {
-        if (listPlaces.isNotEmpty()) {
-            val bounds = LatLngBounds.Builder()
-            listPlaces.forEach { bounds.include(LatLng(it.latitude, it.longitude)) }
-            val b = bounds.build()
+        if (listPlaces.isEmpty()) return@LaunchedEffect
 
-            val center = LatLng(
-                (b.southwest.latitude + b.northeast.latitude) / 2,
-                (b.southwest.longitude + b.northeast.longitude) / 2
-            )
+        try {
+            // Aspetta che Google Maps sia pronto (proiezione != null)
+            snapshotFlow { cameraPositionState.projection }
+                .filter { it != null }
+                .first()
 
-            val latDelta = b.northeast.latitude - b.southwest.latitude
-            val lngDelta = b.northeast.longitude - b.southwest.longitude
-            val maxDelta = max(latDelta, lngDelta)
+            if (listPlaces.size == 1) {
+                val p = listPlaces.first()
+                cameraPositionState.animate(
+                    CameraUpdateFactory.newLatLngZoom(LatLng(p.latitude, p.longitude), 14f),
+                    durationMs = 600
+                )
+            } else {
+                val bounds = LatLngBounds.Builder()
+                listPlaces.forEach { bounds.include(LatLng(it.latitude, it.longitude)) }
+                val b = bounds.build()
 
-            val zoom = when {
-                maxDelta > 5.0 -> 5f
-                maxDelta > 2.0 -> 7f
-                maxDelta > 1.0 -> 9f
-                maxDelta > 0.5 -> 10f
-                maxDelta > 0.1 -> 12f
-                maxDelta > 0.05 -> 13f
-                maxDelta > 0.01 -> 14f
-                else -> 15f
+                val center = LatLng(
+                    (b.southwest.latitude + b.northeast.latitude) / 2,
+                    (b.southwest.longitude + b.northeast.longitude) / 2
+                )
+
+                val latDelta = b.northeast.latitude - b.southwest.latitude
+                val lngDelta = b.northeast.longitude - b.southwest.longitude
+                val maxDelta = max(latDelta, lngDelta)
+
+                val zoom = when {
+                    maxDelta > 5.0 -> 5f
+                    maxDelta > 2.0 -> 7f
+                    maxDelta > 1.0 -> 9f
+                    maxDelta > 0.5 -> 10f
+                    maxDelta > 0.1 -> 12f
+                    maxDelta > 0.05 -> 13f
+                    maxDelta > 0.01 -> 14f
+                    else -> 15f
+                }
+
+                cameraPositionState.animate(
+                    CameraUpdateFactory.newLatLngZoom(center, zoom),
+                    durationMs = 800
+                )
             }
-
-            // FIX: usa CameraUpdateFactory per creare il CameraUpdate
-            val cameraUpdate = CameraUpdateFactory.newLatLngZoom(center, zoom)
-            cameraPositionState.animate(cameraUpdate, durationMs = 800)
+        } catch (_: Exception) {
+            // Ignora errori di timing / race condition
         }
     }
 
