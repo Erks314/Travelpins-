@@ -22,13 +22,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,10 +41,12 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.travelpins.test.itinerary.ItineraryPlace
 import com.travelpins.test.itinerary.ItineraryState
 
 @Composable
@@ -57,7 +60,6 @@ fun ItineraryOrderScreen(
     Column(
         Modifier.fillMaxSize().background(TPColors.Bg).padding(16.dp)
     ) {
-        // Header
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -77,9 +79,9 @@ fun ItineraryOrderScreen(
                 Column {
                     Text("IL TUO ITINERARIO", color = TPColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "${itineraryPlaces.size} ${if (itineraryPlaces.size == 1) "luogo" else "luoghi"} · Ordina le tappe",
+                        "${itineraryPlaces.size} ${if (itineraryPlaces.size == 1) "luogo" else "luoghi"} · Trascina la maniglia ☰ per ordinare",
                         color = TPColors.TextSecondary,
-                        fontSize = 13.sp
+                        fontSize = 12.sp
                     )
                 }
             }
@@ -87,28 +89,29 @@ fun ItineraryOrderScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Lista drag & drop
         LazyColumn(
             Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            itemsIndexed(itineraryPlaces) { index, place ->
+            itemsIndexed(itineraryPlaces, key = { _, p -> p.placeId }) { index, place ->
                 ItineraryPlaceCard(
                     place = place,
                     position = index + 1,
                     onRemove = { ItineraryState.remove(place.placeId) },
-                    onDragStart = { /* drag start */ },
-                    onDragEnd = { fromIndex, toIndex ->
-                        ItineraryState.reorder(fromIndex, toIndex)
+                    onMoveUp = {
+                        val to = index - 1
+                        if (to >= 0) ItineraryState.reorder(index, to)
                     },
-                    currentIndex = index
+                    onMoveDown = {
+                        val to = index + 1
+                        if (to < itineraryPlaces.size) ItineraryState.reorder(index, to)
+                    }
                 )
             }
         }
 
         Spacer(Modifier.height(12.dp))
 
-        // Pulsante AGGIUNGI ALTRI LUOGHI
         Box(
             Modifier.fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
@@ -126,7 +129,6 @@ fun ItineraryOrderScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // Pulsante CALCOLA ITINERARIO
         Box(
             Modifier.fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
@@ -143,16 +145,19 @@ fun ItineraryOrderScreen(
 
 @Composable
 private fun ItineraryPlaceCard(
-    place: com.travelpins.test.itinerary.ItineraryPlace,
+    place: ItineraryPlace,
     position: Int,
     onRemove: () -> Unit,
-    onDragStart: () -> Unit,
-    onDragEnd: (fromIndex: Int, toIndex: Int) -> Unit,
-    currentIndex: Int
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit
 ) {
     var isDragging by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (isDragging) 1.05f else 1f)
-    val alpha by animateFloatAsState(if (isDragging) 0.7f else 1f)
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val threshold = with(density) { 40.dp.toPx() }
+
+    val scale by animateFloatAsState(if (isDragging) 1.04f else 1f)
+    val alpha by animateFloatAsState(if (isDragging) 0.85f else 1f)
 
     Row(
         Modifier.fillMaxWidth()
@@ -160,22 +165,51 @@ private fun ItineraryPlaceCard(
             .scale(scale)
             .alpha(alpha)
             .clip(RoundedCornerShape(16.dp))
-            .background(TPColors.Surface)
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { isDragging = true; onDragStart() },
-                    onDragEnd = { isDragging = false; onDragEnd(currentIndex, currentIndex) },
-                    onDragCancel = { isDragging = false }
-                ) { _, _ -> }
-            }
+            .background(if (isDragging) TPColors.SurfaceAlt else TPColors.Surface)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Maniglia drag
-        Icon(Icons.Filled.DragHandle, contentDescription = "Trascina", tint = TPColors.TextMuted, modifier = Modifier.size(24.dp))
-        Spacer(Modifier.width(12.dp))
+        // Maniglia drag: il drag parte SOLO da qui (non confligge con lo scroll lista)
+        Box(
+            Modifier.size(40.dp, 64.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Filled.DragHandle,
+                contentDescription = "Trascina per riordinare",
+                tint = if (isDragging) TPColors.Accent else TPColors.TextMuted,
+                modifier = Modifier
+                    .size(28.dp)
+                    .pointerInput(place.placeId) {
+                        detectDragGestures(
+                            onDragStart = {
+                                isDragging = true
+                                dragOffset = 0f
+                            },
+                            onDragEnd = {
+                                isDragging = false
+                                dragOffset = 0f
+                            },
+                            onDragCancel = {
+                                isDragging = false
+                                dragOffset = 0f
+                            }
+                        ) { change, dragAmount ->
+                            change.consume()
+                            dragOffset += dragAmount.y
+                            if (dragOffset > threshold) {
+                                onMoveDown()
+                                dragOffset = 0f
+                            } else if (dragOffset < -threshold) {
+                                onMoveUp()
+                                dragOffset = 0f
+                            }
+                        }
+                    }
+            )
+        }
+        Spacer(Modifier.width(4.dp))
 
-        // Numero
         Box(
             Modifier.size(32.dp)
                 .clip(CircleShape)
@@ -186,7 +220,6 @@ private fun ItineraryPlaceCard(
         }
         Spacer(Modifier.width(12.dp))
 
-        // Foto
         Box(
             Modifier.size(56.dp)
                 .clip(RoundedCornerShape(10.dp))
@@ -203,7 +236,6 @@ private fun ItineraryPlaceCard(
         }
         Spacer(Modifier.width(12.dp))
 
-        // Info
         Column(Modifier.weight(1f)) {
             Text(place.name, color = TPColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             if (!place.address.isNullOrBlank()) {
@@ -211,7 +243,6 @@ private fun ItineraryPlaceCard(
             }
         }
 
-        // Pulsante rimuovi
         Box(
             Modifier.size(32.dp)
                 .clip(CircleShape)
@@ -219,7 +250,7 @@ private fun ItineraryPlaceCard(
                 .clickable { onRemove() },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Remove, contentDescription = "Rimuovi", tint = TPColors.TextMuted, modifier = Modifier.size(18.dp))
+            Icon(Icons.Filled.Close, contentDescription = "Rimuovi", tint = TPColors.TextMuted, modifier = Modifier.size(16.dp))
         }
     }
 }
