@@ -2,6 +2,7 @@ package com.travelpins.test.ui
 
 import android.view.Window
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -60,6 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -67,17 +69,18 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -87,15 +90,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import coil.compose.AsyncImage
 import com.travelpins.test.R
-
-// =====================================================================
-// RESOLVER ICONE CATEGORIA
-// ---------------------------------------------------------------------
-// Il database salva Category.iconKey come STRINGA.
-// - Categorie VECCHIE: iconKey è un'emoji -> renderizzata come testo (compatibilità totale).
-// - Categorie NUOVE: iconKey è una chiave semantica ("cat_monumenti", ...) -> icona vettoriale Material.
-// Nessun migrate sul database, nessuna rottura delle categorie esistenti.
-// =====================================================================
 
 data class CategoryIconDef(
     val key: String,
@@ -125,14 +119,10 @@ object CategoryIcons {
     )
 
     fun defFor(key: String): CategoryIconDef? = ALL.firstOrNull { it.key == key }
-
     fun isVectorKey(key: String): Boolean = defFor(key) != null
-
-    /** Testo sicuro per i contesti solo-testo (snippet marker Google Maps, dialog Views). */
     fun textFor(key: String): String = defFor(key)?.emoji ?: key
 }
 
-/** Palette colori canonica (stessi 20 valori ARGB già usati/persistiti dall'app). */
 val CATEGORY_COLORS: List<Int> = listOf(
     0xFFEF4444, 0xFFF97316, 0xFFF59E0B, 0xFFEAB308, 0xFF84CC16,
     0xFF22C55E, 0xFF10B981, 0xFF14B8A6, 0xFF06B6D4, 0xFF0EA5E9,
@@ -140,7 +130,6 @@ val CATEGORY_COLORS: List<Int> = listOf(
     0xFFEC4899, 0xFFF43F5E, 0xFF64748B, 0xFF6B7280, 0xFF78716C
 ).map { it.toInt() }
 
-/** Renderizza un'icona categoria: vettoriale se la chiave è mappata, emoji/testo altrimenti. */
 @Composable
 fun CategoryIcon(
     iconKey: String,
@@ -172,6 +161,58 @@ private class CategoryHeroCurve : Shape {
     }
 }
 
+/**
+ * Sfondo hero IDENTICO a quello della home (stesso gradiente), ma SENZA il logo TravelPins.
+ * Se esiste un drawable "category_hero" (foto di paesaggio senza scritte) lo usa ritagliando
+ * una fascia priva di testo; altrimenti resta il gradiente puro, perfettamente coerente con la home.
+ * Per avere la foto: aggiungi res/drawable/category_hero.jpg (o .png/.webp) -> appare automaticamente.
+ */
+@Composable
+private fun CategoryHeroBackground(modifier: Modifier = Modifier) {
+    Box(modifier) {
+        // Gradiente base identico alla home
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color(0xFF1B2A33),
+                    0.5f to Color(0xFF16242B),
+                    1f to TPColors.Bg
+                )
+            )
+        )
+        // Foto di paesaggio senza branding (opzionale), ritagliata per escludere eventuali testi
+        val bmp = remember {
+            runCatching { androidx.compose.ui.graphics.ImageBitmap.imageResource(R.drawable.category_hero) }.getOrNull()
+        }
+        if (bmp != null) {
+            Canvas(Modifier.fillMaxSize()) {
+                // Prende la fascia centrale-inferiore dell'immagine (paesaggio), evitando bordi con testo
+                val srcW = bmp.width
+                val srcH = bmp.height
+                val cropTop = (srcH * 0.30f).toInt()
+                val cropH = (srcH * 0.55f).toInt().coerceAtLeast(1)
+                drawImage(
+                    image = bmp,
+                    srcOffset = IntOffset(0, cropTop),
+                    srcSize = IntSize(srcW, cropH),
+                    dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                    alpha = 0.55f
+                )
+            }
+        }
+        // Scrim per leggibilità + transizione morbida verso lo sfondo scuro
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.30f),
+                    0.6f to Color.Transparent,
+                    1f to TPColors.Bg
+                )
+            )
+        )
+    }
+}
+
 @Composable
 private fun SectionHeader(icon: ImageVector, title: String) {
     Row(
@@ -183,10 +224,6 @@ private fun SectionHeader(icon: ImageVector, title: String) {
         Text(title, color = TPColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
     }
 }
-
-// =====================================================================
-// SCHERMATA "CREA NUOVA CATEGORIA" (nuovo design)
-// =====================================================================
 
 @Composable
 fun CreateCategoryContent(
@@ -204,37 +241,12 @@ fun CreateCategoryContent(
             .verticalScroll(rememberScrollState())
             .navigationBarsPadding()
     ) {
-        // ---------------- HERO FOTOGRAFICO ----------------
-        // FIX: home_hero contiene il branding TravelPins stampato nell'immagine.
-        // Zoomiamo 2x ancorati in basso (TransformOrigin 0.5/0.95) per mostrare SOLO la
-        // fascia pulita (acqua/bosco) ed escludere logo, wordmark e tagline.
-        // Se vuoi ritoccare il ritaglio: modifica scaleX/scaleY e TransformOrigin.
+        // ---------------- HERO (stesso look della home, senza logo) ----------------
         Box(Modifier.fillMaxWidth().height(300.dp)) {
             Box(Modifier.fillMaxSize().clip(CategoryHeroCurve())) {
-                AsyncImage(
-                    model = R.drawable.home_hero,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = 2f
-                            scaleY = 2f
-                            transformOrigin = TransformOrigin(0.5f, 0.95f)
-                        }
-                )
-                Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = 0.35f),
-                            0.55f to Color.Transparent,
-                            1f to TPColors.Bg
-                        )
-                    )
-                )
+                CategoryHeroBackground(Modifier.fillMaxSize())
             }
 
-            // Pulsante BACK / ANNULLA
             Box(
                 Modifier.statusBarsPadding().padding(16.dp).size(40.dp)
                     .clip(CircleShape)
@@ -245,7 +257,6 @@ fun CreateCategoryContent(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Annulla", tint = Color.White, modifier = Modifier.size(20.dp))
             }
 
-            // Logo + titolo + sottotitolo
             Column(
                 Modifier.align(Alignment.Center).padding(top = 56.dp, start = 24.dp, end = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -323,7 +334,6 @@ fun CreateCategoryContent(
 
             Spacer(Modifier.height(12.dp))
 
-            // Preview dinamica [icona] nome
             Row(
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
@@ -425,7 +435,6 @@ fun CreateCategoryContent(
             }
         }
 
-        // ---------------- ANNULLA DISCRETO ----------------
         Box(
             Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 28.dp)
                 .clickable { onDismiss() }
@@ -437,7 +446,6 @@ fun CreateCategoryContent(
     }
 }
 
-/** Wrapper dialog full-screen (Opzione A approvata): resta un modal, nessuna nuova Activity. */
 @Composable
 fun CreateCategoryFullscreenDialog(
     onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit,
