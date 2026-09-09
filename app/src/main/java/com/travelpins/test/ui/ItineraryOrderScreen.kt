@@ -15,10 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -39,15 +39,22 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.travelpins.test.itinerary.ItineraryPlace
 import com.travelpins.test.itinerary.ItineraryState
+import kotlin.math.round
+
+// Altezza fissa di una card + spazio tra le card (serve per calcolare gli spostamenti)
+private val CARD_HEIGHT_DP = 88
+private val CARD_SPACING_DP = 10
 
 @Composable
 fun ItineraryOrderScreen(
@@ -55,7 +62,21 @@ fun ItineraryOrderScreen(
     onAddMore: () -> Unit,
     onCalculate: () -> Unit
 ) {
-    val itineraryPlaces by ItineraryState.places.collectAsState()
+    val order by ItineraryState.places.collectAsState()
+
+    var dragId by remember { mutableStateOf<Long?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+
+    val density = LocalDensity.current
+    val stepPx = with(density) { (CARD_HEIGHT_DP + CARD_SPACING_DP).dp.toPx() }
+
+    val size = order.size
+    val from = dragId?.let { id -> order.indexOfFirst { it.placeId == id } } ?: -1
+    val target = if (from >= 0 && size > 0) {
+        (from + round(dragOffset / stepPx).toInt()).coerceIn(0, size - 1)
+    } else {
+        -1
+    }
 
     Column(
         Modifier.fillMaxSize().background(TPColors.Bg).padding(16.dp)
@@ -79,7 +100,7 @@ fun ItineraryOrderScreen(
                 Column {
                     Text("IL TUO ITINERARIO", color = TPColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "${itineraryPlaces.size} ${if (itineraryPlaces.size == 1) "luogo" else "luoghi"} · Trascina la maniglia ☰ per ordinare",
+                        "${order.size} ${if (order.size == 1) "luogo" else "luoghi"} · Trascina la maniglia ☰",
                         color = TPColors.TextSecondary,
                         fontSize = 12.sp
                     )
@@ -89,24 +110,42 @@ fun ItineraryOrderScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        LazyColumn(
-            Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState())
         ) {
-            itemsIndexed(itineraryPlaces, key = { _, p -> p.placeId }) { index, place ->
+            order.forEachIndexed { i, place ->
+                val isDragging = place.placeId == dragId
+
+                // Di quanto deve spostarsi questa riga per fare spazio a quella trascinata
+                val staticOffset = when {
+                    from < 0 || i == from -> 0f
+                    from < target && i > from && i <= target -> -stepPx
+                    from > target && i >= target && i < from -> stepPx
+                    else -> 0f
+                }
+
                 ItineraryPlaceCard(
                     place = place,
-                    position = index + 1,
-                    onRemove = { ItineraryState.remove(place.placeId) },
-                    onMoveUp = {
-                        val to = index - 1
-                        if (to >= 0) ItineraryState.reorder(index, to)
+                    position = i + 1,
+                    isDragging = isDragging,
+                    dragOffset = dragOffset,
+                    staticOffset = staticOffset,
+                    onDragStart = {
+                        dragId = place.placeId
+                        dragOffset = 0f
                     },
-                    onMoveDown = {
-                        val to = index + 1
-                        if (to < itineraryPlaces.size) ItineraryState.reorder(index, to)
-                    }
+                    onDragMove = { delta -> dragOffset += delta },
+                    onDragEnd = {
+                        if (from in 0 until size && target in 0 until size && target != from) {
+                            ItineraryState.reorder(from, target)
+                        }
+                        dragId = null
+                        dragOffset = 0f
+                    },
+                    onRemove = { ItineraryState.remove(place.placeId) }
                 )
+
+                Spacer(Modifier.height(CARD_SPACING_DP.dp))
             }
         }
 
@@ -133,9 +172,9 @@ fun ItineraryOrderScreen(
             Modifier.fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(TPColors.Accent)
-                .clickable(enabled = itineraryPlaces.size >= 2) { onCalculate() }
+                .clickable(enabled = order.size >= 2) { onCalculate() }
                 .padding(vertical = 14.dp)
-                .alpha(if (itineraryPlaces.size >= 2) 1f else 0.5f),
+                .alpha(if (order.size >= 2) 1f else 0.5f),
             contentAlignment = Alignment.Center
         ) {
             Text("CALCOLA ITINERARIO", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -147,31 +186,38 @@ fun ItineraryOrderScreen(
 private fun ItineraryPlaceCard(
     place: ItineraryPlace,
     position: Int,
-    onRemove: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit
+    isDragging: Boolean,
+    dragOffset: Float,
+    staticOffset: Float,
+    onDragStart: () -> Unit,
+    onDragMove: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onRemove: () -> Unit
 ) {
-    var isDragging by remember { mutableStateOf(false) }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
-    val density = LocalDensity.current
-    val threshold = with(density) { 40.dp.toPx() }
+    // Le righe NON trascinate si spostano con animazione fluida
+    val animatedStatic by animateFloatAsState(staticOffset)
+    val translationY = if (isDragging) dragOffset else animatedStatic
 
-    val scale by animateFloatAsState(if (isDragging) 1.04f else 1f)
-    val alpha by animateFloatAsState(if (isDragging) 0.85f else 1f)
+    val scale by animateFloatAsState(if (isDragging) 1.03f else 1f)
+    val elevationAlpha by animateFloatAsState(if (isDragging) 1f else 0f)
 
     Row(
         Modifier.fillMaxWidth()
-            .height(80.dp)
-            .scale(scale)
-            .alpha(alpha)
+            .height(CARD_HEIGHT_DP.dp)
+            .zIndex(if (isDragging) 1f else 0f)
+            .graphicsLayer {
+                this.translationY = translationY
+                this.scaleX = scale
+                this.scaleY = scale
+            }
             .clip(RoundedCornerShape(16.dp))
             .background(if (isDragging) TPColors.SurfaceAlt else TPColors.Surface)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Maniglia drag: il drag parte SOLO da qui (non confligge con lo scroll lista)
+        // Maniglia: avvia il drag
         Box(
-            Modifier.size(40.dp, 64.dp),
+            Modifier.size(40.dp, 70.dp),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -182,28 +228,12 @@ private fun ItineraryPlaceCard(
                     .size(28.dp)
                     .pointerInput(place.placeId) {
                         detectDragGestures(
-                            onDragStart = {
-                                isDragging = true
-                                dragOffset = 0f
-                            },
-                            onDragEnd = {
-                                isDragging = false
-                                dragOffset = 0f
-                            },
-                            onDragCancel = {
-                                isDragging = false
-                                dragOffset = 0f
-                            }
+                            onDragStart = { onDragStart() },
+                            onDragEnd = { onDragEnd() },
+                            onDragCancel = { onDragEnd() }
                         ) { change, dragAmount ->
                             change.consume()
-                            dragOffset += dragAmount.y
-                            if (dragOffset > threshold) {
-                                onMoveDown()
-                                dragOffset = 0f
-                            } else if (dragOffset < -threshold) {
-                                onMoveUp()
-                                dragOffset = 0f
-                            }
+                            onDragMove(dragAmount.y)
                         }
                     }
             )
@@ -252,5 +282,12 @@ private fun ItineraryPlaceCard(
         ) {
             Icon(Icons.Filled.Close, contentDescription = "Rimuovi", tint = TPColors.TextMuted, modifier = Modifier.size(16.dp))
         }
+
+        // Ombra/evidenziazione quando trascinato
+        Box(
+            Modifier.matchParentSize()
+                .alpha(elevationAlpha * 0.15f)
+                .background(TPColors.Accent)
+        )
     }
 }
