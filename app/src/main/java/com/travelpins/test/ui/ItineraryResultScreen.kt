@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
@@ -51,6 +52,9 @@ import com.travelpins.test.itinerary.PolylineDecoder
 import com.travelpins.test.itinerary.RouteCalculator
 import java.text.DecimalFormat
 
+// Blu vivido e ben visibile sulla mappa
+private val ROUTE_BLUE = Color(0xFF1E88E5)
+
 @Composable
 fun ItineraryResultScreen(
     onBack: () -> Unit,
@@ -61,7 +65,6 @@ fun ItineraryResultScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Calcola il percorso all'apertura
     LaunchedEffect(Unit) {
         isLoading = true
         errorMessage = null
@@ -81,10 +84,35 @@ fun ItineraryResultScreen(
         route?.polylineEncoded?.let { PolylineDecoder.decode(it) } ?: emptyList()
     }
 
-    Column(
-        Modifier.fillMaxSize().background(TPColors.Bg)
-    ) {
-        // Header
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(LatLng(41.9, 12.5), 5f)
+    }
+
+    // Inquadra il percorso / le tappe appena pronti
+    LaunchedEffect(polylinePoints.size, itineraryPlaces.size) {
+        val points = if (polylinePoints.isNotEmpty()) polylinePoints
+        else itineraryPlaces.map { LatLng(it.latitude, it.longitude) }
+        if (points.isEmpty()) return@LaunchedEffect
+        try {
+            if (points.size == 1) {
+                cameraPositionState.animate(
+                    CameraUpdateFactory.newLatLngZoom(points.first(), 12f),
+                    durationMs = 600
+                )
+            } else {
+                val bounds = LatLngBounds.Builder()
+                points.forEach { bounds.include(it) }
+                cameraPositionState.animate(
+                    CameraUpdateFactory.newLatLngBounds(bounds.build(), 100),
+                    durationMs = 800
+                )
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    Column(Modifier.fillMaxSize().background(TPColors.Bg)) {
+        // Header fisso
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -131,40 +159,46 @@ fun ItineraryResultScreen(
                 }
             }
         } else if (route != null) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                // Mappa con polyline
-                Box(
-                    Modifier.fillMaxWidth().height(300.dp).padding(16.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(TPColors.SurfaceAlt)
+            // MAPPA FISSA (non dentro lo scroll): i gesti pan/zoom funzionano
+            Box(
+                Modifier.fillMaxWidth()
+                    .height(260.dp)
+                    .padding(horizontal = 16.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(TPColors.SurfaceAlt)
+            ) {
+                GoogleMap(
+                    modifier = Modifier.fillMaxSize(),
+                    cameraPositionState = cameraPositionState
                 ) {
-                    val cameraPositionState = rememberCameraPositionState {
-                        if (polylinePoints.isNotEmpty()) {
-                            val bounds = LatLngBounds.Builder()
-                            polylinePoints.forEach { bounds.include(it) }
-                            position = CameraPosition.fromLatLngZoom(bounds.build().center, 12f)
-                        }
+                    itineraryPlaces.forEachIndexed { index, place ->
+                        val markerState = rememberMarkerState(position = LatLng(place.latitude, place.longitude))
+                        Marker(
+                            state = markerState,
+                            title = "${index + 1}. ${place.name}",
+                            icon = numberedGreenIcon(index + 1)
+                        )
                     }
 
-                    GoogleMap(
-                        modifier = Modifier.fillMaxSize(),
-                        cameraPositionState = cameraPositionState
-                    ) {
-                        for (index in itineraryPlaces.indices) {
-                            val place = itineraryPlaces[index]
-                            val markerState = rememberMarkerState(position = LatLng(place.latitude, place.longitude))
-                            Marker(state = markerState, title = "${index + 1}. ${place.name}")
-                        }
-
-                        if (polylinePoints.isNotEmpty()) {
-                            Polyline(points = polylinePoints, color = TPColors.Accent, width = 5f)
-                        }
+                    if (polylinePoints.isNotEmpty()) {
+                        Polyline(
+                            points = polylinePoints,
+                            color = ROUTE_BLUE,
+                            width = 12f
+                        )
                     }
                 }
+            }
 
+            Spacer(Modifier.height(12.dp))
+
+            // Contenuto scrollabile sotto la mappa
+            Column(
+                Modifier.weight(1f).verticalScroll(rememberScrollState())
+            ) {
                 // Sintesi
                 Box(
-                    Modifier.fillMaxWidth().padding(16.dp)
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(TPColors.Surface)
                         .padding(16.dp)
@@ -207,7 +241,7 @@ fun ItineraryResultScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (index in itineraryPlaces.indices) {
                         val place = itineraryPlaces[index]
-                        
+
                         Row(
                             Modifier.fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
