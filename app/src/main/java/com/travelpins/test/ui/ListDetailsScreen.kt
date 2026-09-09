@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -64,6 +65,7 @@ import coil.compose.AsyncImage
 import com.travelpins.test.data.Category
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
+import com.travelpins.test.itinerary.ItineraryState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
@@ -114,7 +116,8 @@ fun TravelPinsListDetailScreen(
     onOpenPlace: (Long) -> Unit,
     onChangeCategory: (Place) -> Unit,
     onCreateCategory: () -> Unit,
-    onManageCategories: () -> Unit
+    onManageCategories: () -> Unit,
+    onCreateItinerary: () -> Unit
 ) {
     val allPlaces by repository.places.collectAsState(initial = emptyList())
     val categories by repository.categories.collectAsState(initial = emptyList())
@@ -168,6 +171,7 @@ fun TravelPinsListDetailScreen(
             Spacer(Modifier.height(90.dp))
         }
 
+        // FAB per creare categoria
         Box(
             Modifier.align(Alignment.BottomEnd).padding(20.dp).size(56.dp)
                 .clip(CircleShape).background(TPColors.Accent)
@@ -176,9 +180,21 @@ fun TravelPinsListDetailScreen(
         ) {
             Icon(Icons.Filled.Add, contentDescription = "Crea categoria", tint = Color.White, modifier = Modifier.size(28.dp))
         }
+
+        // FAB per creare itinerario (accanto al FAB categoria)
+        Box(
+            Modifier.align(Alignment.BottomEnd).padding(end = 88.dp, bottom = 20.dp).size(56.dp)
+                .clip(CircleShape).background(TPColors.Accent)
+                .clickable {
+                    ItineraryState.clear()
+                    onCreateItinerary()
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Route, contentDescription = "Crea itinerario", tint = Color.White, modifier = Modifier.size(28.dp))
+        }
     }
 
-    // POPUP LONG-PRESS UNIFICATO: nota + assegna categoria (tutte le categorie subito visibili)
     actionsPlace?.let { place ->
         AlertDialog(
             onDismissRequest = { actionsPlace = null },
