@@ -1,5 +1,6 @@
 package com.travelpins.test.ui
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -69,7 +71,6 @@ fun ItineraryOrderScreen(
 
     var dragId by remember { mutableStateOf<Long?>(null) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
-    // FIX: al rilascio "congela" le animazioni per un frame, così non si vede lo scatto
     var snapRelease by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -154,7 +155,6 @@ fun ItineraryOrderScreen(
                             ItineraryState.reorder(currentFrom, currentTarget)
                         }
 
-                        // Congela le animazioni, resetta, poi riattiva
                         snapRelease = true
                         dragId = null
                         dragOffset = 0f
@@ -216,14 +216,18 @@ private fun ItineraryPlaceCard(
     onDragEnd: (finalOffset: Float) -> Unit,
     onRemove: () -> Unit
 ) {
-    val animatedStatic by animateFloatAsState(staticOffset)
+    // Animatable permette snapTo() istantaneo al rilascio (animateFloatAsState no)
+    val animOffset = remember { Animatable(0f) }
 
-    // Durante il drag segue il dito; al rilascio (snap) va istantaneo a 0; altrimenti anima
-    val translationY = when {
-        isDragging -> dragOffset
-        snap -> staticOffset
-        else -> animatedStatic
+    LaunchedEffect(staticOffset, snap) {
+        if (snap) {
+            animOffset.snapTo(staticOffset)
+        } else {
+            animOffset.animateTo(staticOffset)
+        }
     }
+
+    val translationY = if (isDragging) dragOffset else animOffset.value
 
     val scale by animateFloatAsState(if (isDragging) 1.03f else 1f)
 
