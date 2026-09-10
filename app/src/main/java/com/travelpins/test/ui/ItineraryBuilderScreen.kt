@@ -40,7 +40,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
@@ -55,13 +54,6 @@ import com.travelpins.test.itinerary.ItineraryPlace
 import com.travelpins.test.itinerary.ItineraryState
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
-
-// Converte un colore ARGB in hue per i marker Google Maps
-private fun colorToMarkerHue(color: Int): Float {
-    val hsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(color, hsv)
-    return hsv[0]
-}
 
 @Composable
 fun ItineraryBuilderScreen(
@@ -145,11 +137,7 @@ fun ItineraryBuilderScreen(
                 val markerState = rememberMarkerState(position = LatLng(place.latitude, place.longitude))
                 val positionInItinerary = itineraryPlaces.indexOfFirst { it.placeId == place.id }
                 val isInItinerary = positionInItinerary >= 0
-
-                // Colore del pin = colore della categoria (o azzurro se senza categoria)
                 val category = categories.firstOrNull { it.id == place.categoryId }
-                val hue = category?.let { colorToMarkerHue(it.colorArgb) }
-                    ?: BitmapDescriptorFactory.HUE_AZURE
 
                 Marker(
                     state = markerState,
@@ -157,7 +145,7 @@ fun ItineraryBuilderScreen(
                     icon = if (isInItinerary) {
                         numberedGreenIcon(positionInItinerary + 1)
                     } else {
-                        BitmapDescriptorFactory.defaultMarker(hue)
+                        categoryPinIcon(category?.colorArgb ?: NO_CATEGORY_COLOR, category?.iconKey)
                     },
                     onClick = {
                         selectedPlace = place
