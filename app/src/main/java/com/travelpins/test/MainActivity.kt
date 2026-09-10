@@ -34,7 +34,6 @@ import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.MapView
 import com.google.android.gms.maps.MapsInitializer
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.Marker
@@ -52,9 +51,11 @@ import com.travelpins.test.ui.ImportUiState
 import com.travelpins.test.ui.ItineraryBuilderScreen
 import com.travelpins.test.ui.ItineraryOrderScreen
 import com.travelpins.test.ui.ItineraryResultScreen
+import com.travelpins.test.ui.NO_CATEGORY_COLOR
 import com.travelpins.test.ui.TravelPinsDarkTheme
 import com.travelpins.test.ui.TravelPinsHomeShell
 import com.travelpins.test.ui.TravelPinsListDetailScreen
+import com.travelpins.test.ui.categoryPinIcon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -690,8 +691,13 @@ class MainActivity : ComponentActivity() {
             placesToShow.forEach { place ->
                 val position = LatLng(place.latitude, place.longitude); boundsBuilder.include(position)
                 val category = currentCategories.firstOrNull { it.id == place.categoryId }
-                val hue = if (category != null) colorToMarkerHue(category.colorArgb) else BitmapDescriptorFactory.HUE_AZURE
-                map.addMarker(MarkerOptions().position(position).title(place.name).snippet(buildMarkerSnippet(place)).icon(BitmapDescriptorFactory.defaultMarker(hue)))
+                // PIN con colore categoria + icona categoria (o "?" se senza categoria)
+                val icon = if (category != null) {
+                    categoryPinIcon(category.colorArgb, category.iconKey)
+                } else {
+                    categoryPinIcon(NO_CATEGORY_COLOR, null)
+                }
+                map.addMarker(MarkerOptions().position(position).title(place.name).snippet(buildMarkerSnippet(place)).icon(icon))
             }
             map.setOnMarkerClickListener { false }
             map.setOnInfoWindowClickListener { marker -> findPlaceForMarker(marker)?.let { openInGoogleMaps(it) } }
@@ -715,8 +721,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun findPlaceForMarker(marker: Marker): Place? = currentPlaces.firstOrNull { kotlin.math.abs(it.latitude - marker.position.latitude) < 0.000001 && kotlin.math.abs(it.longitude - marker.position.longitude) < 0.000001 && it.name == marker.title }
-
-    private fun colorToMarkerHue(color: Int): Float { val hsv = FloatArray(3); Color.colorToHSV(color, hsv); return hsv[0] }
 
     private fun observeData() {
         lifecycleScope.launch { repository.places.collect { places -> currentPlaces = places; runOnUiThread { refreshContent() } } }
