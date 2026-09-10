@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,8 @@ import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.travelpins.test.itinerary.ItineraryPlace
 import com.travelpins.test.itinerary.ItineraryState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.round
 
 private val CARD_HEIGHT_DP = 88
@@ -66,6 +69,9 @@ fun ItineraryOrderScreen(
 
     var dragId by remember { mutableStateOf<Long?>(null) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
+    // FIX: al rilascio "congela" le animazioni per un frame, così non si vede lo scatto
+    var snapRelease by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val density = LocalDensity.current
     val stepPx = with(density) { (CARD_HEIGHT_DP + CARD_SPACING_DP).dp.toPx() }
@@ -129,13 +135,13 @@ fun ItineraryOrderScreen(
                     isDragging = isDragging,
                     dragOffset = dragOffset,
                     staticOffset = staticOffset,
+                    snap = snapRelease,
                     onDragStart = {
                         dragId = place.placeId
                         dragOffset = 0f
                     },
                     onDragMove = { delta -> dragOffset += delta },
                     onDragEnd = { finalOffset ->
-                        // Ricalcola from e target AL MOMENTO del rilascio usando l'offset finale
                         val currentSize = order.size
                         val currentFrom = dragId?.let { id -> order.indexOfFirst { it.placeId == id } } ?: -1
                         val currentTarget = if (currentFrom >= 0 && currentSize > 0) {
@@ -143,12 +149,19 @@ fun ItineraryOrderScreen(
                         } else {
                             -1
                         }
-                        
+
                         if (currentFrom in 0 until currentSize && currentTarget in 0 until currentSize && currentTarget != currentFrom) {
                             ItineraryState.reorder(currentFrom, currentTarget)
                         }
+
+                        // Congela le animazioni, resetta, poi riattiva
+                        snapRelease = true
                         dragId = null
                         dragOffset = 0f
+                        scope.launch {
+                            delay(32)
+                            snapRelease = false
+                        }
                     },
                     onRemove = { ItineraryState.remove(place.placeId) }
                 )
@@ -197,17 +210,23 @@ private fun ItineraryPlaceCard(
     isDragging: Boolean,
     dragOffset: Float,
     staticOffset: Float,
+    snap: Boolean,
     onDragStart: () -> Unit,
     onDragMove: (Float) -> Unit,
     onDragEnd: (finalOffset: Float) -> Unit,
     onRemove: () -> Unit
 ) {
     val animatedStatic by animateFloatAsState(staticOffset)
-    val translationY = if (isDragging) dragOffset else animatedStatic
+
+    // Durante il drag segue il dito; al rilascio (snap) va istantaneo a 0; altrimenti anima
+    val translationY = when {
+        isDragging -> dragOffset
+        snap -> staticOffset
+        else -> animatedStatic
+    }
 
     val scale by animateFloatAsState(if (isDragging) 1.03f else 1f)
 
-    // Variabile locale che tiene traccia dell'offset durante il drag
     var localDragOffset by remember { mutableFloatStateOf(0f) }
 
     Row(
@@ -244,13 +263,8 @@ private fun ItineraryPlaceCard(
                                 localDragOffset = 0f
                                 onDragStart()
                             },
-                            onDragEnd = {
-                                // Usa l'offset locale al momento del rilascio
-                                onDragEnd(localDragOffset)
-                            },
-                            onDragCancel = {
-                                onDragEnd(localDragOffset)
-                            }
+                            onDragEnd = { onDragEnd(localDragOffset) },
+                            onDragCancel = { onDragEnd(localDragOffset) }
                         ) { change, dragAmount ->
                             change.consume()
                             localDragOffset += dragAmount.y
