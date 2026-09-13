@@ -25,10 +25,34 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -45,6 +69,8 @@ import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.importer.EnrichmentManager
 import com.travelpins.test.importer.TravelPinsJsBridge
 import com.travelpins.test.scraper.GoogleMapsScraperScript
+import com.travelpins.test.sync.DriveSyncManager
+import com.travelpins.test.sync.SyncStatus
 import com.travelpins.test.ui.CategoryIcons
 import com.travelpins.test.ui.CreateCategoryFullscreenDialog
 import com.travelpins.test.ui.ImportUiState
@@ -80,6 +106,7 @@ class MainActivity : ComponentActivity() {
     private var webView: WebView? = null
     private lateinit var outputView: TextView
     private lateinit var repository: TravelPinsRepository
+    private lateinit var driveSyncManager: DriveSyncManager
     private var mapView: MapView? = null
     private var googleMap: GoogleMap? = null
     private var currentScreen: Screen = Screen.HOME
@@ -107,9 +134,26 @@ class MainActivity : ComponentActivity() {
     private var currentPlaces: List<Place> = emptyList()
     private var currentCategories: List<Category> = emptyList()
 
+    /**
+     * Launcher SAF per il collegamento/reconnect del file travelpins_sync.json.
+     * Registrato come property (prima di onCreate): il risultato viene smistato
+     * al DriveSyncManager, che valida il contenuto senza collegarlo né scriverlo.
+     */
+    private val syncFilePickerLauncher: ActivityResultLauncher<Intent> =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK) {
+                driveSyncManager.onPickerResult(result.data?.data)
+            } else {
+                driveSyncManager.onPickerResult(null)
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        repository = TravelPinsRepository(applicationContext)
+        // Un solo Repository e un solo DriveSyncManager nel processo:
+        // entrambi posseduti dalla Application.
+        repository = (application as TravelPinsApp).repository
+        driveSyncManager = (application as TravelPinsApp).driveSyncManager
         outputView = TextView(this).apply { text = "TRAVELPINS NETWORK MONITOR" }
         EnrichmentManager.attach(this)
         EnrichmentManager.start(applicationContext, repository)
@@ -164,6 +208,92 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Overlay sync minimo: banner di stato in basso + dialogo di conferma
+     * del candidato durante il reconnect guidato. Non modifica la UI esistente.
+     */
+    @Composable
+    private fun SyncOverlay() {
+        val status by driveSyncManager.status.collectAsState()
+        val candidate by driveSyncManager.candidate.collectAsState()
+
+        candidate?.let { cand ->
+            AlertDialog(
+                onDismissRequest = { driveSyncManager.dismissCandidate() },
+                title = { Text("File trovato") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(cand.fileName ?: "travelpins_sync.json", fontWeight = FontWeight.SemiBold)
+                        Text("Liste: ${cand.listCount} · Categorie: ${cand.categoryCount}")
+                        Text("Revisione: ${cand.revision}")
+                        if (cand.lastDeviceId.isNotBlank()) Text("Ultimo dispositivo: ${cand.lastDeviceId}")
+                        if (cand.syncFileId != null) Text("ID logico documento: ${cand.syncFileId}")
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { driveSyncManager.confirmCandidate() }) { Text("USA QUESTO FILE") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { driveSyncManager.dismissCandidate() }) { Text("ANNULLA") }
+                }
+            )
+        }
+
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            Row(
+                Modifier
+                    .padding(start = 16.dp, end = 16.dp, bottom = 84.dp)
+                    .background(ComposeColor.Black.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                when (status) {
+                    SyncStatus.DISCONNECTED -> {
+                        Text("Drive non collegato", color = ComposeColor.White, fontSize = 12.sp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "COLLEGA",
+                            color = ComposeColor(0xFF2EBD95),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { driveSyncManager.launchPicker(syncFilePickerLauncher) }
+                        )
+                    }
+                    SyncStatus.SYNCING -> {
+                        Text("Sincronizzazione…", color = ComposeColor.White, fontSize = 12.sp)
+                    }
+                    SyncStatus.CONNECTED -> {
+                        Text("Sync attivo", color = ComposeColor.White, fontSize = 12.sp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "AGGIORNA",
+                            color = ComposeColor(0xFF2EBD95),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { driveSyncManager.syncNow() }
+                        )
+                    }
+                    SyncStatus.ERROR -> {
+                        Text(
+                            driveSyncManager.lastError ?: "Errore sincronizzazione",
+                            color = ComposeColor(0xFFFF8A80),
+                            fontSize = 12.sp,
+                            maxLines = 1
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "RECONNECT",
+                            color = ComposeColor(0xFF2EBD95),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { driveSyncManager.launchPicker(syncFilePickerLauncher) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private fun showAppShell(tab: NavTab) {
         currentScreen = Screen.HOME; currentNavTab = tab
         viewingListId = null; viewingListName = null
@@ -171,16 +301,19 @@ class MainActivity : ComponentActivity() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 TravelPinsDarkTheme {
-                    TravelPinsHomeShell(
-                        repository = repository,
-                        importState = importState.value,
-                        onOpenList = { listId, listName -> showListDetail(listId, listName) },
-                        onImport = { openGoogleMapsLists() },
-                        onOpenGoogleLists = { openGoogleMapsLists() },
-                        onShowDebugLog = { showDebugLogDialog() },
-                        onRefreshList = { listId -> startRefresh(listId) }
-                    )
-                    CreateCategoryOverlay()
+                    Box(Modifier.fillMaxSize()) {
+                        TravelPinsHomeShell(
+                            repository = repository,
+                            importState = importState.value,
+                            onOpenList = { listId, listName -> showListDetail(listId, listName) },
+                            onImport = { openGoogleMapsLists() },
+                            onOpenGoogleLists = { openGoogleMapsLists() },
+                            onShowDebugLog = { showDebugLogDialog() },
+                            onRefreshList = { listId -> startRefresh(listId) }
+                        )
+                        CreateCategoryOverlay()
+                        SyncOverlay()
+                    }
                 }
             }
         }
