@@ -155,7 +155,7 @@ class DriveSyncManager(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
             } catch (_: Exception) {
-                state.setStatus(SyncStatus.ERROR, "Permesso non concessito sul file selezionato")
+                state.setStatus(SyncStatus.ERROR, "Permesso non concesso sul file selezionato")
                 return@launch
             }
             state.syncUri = cand.uri
@@ -166,6 +166,15 @@ class DriveSyncManager(
             state.setStatus(SyncStatus.CONNECTED)
             syncNow()
         }
+    }
+
+    /**
+     * Annulla il candidato senza collegarlo (chiusura dialogo di conferma).
+     * Non modifica il file Drive, non modifica Room, non tocca lo stato
+     * collaborativo: pulisce esclusivamente il candidato in attesa.
+     */
+    fun dismissCandidate() {
+        state.setCandidate(null)
     }
 
     fun disconnect() {
