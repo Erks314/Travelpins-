@@ -135,9 +135,8 @@ class MainActivity : ComponentActivity() {
     private var currentCategories: List<Category> = emptyList()
 
     /**
-     * Launcher SAF per il collegamento/reconnect del file travelpins_sync.json.
-     * Registrato come property (prima di onCreate): il risultato viene smistato
-     * al DriveSyncManager, che valida il contenuto senza collegarlo né scriverlo.
+     * Launcher SAF per SELEZIONARE un file travelpins_sync.json esistente
+     * (reconnect dopo reinstallazione o cambio file).
      */
     private val syncFilePickerLauncher: ActivityResultLauncher<Intent> =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -146,6 +145,16 @@ class MainActivity : ComponentActivity() {
             } else {
                 driveSyncManager.onPickerResult(null)
             }
+        }
+
+    /**
+     * Launcher SAF per CREARE un nuovo file travelpins_sync.json.
+     * Il contract CreateDocument riceve come input (String) il nome iniziale
+     * del file e ritorna l'Uri del file appena creato.
+     */
+    private val syncFileCreateLauncher: ActivityResultLauncher<String> =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            driveSyncManager.onPickerResult(uri)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -251,6 +260,14 @@ class MainActivity : ComponentActivity() {
                     SyncStatus.DISCONNECTED -> {
                         Text("Drive non collegato", color = ComposeColor.White, fontSize = 12.sp)
                         Spacer(Modifier.width(10.dp))
+                        Text(
+                            "CREA",
+                            color = ComposeColor(0xFF2EBD95),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { driveSyncManager.launchCreatePicker(syncFileCreateLauncher) }
+                        )
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             "COLLEGA",
                             color = ComposeColor(0xFF2EBD95),
@@ -824,7 +841,6 @@ class MainActivity : ComponentActivity() {
             placesToShow.forEach { place ->
                 val position = LatLng(place.latitude, place.longitude); boundsBuilder.include(position)
                 val category = currentCategories.firstOrNull { it.id == place.categoryId }
-                // PIN con colore categoria + icona categoria (o "?" se senza categoria)
                 val icon = if (category != null) {
                     categoryPinIcon(category.colorArgb, category.iconKey)
                 } else {
