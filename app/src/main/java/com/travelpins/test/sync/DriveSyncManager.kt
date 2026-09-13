@@ -129,7 +129,8 @@ class DriveSyncManager(
                 state.setStatus(SyncStatus.ERROR, "File non valido: seleziona travelpins_sync.json")
                 return@launch
             }
-            val documentId = try { DocumentsContract.getDocumentId(appContext, uri) } catch (_: Exception) { null }
+            // Firma reale: getDocumentId(Uri) — NESSUN parametro Context.
+            val documentId = try { DocumentsContract.getDocumentId(uri) } catch (_: Exception) { null }
             state.setCandidate(
                 SyncCandidate(
                     uri = uri,
