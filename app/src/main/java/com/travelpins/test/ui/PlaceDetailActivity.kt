@@ -133,7 +133,7 @@ class PlaceDetailActivity : ComponentActivity() {
         val wv = WebView(this)
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true
-        wv.userAgentString = USER_AGENT
+        wv.settings.userAgentString = USER_AGENT
         wv.alpha = 0f
 
         val bridge = TravelPinsJsBridge(
