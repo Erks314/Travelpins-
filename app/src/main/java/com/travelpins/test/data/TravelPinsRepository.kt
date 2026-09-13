@@ -25,7 +25,7 @@ interface DataLifecycleListener {
     /** Un luogo è stato inserito o aggiornato da Google Maps (syncListPlaces). */
     fun onPlaceUpserted(place: Place) {}
 
-    /** Un luogo è stato rimosso dal Room (deletePlaceCompletely). */
+    /** Un luogo è stato rimosso dal Room (deletePlaceCompletely o deletePlace). */
     fun onPlaceDeleted(place: Place) {}
 
     /** L'utente ha modificato i dati collaborativi di un luogo (nota o categoria). */
@@ -185,8 +185,6 @@ class TravelPinsRepository(context: Context) {
         val existing = placeDao.getPlacesByListId(listId)
 
         // 🛡️ PROTEZIONE: Non cancellare tutto se incoming è vuoto ma existing ha luoghi.
-        // Questo previene la cancellazione accidentale dell'elenco quando il parser JS fallisce
-        // o la pagina non si carica correttamente (restituendo una lista vuota).
         if (incoming.isEmpty() && existing.isNotEmpty()) {
             Log.w("TravelPins", "⚠️ syncListPlaces: incoming è vuoto ma existing ha ${existing.size} luoghi. Sync annullato per sicurezza.")
             return SyncResult(added = 0, removed = 0, updated = 0)
@@ -275,7 +273,10 @@ class TravelPinsRepository(context: Context) {
         placeDao.getPlaceById(placeId)?.let { emitPlaceCollabChanged(it) }
     }
 
-    suspend fun deletePlace(place: Place) = placeDao.delete(place)
+    suspend fun deletePlace(place: Place) {
+        placeDao.delete(place)
+        emitPlaceDeleted(place)
+    }
 
     suspend fun deleteCategory(category: Category) {
         // Cattura l'uuid PRIMA della cancellazione: dopo non sarebbe più recuperabile.
