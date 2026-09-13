@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.lifecycleScope
+import com.travelpins.test.TravelPinsApp
 import com.travelpins.test.data.Place
 import com.travelpins.test.data.TravelPinsRepository
 import com.travelpins.test.importer.TravelPinsJsBridge
@@ -52,7 +53,11 @@ class PlaceDetailActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        repository = TravelPinsRepository(applicationContext)
+        // Un solo Repository nel processo: uso quello della Application.
+        // Così il DataLifecycleListener installato dal DriveSyncManager
+        // riceve correttamente gli eventi di delete/assign/create anche
+        // da questa activity.
+        repository = (application as TravelPinsApp).repository
         
         val placeId = intent.getLongExtra(EXTRA_PLACE_ID, -1L)
         if (placeId == -1L) { 
@@ -128,7 +133,7 @@ class PlaceDetailActivity : ComponentActivity() {
         val wv = WebView(this)
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true
-        wv.settings.userAgentString = USER_AGENT
+        wv.userAgentString = USER_AGENT
         wv.alpha = 0f
 
         val bridge = TravelPinsJsBridge(
