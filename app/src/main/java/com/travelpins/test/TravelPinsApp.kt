@@ -2,7 +2,6 @@ package com.travelpins.test
 
 import android.app.Application
 import com.travelpins.test.data.TravelPinsRepository
-import com.travelpins.test.importer.EnrichmentManager
 import com.travelpins.test.sync.DriveSyncManager
 
 /**
@@ -18,6 +17,9 @@ import com.travelpins.test.sync.DriveSyncManager
  *  - esista una sola istanza nel processo;
  *  - il DataLifecycleListener installato dal DriveSyncManager riceva
  *    gli eventi da ogni activity (import, delete, modifica note/categoria).
+ *
+ * EnrichmentManager resta gestito da MainActivity (richiede un'Activity
+ * come context per attach()).
  */
 class TravelPinsApp : Application() {
 
@@ -32,11 +34,6 @@ class TravelPinsApp : Application() {
 
         // Repository locale.
         repository = TravelPinsRepository(this)
-
-        // Avvia la coda di prefetch in background all'avvio del processo,
-        // indipendentemente da quale schermata viene aperta.
-        EnrichmentManager.attach(this)
-        EnrichmentManager.start(this, repository)
 
         // DriveSyncManager: installa il lifecycle listener sul repository,
         // esegue il backfill degli uuid e avvia la prima sincronizzazione
