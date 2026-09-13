@@ -26,11 +26,19 @@ import kotlinx.coroutines.launch
  * - Un file remoto invalido/corrotto non viene MAI modificato e non tocca Room.
  * - Reconnect guidato (Opzione 4): dopo reinstallazione l'utente riseleziona il
  *   file col picker; il contenuto viene validato e mostrato per conferma.
+ * - Prima configurazione: l'utente può CREARE un nuovo file direttamente dal
+ *   picker (ACTION_CREATE_DOCUMENT); un file vuoto/appena creato è valido e
+ *   viene inizializzato al primo sync.
  */
 class DriveSyncManager(
     context: Context,
     private val repository: TravelPinsRepository
 ) : DataLifecycleListener {
+
+    companion object {
+        /** Nome proposto dal picker in creazione. */
+        const val DEFAULT_SYNC_FILE_NAME = "travelpins_sync.json"
+    }
 
     private val appContext = context.applicationContext
     private val state = SyncState(appContext)
@@ -66,9 +74,7 @@ class DriveSyncManager(
 
     override fun onPlaceUpserted(place: Place) {
         val key = canonicalPlaceKey(place) ?: return
-        // La ricomparsa/aggiornamento da Google annulla un tombstone pendente.
         state.removePendingPlaceTombstone(key)
-        // Nessun schedule: l'import Google non produce dati collaborativi nuovi.
     }
 
     override fun onPlaceDeleted(place: Place) {
@@ -98,7 +104,7 @@ class DriveSyncManager(
         scheduleSync()
     }
 
-    // ===== SAF: picker e reconnect guidato =====
+    // ===== SAF: picker (apri esistente / crea nuovo) =====
 
     fun pickerIntent(): Intent {
         return Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -107,14 +113,31 @@ class DriveSyncManager(
         }
     }
 
+    /** Apre il picker per SELEZIONARE un file esistente (reconnect). */
     fun launchPicker(launcher: ActivityResultLauncher<Intent>) {
         launcher.launch(pickerIntent())
     }
 
     /**
-     * Gestisce il risultato del picker: legge e VALIDA il candidato senza
-     * collegarlo né modificarlo. Se valido, lo espone come candidato per la
-     * conferma UI; se invalido, errore e nessun collegamento.
+     * Apre il picker in modalità CREAZIONE: il sistema crea un nuovo file
+     * vuoto nella cartella scelta dall'utente, col nome proposto.
+     * Il launcher è di tipo String perché il contract CreateDocument riceve
+     * il nome iniziale del file come input.
+     */
+    fun launchCreatePicker(launcher: ActivityResultLauncher<String>) {
+        launcher.launch(DEFAULT_SYNC_FILE_NAME)
+    }
+
+    /**
+     * Gestisce il risultato del picker (sia apri che crea): legge e VALIDA il
+     * candidato senza collegarlo né modificarlo.
+     *
+     * - raw == null            -> errore di lettura, nessun collegamento.
+     * - raw vuoto/blank        -> file nuovo appena creato: VALIDO, trattato
+     *                             come documento da inizializzare al primo sync.
+     * - raw non vuoto e parse KO -> JSON corrotto: NESSUN collegamento, NESSUNA
+     *                             modifica al file.
+     * - raw non vuoto e parse OK -> candidato normale con metadati.
      */
     fun onPickerResult(uri: Uri?) {
         if (uri == null) {
@@ -123,9 +146,26 @@ class DriveSyncManager(
         }
         scope.launch {
             val raw = readRaw(uri)
-            val parsed = raw?.let { SyncJson.parse(it) }
+            if (raw == null) {
+                state.setStatus(SyncStatus.ERROR, "Impossibile leggere il file selezionato")
+                return@launch
+            }
+            val trimmed = raw.trim()
+            val parsed = if (trimmed.isEmpty()) {
+                // File nuovo/vuoto: documento valido da inizializzare.
+                SyncRoot(
+                    schemaVersion = SUPPORTED_SCHEMA_VERSION,
+                    revision = 0L,
+                    deviceId = "",
+                    syncFileId = null,
+                    categories = emptyMap(),
+                    lists = emptyMap()
+                )
+            } else {
+                SyncJson.parse(trimmed)
+            }
             if (parsed == null) {
-                // File non valido: NON collegato, NON modificato.
+                // JSON corrotto o schema non supportato: NON collegato, NON modificato.
                 state.setStatus(SyncStatus.ERROR, "File non valido: seleziona travelpins_sync.json")
                 return@launch
             }
@@ -213,9 +253,21 @@ class DriveSyncManager(
         while (attempts < 3) {
             attempts++
 
-            // 1. Leggi remoto e valida. Se invalido: abort senza scrivere.
+            // 1. Leggi remoto e valida. File vuoto = documento nuovo da inizializzare.
             val raw = readRaw(uri)
-            val remote = raw?.let { SyncJson.parse(it) }
+            val trimmed = raw?.trim()
+            val remote = if (trimmed.isNullOrEmpty()) {
+                SyncRoot(
+                    schemaVersion = SUPPORTED_SCHEMA_VERSION,
+                    revision = 0L,
+                    deviceId = "",
+                    syncFileId = null,
+                    categories = emptyMap(),
+                    lists = emptyMap()
+                )
+            } else {
+                raw?.let { SyncJson.parse(it) }
+            }
             if (raw != null && remote == null) {
                 state.setStatus(SyncStatus.ERROR, "File Drive non valido o schema non supportato")
                 return
@@ -229,8 +281,8 @@ class DriveSyncManager(
                 lists = emptyMap()
             )
 
-            // 2. Backup locale dell'ultima versione remota VALIDA (prima del merge).
-            if (raw != null) state.lastValidRemoteJson = raw
+            // 2. Backup locale dell'ultima versione remota VALIDA e NON VUOTA (prima del merge).
+            if (!trimmed.isNullOrEmpty()) state.lastValidRemoteJson = raw
 
             // 3. Snapshot locale.
             val local = buildLocalSnapshot()
@@ -250,9 +302,13 @@ class DriveSyncManager(
 
             // 5. Re-read per rilevare scritture concorrenti (mitigazione, non CAS).
             val raw2 = readRaw(uri)
-            val remote2 = raw2?.let { SyncJson.parse(it) }
+            val trimmed2 = raw2?.trim()
+            val remote2 = if (trimmed2.isNullOrEmpty()) {
+                effectiveRemote
+            } else {
+                raw2?.let { SyncJson.parse(it) }
+            }
             if (remote2 != null && remote2.revision != effectiveRemote.revision) {
-                // Qualcuno ha scritto nel frattempo: retry con il nuovo stato.
                 continue
             }
 
