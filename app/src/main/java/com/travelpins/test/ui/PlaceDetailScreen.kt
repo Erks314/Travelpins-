@@ -556,7 +556,6 @@ fun PlaceDetailScreen(
         )
     }
 
-    // NUOVO: dialog full-screen condiviso (stessa UI di MainActivity)
     if (showCreateCategory) {
         CreateCategoryFullscreenDialog(
             onCreate = { name, color, icon ->
@@ -688,6 +687,7 @@ fun ReviewCard(review: PlaceReview) {
             }
         }
         Text(review.reviewText ?: "", color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+    }
 }
 
 @Composable
@@ -716,7 +716,8 @@ fun PlaceDetailCategoryPickerDialog(categories: List<Category>, onPick: (Long?) 
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } } )
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
+    )
 }
 
 @Composable
@@ -729,6 +730,80 @@ fun ReviewsScreen(reviews: List<PlaceReview>, title: String, onBack: () -> Unit)
         }
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(reviews, key = { it.id }) { review -> ReviewCard(review) }
+        }
+    }
+}
+
+@Composable
+fun GalleryScreen(
+    photos: List<PlacePhoto>,
+    startIndex: Int,
+    title: String,
+    onBack: () -> Unit
+) {
+    var currentIndex by remember { mutableIntStateOf(startIndex) }
+    
+    Column(Modifier.fillMaxSize().background(TPColors.Bg)) {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircleIconButton(
+                icon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro", tint = Color.White) },
+                onClick = onBack
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Foto ${currentIndex + 1} di ${photos.size} • $title",
+                color = TPColors.TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        
+        Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (photos.isNotEmpty() && currentIndex in photos.indices) {
+                AsyncImage(
+                    model = photos[currentIndex].sizedUrl(1200, 1200),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+                
+                Row(
+                    Modifier.fillMaxWidth().padding(20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (currentIndex > 0) {
+                        CircleIconButton(
+                            icon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Precedente", tint = Color.White) },
+                            onClick = { currentIndex-- }
+                        )
+                    } else {
+                        Spacer(Modifier.size(40.dp))
+                    }
+                    
+                    if (currentIndex < photos.size - 1) {
+                        CircleIconButton(
+                            icon = {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Successiva",
+                                    tint = Color.White,
+                                    modifier = Modifier.graphicsLayer { rotationY = 180f }
+                                )
+                            },
+                            onClick = { currentIndex++ }
+                        )
+                    } else {
+                        Spacer(Modifier.size(40.dp))
+                    }
+                }
+            }
         }
     }
 }
