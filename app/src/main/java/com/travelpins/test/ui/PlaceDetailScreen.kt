@@ -687,8 +687,7 @@ fun ReviewCard(review: PlaceReview) {
                 Text(review.timeText!!, color = TPColors.TextMuted, fontSize = 12.sp)
             }
         }
-        Text(reviewText ?: "", color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
-    }
+        Text(review.reviewText ?: "", color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
 }
 
 @Composable
@@ -717,8 +716,7 @@ fun PlaceDetailCategoryPickerDialog(categories: List<Category>, onPick: (Long?) 
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onDismiss = onDismiss) { Text("Annulla") } }
-    )
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } } )
 }
 
 @Composable
