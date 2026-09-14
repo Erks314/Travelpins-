@@ -399,11 +399,13 @@ fun PlaceDetailScreen(
                 Text(place.description!!, color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
             }
 
+            // BOX NOTA: cliccabile -> apre direttamente l'editor nota esistente
             if (!place.note.isNullOrBlank()) {
                 Row(
                     Modifier.fillMaxWidth().padding(top = 12.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(TPColors.SurfaceAlt)
+                        .clickable { showNoteDialog = true }
                         .padding(12.dp),
                     verticalAlignment = Alignment.Top
                 ) {
@@ -685,7 +687,7 @@ fun ReviewCard(review: PlaceReview) {
                 Text(review.timeText!!, color = TPColors.TextMuted, fontSize = 12.sp)
             }
         }
-        Text(review.reviewText ?: "", color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+        Text(reviewText ?: "", color = TPColors.TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
     }
 }
 
@@ -704,7 +706,7 @@ fun PlaceDetailCategoryPickerDialog(categories: List<Category>, onPick: (Long?) 
                                 iconKey = category.iconKey,
                                 tint = Color(category.colorArgb),
                                 modifier = Modifier.size(16.dp),
-                                emojiFontSize = 14.sp
+                                emojiFontSize = 13.sp
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(category.name)
@@ -715,7 +717,7 @@ fun PlaceDetailCategoryPickerDialog(categories: List<Category>, onPick: (Long?) 
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
+        dismissButton = { TextButton(onDismiss = onDismiss) { Text("Annulla") } }
     )
 }
 
