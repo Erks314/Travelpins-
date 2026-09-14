@@ -117,10 +117,14 @@ fun TravelPinsListDetailScreen(
     onChangeCategory: (Place) -> Unit,
     onCreateCategory: () -> Unit,
     onManageCategories: () -> Unit,
-    onCreateItinerary: () -> Unit
+    onCreateItinerary: () -> Unit,
+    // Seed iniziale: lista già calda passata da MainActivity per evitare
+    // il primo frame vuoto in attesa della prima emissione del Flow Room.
+    initialPlaces: List<Place> = emptyList(),
+    initialCategories: List<Category> = emptyList()
 ) {
-    val allPlaces by repository.places.collectAsState(initial = emptyList())
-    val categories by repository.categories.collectAsState(initial = emptyList())
+    val allPlaces by repository.places.collectAsState(initial = initialPlaces)
+    val categories by repository.categories.collectAsState(initial = initialCategories)
     var query by remember { mutableStateOf("") }
     var filterId by remember { mutableStateOf<Long?>(null) }
     var actionsPlace by remember { mutableStateOf<Place?>(null) }
