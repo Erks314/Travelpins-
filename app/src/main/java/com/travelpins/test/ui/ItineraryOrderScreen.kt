@@ -1,7 +1,6 @@
 package com.travelpins.test.ui
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -40,7 +39,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -216,7 +214,6 @@ private fun ItineraryPlaceCard(
     onDragEnd: (finalOffset: Float) -> Unit,
     onRemove: () -> Unit
 ) {
-    // Animatable permette snapTo() istantaneo al rilascio (animateFloatAsState no)
     val animOffset = remember { Animatable(0f) }
 
     LaunchedEffect(staticOffset, snap) {
@@ -229,7 +226,20 @@ private fun ItineraryPlaceCard(
 
     val translationY = if (isDragging) dragOffset else animOffset.value
 
-    val scale by animateFloatAsState(if (isDragging) 1.03f else 1f)
+    // Scale con Animatable: al rilascio (snap) passa a 1f ISTANTANEAMENTE,
+    // eliminando l'ultima micro-animazione visibile sul release.
+    val animScale = remember { Animatable(1f) }
+
+    LaunchedEffect(isDragging, snap) {
+        val targetScale = if (isDragging) 1.03f else 1f
+        if (snap) {
+            animScale.snapTo(targetScale)
+        } else {
+            animScale.animateTo(targetScale)
+        }
+    }
+
+    val scale = animScale.value
 
     var localDragOffset by remember { mutableFloatStateOf(0f) }
 
