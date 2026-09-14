@@ -382,6 +382,7 @@ class MainActivity : ComponentActivity() {
                 TravelPinsDarkTheme {
                     TravelPinsListDetailScreen(
                         repository = repository, listId = listId, listName = listName,
+                        initialPlaces = currentPlaces, initialCategories = currentCategories,
                         onBack = { showAppShell(NavTab.HOME) },
                         onOpenMap = { filter -> showListMap(viewingListId, viewingListName, filter) },
                         onOpenPlace = { placeId -> startActivity(com.travelpins.test.ui.PlaceDetailActivity.newIntent(this@MainActivity, placeId)) },
@@ -423,8 +424,8 @@ class MainActivity : ComponentActivity() {
             setContent {
                 TravelPinsDarkTheme {
                     ItineraryOrderScreen(
-                        onBack = { showItineraryBuilder() },
-                        onAddMore = { showItineraryBuilder() },
+                        onBack = { showListDetail(viewingListId, viewingListName) },
+                        onAddMore = { showListDetail(viewingListId, viewingListName) },
                         onCalculate = { showItineraryResult() }
                     )
                 }
