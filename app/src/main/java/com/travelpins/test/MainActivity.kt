@@ -73,6 +73,7 @@ import com.travelpins.test.sync.DriveSyncManager
 import com.travelpins.test.sync.SyncStatus
 import com.travelpins.test.ui.CategoryIcons
 import com.travelpins.test.ui.CreateCategoryFullscreenDialog
+import com.travelpins.test.ui.EditCategoryFullscreenDialog
 import com.travelpins.test.ui.ImportUiState
 import com.travelpins.test.ui.ItineraryBuilderScreen
 import com.travelpins.test.ui.ItineraryOrderScreen
@@ -127,6 +128,7 @@ class MainActivity : ComponentActivity() {
     private var importTimeoutJob: Job? = null
 
     private val showCreateCategoryUi = mutableStateOf(false)
+    private val editCategoryUi = mutableStateOf<Category?>(null)
 
     private var mapSelectedCategories: MutableSet<Long> = mutableSetOf()
     private var mapIncludeUncategorized: Boolean = true
@@ -134,10 +136,6 @@ class MainActivity : ComponentActivity() {
     private var currentPlaces: List<Place> = emptyList()
     private var currentCategories: List<Category> = emptyList()
 
-    /**
-     * Launcher SAF per SELEZIONARE un file travelpins_sync.json esistente
-     * (reconnect dopo reinstallazione o cambio file).
-     */
     private val syncFilePickerLauncher: ActivityResultLauncher<Intent> =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == RESULT_OK) {
@@ -147,11 +145,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-    /**
-     * Launcher SAF per CREARE un nuovo file travelpins_sync.json.
-     * Il contract CreateDocument riceve come input (String) il nome iniziale
-     * del file e ritorna l'Uri del file appena creato.
-     */
     private val syncFileCreateLauncher: ActivityResultLauncher<String> =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
             driveSyncManager.onPickerResult(uri)
@@ -159,8 +152,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Un solo Repository e un solo DriveSyncManager nel processo:
-        // entrambi posseduti dalla Application.
         repository = (application as TravelPinsApp).repository
         driveSyncManager = (application as TravelPinsApp).driveSyncManager
         outputView = TextView(this).apply { text = "TRAVELPINS NETWORK MONITOR" }
@@ -217,10 +208,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Overlay sync minimo: banner di stato in basso + dialogo di conferma
-     * del candidato durante il reconnect guidato. Non modifica la UI esistente.
-     */
+    @Composable
+    private fun EditCategoryOverlay() {
+        editCategoryUi.value?.let { category ->
+            EditCategoryFullscreenDialog(
+                initialName = category.name,
+                initialColorArgb = category.colorArgb,
+                initialIconKey = category.iconKey,
+                onSave = { name, color, icon ->
+                    lifecycleScope.launch {
+                        repository.updateCategory(category.copy(name = name, colorArgb = color, iconKey = icon))
+                    }
+                    editCategoryUi.value = null
+                },
+                onDismiss = { editCategoryUi.value = null }
+            )
+        }
+    }
+
     @Composable
     private fun SyncOverlay() {
         val status by driveSyncManager.status.collectAsState()
@@ -329,6 +334,7 @@ class MainActivity : ComponentActivity() {
                             onRefreshList = { listId -> startRefresh(listId) }
                         )
                         CreateCategoryOverlay()
+                        EditCategoryOverlay()
                         SyncOverlay()
                     }
                 }
@@ -392,6 +398,7 @@ class MainActivity : ComponentActivity() {
                         onCreateItinerary = { showItineraryBuilder() }
                     )
                     CreateCategoryOverlay()
+                    EditCategoryOverlay()
                 }
             }
         }
@@ -921,8 +928,11 @@ class MainActivity : ComponentActivity() {
     private fun showCategoryOptions(category: Category) {
         androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_TravelPinsTest_DarkDialog)
             .setTitle("${CategoryIcons.textFor(category.iconKey)}  ${category.name}")
-            .setItems(arrayOf("Elimina categoria")) { _, which ->
-                when (which) { 0 -> confirmDeleteCategory(category) }
+            .setItems(arrayOf("Modifica categoria", "Elimina categoria")) { _, which ->
+                when (which) {
+                    0 -> editCategoryUi.value = category
+                    1 -> confirmDeleteCategory(category)
+                }
             }
             .setNegativeButton("Annulla", null)
             .show()
