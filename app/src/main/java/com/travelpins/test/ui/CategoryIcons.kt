@@ -84,7 +84,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
-import coil.compose.AsyncImage
 import com.travelpins.test.R
 
 data class CategoryIconDef(
@@ -157,14 +156,9 @@ private class CategoryHeroCurve : Shape {
     }
 }
 
-/**
- * Sfondo hero IDENTICO a quello della home (stesso gradiente), ma SENZA il logo TravelPins.
- * Mostra solo il gradiente puro + scrim per leggibilità, perfettamente coerente con la home.
- */
 @Composable
 private fun CategoryHeroBackground(modifier: Modifier = Modifier) {
     Box(modifier) {
-        // Gradiente base identico alla home
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
@@ -174,8 +168,6 @@ private fun CategoryHeroBackground(modifier: Modifier = Modifier) {
                 )
             )
         )
-        
-        // Scrim per leggibilità + transizione morbida verso lo sfondo scuro
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
@@ -200,14 +192,27 @@ private fun SectionHeader(icon: ImageVector, title: String) {
     }
 }
 
+/**
+ * Contenuto dell'editor categoria. Condiviso tra creazione (tutti i parametri
+ * iniziali null) e modifica (precompilati con nome/colore/icona attuali).
+ */
 @Composable
-fun CreateCategoryContent(
-    onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit,
+private fun CategoryEditorContent(
+    initialName: String?,
+    initialColor: Int?,
+    initialIcon: String?,
+    heroTitle: String,
+    heroAccentWord: String,
+    heroSubtitle: String,
+    ctaText: String,
+    onSave: (name: String, colorArgb: Int, iconKey: String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var selectedIcon by remember { mutableStateOf(CategoryIcons.ALL.first().key) }
-    var selectedColor by remember { mutableStateOf(CATEGORY_COLORS.first()) }
+    var name by remember { mutableStateOf(initialName ?: "") }
+    val defaultIcon = initialIcon?.takeIf { CategoryIcons.isVectorKey(it) } ?: CategoryIcons.ALL.first().key
+    val defaultColor = initialColor ?: CATEGORY_COLORS.first()
+    var selectedIcon by remember { mutableStateOf(defaultIcon) }
+    var selectedColor by remember { mutableStateOf(defaultColor) }
 
     Column(
         Modifier
@@ -216,7 +221,6 @@ fun CreateCategoryContent(
             .verticalScroll(rememberScrollState())
             .navigationBarsPadding()
     ) {
-        // ---------------- HERO (stesso look della home, senza logo) ----------------
         Box(Modifier.fillMaxWidth().height(300.dp)) {
             Box(Modifier.fillMaxSize().clip(CategoryHeroCurve())) {
                 CategoryHeroBackground(Modifier.fillMaxSize())
@@ -238,40 +242,52 @@ fun CreateCategoryContent(
             ) {
                 Box {
                     Box(
-                        Modifier.size(88.dp).clip(CircleShape).background(TPColors.Accent),
+                        Modifier.size(88.dp).clip(CircleShape).background(Color(selectedColor)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.Place, contentDescription = null, tint = Color.White, modifier = Modifier.size(44.dp))
+                        CategoryIcon(selectedIcon, tint = Color.White, modifier = Modifier.size(44.dp), emojiFontSize = 28.sp)
                     }
-                    Box(
-                        Modifier.size(30.dp).clip(CircleShape)
-                            .background(TPColors.Accent)
-                            .border(2.dp, TPColors.Bg, CircleShape)
-                            .align(Alignment.BottomEnd),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null, tint = TPColors.Bg, modifier = Modifier.size(16.dp))
+                    if (initialName == null) {
+                        // Solo in modalità CREAZIONE mostra il + sull'icona
+                        Box(
+                            Modifier.size(30.dp).clip(CircleShape)
+                                .background(TPColors.Accent)
+                                .border(2.dp, TPColors.Bg, CircleShape)
+                                .align(Alignment.BottomEnd),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null, tint = TPColors.Bg, modifier = Modifier.size(16.dp))
+                        }
+                    } else {
+                        Box(
+                            Modifier.size(30.dp).clip(CircleShape)
+                                .background(TPColors.Accent)
+                                .border(2.dp, TPColors.Bg, CircleShape)
+                                .align(Alignment.BottomEnd),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Edit, contentDescription = null, tint = TPColors.Bg, modifier = Modifier.size(14.dp))
+                        }
                     }
                 }
                 Spacer(Modifier.height(14.dp))
                 Text(
                     buildAnnotatedString {
-                        withStyle(SpanStyle(color = Color.White)) { append("Crea nuova ") }
-                        withStyle(SpanStyle(color = TPColors.Accent)) { append("categoria") }
+                        withStyle(SpanStyle(color = Color.White)) { append(heroTitle) }
+                        withStyle(SpanStyle(color = TPColors.Accent)) { append(heroAccentWord) }
                     },
                     fontSize = 30.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Organizza i tuoi luoghi, rendi unico il tuo viaggio.",
+                    heroSubtitle,
                     color = TPColors.TextSecondary,
                     fontSize = 14.sp
                 )
             }
         }
 
-        // ---------------- NOME CATEGORIA + PREVIEW ----------------
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp)
                 .clip(RoundedCornerShape(20.dp))
@@ -333,7 +349,6 @@ fun CreateCategoryContent(
             }
         }
 
-        // ---------------- SCEGLI UN'ICONA ----------------
         SectionHeader(icon = Icons.Filled.Layers, title = "SCEGLI UN'ICONA")
         Column(Modifier.padding(horizontal = 20.dp)) {
             CategoryIcons.ALL.chunked(5).forEach { rowDefs ->
@@ -366,7 +381,6 @@ fun CreateCategoryContent(
             }
         }
 
-        // ---------------- SCEGLI UN COLORE ----------------
         SectionHeader(icon = Icons.Filled.Palette, title = "SCEGLI UN COLORE")
         Column(Modifier.padding(horizontal = 20.dp)) {
             CATEGORY_COLORS.chunked(5).forEach { rowColors ->
@@ -391,7 +405,6 @@ fun CreateCategoryContent(
             }
         }
 
-        // ---------------- CTA CREA ----------------
         Spacer(Modifier.height(26.dp))
         val enabled = name.isNotBlank()
         Box(
@@ -399,12 +412,12 @@ fun CreateCategoryContent(
                 .alpha(if (enabled) 1f else 0.4f)
                 .clip(RoundedCornerShape(28.dp))
                 .background(Brush.horizontalGradient(listOf(TPColors.Accent, Color(0xFF3AD6AE))))
-                .clickable(enabled = enabled) { onCreate(name.trim(), selectedColor, selectedIcon) }
+                .clickable(enabled = enabled) { onSave(name.trim(), selectedColor, selectedIcon) }
                 .padding(vertical = 18.dp),
             contentAlignment = Alignment.Center
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("CREA CATEGORIA", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text(ctaText, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Spacer(Modifier.width(10.dp))
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
             }
@@ -422,6 +435,24 @@ fun CreateCategoryContent(
 }
 
 @Composable
+private fun CreateCategoryContent(
+    onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    CategoryEditorContent(
+        initialName = null,
+        initialColor = null,
+        initialIcon = null,
+        heroTitle = "Crea nuova ",
+        heroAccentWord = "categoria",
+        heroSubtitle = "Organizza i tuoi luoghi, rendi unico il tuo viaggio.",
+        ctaText = "CREA CATEGORIA",
+        onSave = onCreate,
+        onDismiss = onDismiss
+    )
+}
+
+@Composable
 fun CreateCategoryFullscreenDialog(
     onCreate: (name: String, colorArgb: Int, iconKey: String) -> Unit,
     onDismiss: () -> Unit
@@ -436,5 +467,40 @@ fun CreateCategoryFullscreenDialog(
             }
         }
         CreateCategoryContent(onCreate = onCreate, onDismiss = onDismiss)
+    }
+}
+
+/**
+ * Dialog fullscreen per MODIFICARE una categoria esistente (nome, icona, colore).
+ * Precompila tutti i campi con i valori attuali della categoria.
+ */
+@Composable
+fun EditCategoryFullscreenDialog(
+    initialName: String,
+    initialColorArgb: Int,
+    initialIconKey: String,
+    onSave: (name: String, colorArgb: Int, iconKey: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        (LocalView.current.parent as? DialogWindowProvider)?.window?.let { dialogWindow: Window ->
+            SideEffect {
+                dialogWindow.setBackgroundDrawableResource(android.R.color.transparent)
+            }
+        }
+        CategoryEditorContent(
+            initialName = initialName,
+            initialColor = initialColorArgb,
+            initialIcon = initialIconKey,
+            heroTitle = "Modifica ",
+            heroAccentWord = "categoria",
+            heroSubtitle = "Cambia nome, icona o colore della categoria.",
+            ctaText = "SALVA MODIFICHE",
+            onSave = onSave,
+            onDismiss = onDismiss
+        )
     }
 }
